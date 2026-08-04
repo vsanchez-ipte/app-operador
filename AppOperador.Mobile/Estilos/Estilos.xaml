@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Estilos base de la App Operador. Se cargan DESPUÉS de los de la plantilla
+    (Resources\Styles\Styles.xaml) para que estos ganen.
+
+    La maqueta repite cinco piezas en las cinco pantallas: la tarjeta, el título de
+    tarjeta, la etiqueta de campo en mayúsculas, los dos botones y la insignia de estado.
+    Definirlas aquí evita repetir medidas y colores en cada vista.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- ===== Página ===== -->
+
+    <Style x:Key="PaginaOperador" TargetType="ContentPage">
+        <Setter Property="BackgroundColor" Value="{StaticResource FondoPagina}" />
+        <Setter Property="Shell.BackgroundColor" Value="{StaticResource Vino}" />
+        <Setter Property="Shell.ForegroundColor" Value="{StaticResource Blanco}" />
+        <Setter Property="Shell.TitleColor" Value="{StaticResource Blanco}" />
+    </Style>
+
+    <!-- ===== Tarjeta ===== -->
+
+    <!--
+        Se usa Background (brocha) y no BackgroundColor: en Border, la brocha es la que
+        realmente pinta el relleno, y con solo BackgroundColor el fondo salía gris en
+        Android en lugar del blanco de la maqueta.
+    -->
+    <Style x:Key="Tarjeta" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource FondoTarjetaBrocha}" />
+        <Setter Property="Stroke" Value="{StaticResource BordeTarjeta}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+    </Style>
+
+    <!-- Tarjeta anidada: la maqueta mete tarjetas dentro de tarjetas (Inicio y Cola) -->
+    <Style x:Key="TarjetaInterna" TargetType="Border" BasedOn="{StaticResource Tarjeta}">
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+    </Style>
+
+    <Style x:Key="TituloTarjeta" TargetType="Label">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{StaticResource TextoTitulo}" />
+    </Style>
+
+    <Style x:Key="TextoSecundario" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextColor" Value="{StaticResource TextoEtiqueta}" />
+    </Style>
+
+    <!-- Línea de datos de las tarjetas de la cola: "Incidencia / Normal / KM 130+200" -->
+    <Style x:Key="TextoDato" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextColor" Value="{StaticResource TextoDato}" />
+    </Style>
+
+    <!-- ===== Formularios ===== -->
+
+    <!-- Etiqueta en mayúsculas sobre cada campo, como en la maqueta -->
+    <Style x:Key="EtiquetaCampo" TargetType="Label">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{StaticResource TextoEtiqueta}" />
+        <Setter Property="CharacterSpacing" Value="0.8" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <!-- Marco del campo: MAUI no da borde propio al Entry, así que lo envolvemos -->
+    <Style x:Key="MarcoCampo" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource BlancoBrocha}" />
+        <Setter Property="Stroke" Value="{StaticResource BordeTarjeta}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+        <Setter Property="Padding" Value="10,2" />
+    </Style>
+
+    <Style x:Key="CampoTexto" TargetType="Entry">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="TextColor" Value="{StaticResource TextoCuerpo}" />
+        <Setter Property="PlaceholderColor" Value="#B0A69C" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="CampoNota" TargetType="Editor">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="TextColor" Value="{StaticResource TextoCuerpo}" />
+        <Setter Property="PlaceholderColor" Value="#B0A69C" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="HeightRequest" Value="90" />
+    </Style>
+
+    <Style x:Key="CampoLista" TargetType="Picker">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="TextColor" Value="{StaticResource TextoCuerpo}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+
+    <!-- Mensaje de error junto al campo (JTT-279 los exige persistentes) -->
+    <Style x:Key="MensajeError" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextColor" Value="{StaticResource RojoError}" />
+        <Setter Property="Margin" Value="0,6,0,0" />
+    </Style>
+
+    <!-- ===== Botones ===== -->
+
+    <Style x:Key="BotonPrimario" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource Vino}" />
+        <Setter Property="TextColor" Value="{StaticResource Blanco}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="HeightRequest" Value="46" />
+        <Setter Property="Padding" Value="14,0" />
+    </Style>
+
+    <Style x:Key="BotonSecundario" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource BotonSecundarioFondo}" />
+        <Setter Property="TextColor" Value="{StaticResource BotonSecundarioTexto}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="HeightRequest" Value="46" />
+        <Setter Property="Padding" Value="14,0" />
+    </Style>
+
+    <!-- ===== Insignias de estado ===== -->
+
+    <Style x:Key="InsigniaVerde" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource VerdeFondoBrocha}" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 4" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <Style x:Key="InsigniaRosa" TargetType="Border" BasedOn="{StaticResource InsigniaVerde}">
+        <Setter Property="Background" Value="{StaticResource RosaFondoBrocha}" />
+    </Style>
+
+    <Style x:Key="InsigniaAmbar" TargetType="Border" BasedOn="{StaticResource InsigniaVerde}">
+        <Setter Property="Background" Value="{StaticResource AmbarFondoBrocha}" />
+    </Style>
+
+    <Style x:Key="TextoInsigniaVerde" TargetType="Label">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{StaticResource VerdeTexto}" />
+        <Setter Property="CharacterSpacing" Value="0.5" />
+    </Style>
+
+    <Style x:Key="TextoInsigniaRosa" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
+        <Setter Property="TextColor" Value="{StaticResource RosaTexto}" />
+    </Style>
+
+    <Style x:Key="TextoInsigniaAmbar" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
+        <Setter Property="TextColor" Value="{StaticResource AmbarTexto}" />
+    </Style>
+
+    <!-- ===== Indicadores del tablero de Inicio ===== -->
+
+    <Style x:Key="ValorIndicador" TargetType="Label">
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{StaticResource VerdeTexto}" />
+    </Style>
+
+    <!-- ===== Encabezado común a todas las pantallas ===== -->
+
+    <Style x:Key="TituloBanner" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{StaticResource Mostaza}" />
+        <Setter Property="CharacterSpacing" Value="1" />
+    </Style>
+
+</ResourceDictionary>

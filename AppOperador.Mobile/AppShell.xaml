@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Navegación de la app. La maqueta define una barra inferior de cuatro pestañas, y el
+    acceso queda fuera de ella: mientras no haya sesión no debe verse ninguna pestaña.
+-->
+<Shell
+    x:Class="AppOperador.Mobile.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vistas="clr-namespace:AppOperador.Mobile.Vistas"
+    Shell.FlyoutBehavior="Disabled"
+    Shell.BackgroundColor="{StaticResource Vino}"
+    Shell.ForegroundColor="{StaticResource Blanco}"
+    Shell.TitleColor="{StaticResource Blanco}"
+    Shell.TabBarBackgroundColor="{StaticResource Blanco}"
+    Shell.TabBarTitleColor="{StaticResource Vino}"
+    Shell.TabBarUnselectedColor="{StaticResource TextoEtiqueta}"
+    Title="App Operador">
+
+    <!-- Primera ruta declarada: es la pantalla con la que arranca la app -->
+    <ShellContent
+        Route="acceso"
+        ContentTemplate="{DataTemplate vistas:AccesoPage}"
+        Shell.NavBarIsVisible="False" />
+
+    <TabBar Route="principal">
+
+        <ShellContent
+            Title="Inicio"
+            Route="inicio"
+            ContentTemplate="{DataTemplate vistas:InicioPage}" />
+
+        <ShellContent
+            Title="Captura"
+            Route="captura"
+            ContentTemplate="{DataTemplate vistas:CapturaPage}" />
+
+        <ShellContent
+            Title="Cola"
+            Route="cola"
+            ContentTemplate="{DataTemplate vistas:ColaPage}" />
+
+        <ShellContent
+            Title="Perfil"
+            Route="perfil"
+            ContentTemplate="{DataTemplate vistas:PerfilPage}" />
+
+    </TabBar>
+
+</Shell>

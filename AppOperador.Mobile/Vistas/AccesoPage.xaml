@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Pantalla de acceso (JTT-279). Una sola pantalla con credenciales, unidad del catálogo
+    y estado de comunicación, como la maqueta.
+-->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
+             x:Class="AppOperador.Mobile.Vistas.AccesoPage"
+             x:DataType="vm:AccesoViewModel"
+             Style="{StaticResource PaginaOperador}"
+             Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Franja de identidad, presente en todas las pantallas de la maqueta -->
+        <VerticalStackLayout Grid.Row="0" BackgroundColor="{StaticResource Blanco}" Padding="16,10" Spacing="2">
+            <Label Text="APK OPERADOR DE CAMPO" Style="{StaticResource TituloBanner}" />
+            <Label Text="Offline-first · Captura de evidencia · Cola local y sincronizacion"
+                   Style="{StaticResource TextoSecundario}" FontSize="10" />
+        </VerticalStackLayout>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,32" RowDefinitions="Auto">
+
+                <VerticalStackLayout Spacing="16" VerticalOptions="Center" MaximumWidthRequest="420">
+
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Jacob CCO" FontSize="22" FontAttributes="Bold"
+                               TextColor="{StaticResource TextoTitulo}" HorizontalOptions="Center" />
+                        <Label Text="Operador de campo - Tijuana-Mexicali"
+                               Style="{StaticResource TextoSecundario}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+
+                    <Border Style="{StaticResource Tarjeta}">
+                        <VerticalStackLayout Spacing="14">
+
+                            <VerticalStackLayout>
+                                <Label Text="USUARIO" Style="{StaticResource EtiquetaCampo}" />
+                                <Border Style="{StaticResource MarcoCampo}">
+                                    <Entry Style="{StaticResource CampoTexto}"
+                                           Placeholder="usuario.campo"
+                                           Text="{Binding Usuario}" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout>
+                                <Label Text="CONTRASEÑA" Style="{StaticResource EtiquetaCampo}" />
+                                <Border Style="{StaticResource MarcoCampo}">
+                                    <Entry Style="{StaticResource CampoTexto}"
+                                           IsPassword="True"
+                                           Text="{Binding Contrasena}" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <!-- Selección del catálogo: JTT-279 no admite texto libre -->
+                            <VerticalStackLayout>
+                                <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
+                                <Border Style="{StaticResource MarcoCampo}">
+                                    <Picker Style="{StaticResource CampoLista}"
+                                            ItemsSource="{Binding Unidades}"
+                                            SelectedItem="{Binding UnidadSeleccionada}" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <!-- Mensaje de rechazo: literal y persistente junto al formulario -->
+                            <Label Text="{Binding MensajeError}"
+                                   Style="{StaticResource MensajeError}"
+                                   IsVisible="{Binding HayError}" />
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <Button Grid.Column="0"
+                                        Text="Iniciar sesion"
+                                        Style="{StaticResource BotonPrimario}"
+                                        Command="{Binding IngresarCommand}"
+                                        IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+                                <Button Grid.Column="1"
+                                        Text="Continuar offline"
+                                        Style="{StaticResource BotonSecundario}"
+                                        Command="{Binding ContinuarSinConexionCommand}"
+                                        IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+                            </Grid>
+
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label Text="{Binding TextoEstadoEnlace}"
+                           Style="{StaticResource TextoSecundario}"
+                           HorizontalOptions="Center" />
+
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+    </Grid>
+
+</ContentPage>

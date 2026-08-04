@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Perfil: sesión, permisos, evidencia local y bitácora (JTT-292).
+-->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
+             x:Class="AppOperador.Mobile.Vistas.PerfilPage"
+             x:DataType="vm:PerfilViewModel"
+             Style="{StaticResource PaginaOperador}"
+             Title="Perfil">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="14" Spacing="12">
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Sesion y permisos" Style="{StaticResource TituloTarjeta}" />
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                          RowSpacing="8">
+
+                        <Label Grid.Row="0" Grid.Column="0" Text="Operador" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="0" Grid.Column="1" Text="{Binding Operador}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Unidad vehicular" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="1" Grid.Column="1" Text="{Binding UnidadVehicular}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="2" Grid.Column="0" Text="Sesion offline" Style="{StaticResource TextoSecundario}" />
+                        <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource InsigniaVerde}">
+                            <Label Text="{Binding EstadoVigencia}" Style="{StaticResource TextoInsigniaVerde}" />
+                        </Border>
+
+                        <!-- Hora local de expiración: exigida literalmente por JTT-279 -->
+                        <Label Grid.Row="3" Grid.Column="0" Text="Expira" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="3" Grid.Column="1" Text="{Binding HoraExpiracion}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="4" Grid.Column="0" Text="Version APK" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="4" Grid.Column="1" Text="{Binding VersionAplicacion}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="5" Grid.Column="0" Text="Catalogos" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="5" Grid.Column="1" Text="{Binding VersionCatalogos}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="6" Grid.Column="0" Text="Modo" Style="{StaticResource TextoSecundario}" />
+                        <Border Grid.Row="6" Grid.Column="1" Style="{StaticResource InsigniaVerde}">
+                            <Label Text="{Binding Modo}" Style="{StaticResource TextoInsigniaVerde}" />
+                        </Border>
+
+                    </Grid>
+
+                    <!-- Permisos efectivos como etiquetas -->
+                    <HorizontalStackLayout BindableLayout.ItemsSource="{Binding Permisos}" Spacing="6">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Border Style="{StaticResource InsigniaVerde}">
+                                    <Label Text="{Binding .}" Style="{StaticResource TextoInsigniaVerde}" />
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </HorizontalStackLayout>
+
+                    <Button Text="Cerrar sesion"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding CerrarSesionCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Bitácora local de eventos operativos -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Auditoria" Style="{StaticResource TituloTarjeta}" />
+
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Eventos}" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EventoAuditoriaVista">
+                                <Border Style="{StaticResource TarjetaInterna}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <!-- Se guarda en UTC y se presenta en hora local (DA-10) -->
+                                            <Label Grid.Column="0" Text="{Binding HoraLocal}"
+                                                   FontAttributes="Bold" FontSize="13"
+                                                   TextColor="{StaticResource TextoTitulo}" />
+                                            <!--
+                                                BackgroundColor y no Background: al enlazar,
+                                                la cadena se convierte a Color pero no a brocha.
+                                            -->
+                                            <Border Grid.Column="1"
+                                                    BackgroundColor="{Binding ColorFondoNivel}"
+                                                    Stroke="Transparent" StrokeShape="RoundRectangle 4"
+                                                    Padding="8,3" VerticalOptions="Center">
+                                                <Label Text="{Binding TextoNivel}"
+                                                       FontSize="10" FontAttributes="Bold"
+                                                       TextColor="{Binding ColorTextoNivel}" />
+                                            </Border>
+                                        </Grid>
+                                        <Label Text="{Binding Mensaje}" Style="{StaticResource TextoDato}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

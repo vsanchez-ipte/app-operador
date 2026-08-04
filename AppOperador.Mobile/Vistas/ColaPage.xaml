@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Cola local de registros pendientes (JTT-290) y su sincronización (JTT-291).
+-->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
+             x:Class="AppOperador.Mobile.Vistas.ColaPage"
+             x:DataType="vm:ColaViewModel"
+             Style="{StaticResource PaginaOperador}"
+             Title="Cola">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="14" Spacing="12">
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="12">
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Cola offline" Style="{StaticResource TituloTarjeta}" />
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaVerde}">
+                            <Label Text="{Binding Pendientes}" Style="{StaticResource TextoInsigniaVerde}" />
+                        </Border>
+                    </Grid>
+
+                    <Label Text="{Binding TextoPendientes}" Style="{StaticResource TextoSecundario}" />
+
+                    <Button Text="Sincronizar ahora"
+                            Style="{StaticResource BotonPrimario}"
+                            Command="{Binding SincronizarCommand}"
+                            IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Cola de registros" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Text="Sin registros en cola."
+                           Style="{StaticResource TextoSecundario}"
+                           IsVisible="{Binding HayRegistros, Converter={StaticResource InvertirBooleano}}" />
+
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Registros}" Spacing="10">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RegistroColaVista">
+                                <Border Style="{StaticResource TarjetaInterna}">
+                                    <VerticalStackLayout Spacing="4">
+
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <!-- Clave local: existe desde la captura y nunca cambia -->
+                                            <Label Grid.Column="0" Text="{Binding ClaveLocal}"
+                                                   FontAttributes="Bold" FontSize="14"
+                                                   TextColor="{StaticResource TextoTitulo}" />
+
+                                            <Border Grid.Column="1"
+                                                    BackgroundColor="{Binding ColorFondoEstado}"
+                                                    Stroke="Transparent" StrokeShape="RoundRectangle 4"
+                                                    Padding="8,3" VerticalOptions="Center">
+                                                <Label Text="{Binding TextoEstado}"
+                                                       FontSize="10" FontAttributes="Bold"
+                                                       TextColor="{Binding ColorTextoEstado}" />
+                                            </Border>
+                                        </Grid>
+
+                                        <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
+
+                                        <!-- El folio central solo aparece cuando Jacob confirmó el registro -->
+                                        <Label Text="{Binding TextoFolio}"
+                                               Style="{StaticResource TextoDato}"
+                                               IsVisible="{Binding MuestraFolio}" />
+
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

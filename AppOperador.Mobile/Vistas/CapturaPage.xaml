@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Captura de incidencia de campo (JTT-280) y su evidencia (JTT-289).
+-->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
+             x:Class="AppOperador.Mobile.Vistas.CapturaPage"
+             x:DataType="vm:CapturaViewModel"
+             Style="{StaticResource PaginaOperador}"
+             Title="Captura">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="14" Spacing="12">
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="14">
+
+                    <Label Text="Registro de incidencia" Style="{StaticResource TituloTarjeta}" />
+
+                    <VerticalStackLayout>
+                        <Label Text="TIPO DE INCIDENCIA" Style="{StaticResource EtiquetaCampo}" />
+                        <Border Style="{StaticResource MarcoCampo}">
+                            <Picker Style="{StaticResource CampoLista}"
+                                    ItemsSource="{Binding Tipos}"
+                                    SelectedItem="{Binding TipoSeleccionado}" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Kilómetro y gravedad van lado a lado, como en la maqueta -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+
+                        <VerticalStackLayout Grid.Column="0">
+                            <Label Text="KM (GPS O MANUAL)" Style="{StaticResource EtiquetaCampo}" />
+                            <Border Style="{StaticResource MarcoCampo}">
+                                <Entry Style="{StaticResource CampoTexto}"
+                                       Placeholder="Ej. 130+400"
+                                       Text="{Binding Kilometro}" />
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Grid.Column="1">
+                            <Label Text="SEVERIDAD" Style="{StaticResource EtiquetaCampo}" />
+                            <Border Style="{StaticResource MarcoCampo}">
+                                <Picker Style="{StaticResource CampoLista}"
+                                        ItemsSource="{Binding Gravedades}"
+                                        SelectedItem="{Binding GravedadSeleccionada}" />
+                            </Border>
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+                    <!-- Aviso de GPS no disponible: habilita la captura manual del KM -->
+                    <Label Text="{Binding AvisoGps}"
+                           Style="{StaticResource MensajeError}"
+                           IsVisible="{Binding HayAvisoGps}" />
+
+                    <VerticalStackLayout>
+                        <Label Text="NOTA DEL OPERADOR" Style="{StaticResource EtiquetaCampo}" />
+                        <Border Style="{StaticResource MarcoCampo}">
+                            <Editor Style="{StaticResource CampoNota}"
+                                    Placeholder="Descripcion de la incidencia..."
+                                    Text="{Binding Nota}" />
+                        </Border>
+                        <Label Text="{Binding ContadorNota}"
+                               Style="{StaticResource TextoSecundario}"
+                               FontSize="10"
+                               HorizontalOptions="End"
+                               Margin="0,4,0,0" />
+                    </VerticalStackLayout>
+
+                    <Label Text="{Binding MensajeError}"
+                           Style="{StaticResource MensajeError}"
+                           IsVisible="{Binding HayError}" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0"
+                                Text="Guardar incidencia"
+                                Style="{StaticResource BotonPrimario}"
+                                Command="{Binding GuardarIncidenciaCommand}" />
+                        <Button Grid.Column="1"
+                                Text="Guardar borrador"
+                                Style="{StaticResource BotonSecundario}"
+                                Command="{Binding GuardarBorradorCommand}" />
+                    </Grid>
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Los borradores viven fuera de la cola: nunca se envían -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Borradores pendientes" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Text="Sin borradores pendientes."
+                           Style="{StaticResource TextoSecundario}"
+                           IsVisible="{Binding HayBorradores, Converter={StaticResource InvertirBooleano}}" />
+
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Borradores}" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RegistroColaVista">
+                                <Border Style="{StaticResource TarjetaInterna}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding ClaveLocal}" FontAttributes="Bold" FontSize="13"
+                                               TextColor="{StaticResource TextoTitulo}" />
+                                        <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!--
+                Cámara del operador (JTT-289). Esqueleto visual: la captura real llega con
+                el servicio de medios y la copia a archivos privados.
+            -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Camara del operador" Style="{StaticResource TituloTarjeta}" />
+
+                    <Border BackgroundColor="#1E1A1A" StrokeThickness="0" Padding="12" HeightRequest="170"
+                            StrokeShape="RoundRectangle 8">
+                        <Grid RowDefinitions="Auto,*,Auto">
+                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="CAM-MOVIL" FontSize="10" TextColor="#C9BFB6" />
+                                <Label Grid.Column="1" Text="LISTA" FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource RosaFondo}" />
+                            </Grid>
+
+                            <Ellipse Grid.Row="1" WidthRequest="56" HeightRequest="56"
+                                     Stroke="#8A7F78" StrokeThickness="2"
+                                     HorizontalOptions="Center" VerticalOptions="Center" />
+
+                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="{Binding Kilometro, StringFormat='KM {0}'}"
+                                       FontSize="10" TextColor="#C9BFB6" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0" Text="Capturar foto"
+                                Style="{StaticResource BotonPrimario}" IsEnabled="False" />
+                        <Button Grid.Column="1" Text="Capturar video corto"
+                                Style="{StaticResource BotonSecundario}" IsEnabled="False" />
+                    </Grid>
+
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

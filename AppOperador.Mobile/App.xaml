@@ -1,0 +1,23 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:local="clr-namespace:AppOperador.Mobile"
+             x:Class="AppOperador.Mobile.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Estilos de la plantilla primero: los propios deben poder sobrescribirlos -->
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+
+                <!-- Paleta y estilos de la App Operador, tomados de la maqueta -->
+                <ResourceDictionary Source="Estilos/Colores.xaml" />
+                <ResourceDictionary Source="Estilos/Estilos.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Para deshabilitar botones mientras hay una operación en curso -->
+            <toolkit:InvertedBoolConverter x:Key="InvertirBooleano" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

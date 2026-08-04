@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Tablero de Inicio: identidad, estado de enlace y los cuatro indicadores operativos.
+-->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
+             x:Class="AppOperador.Mobile.Vistas.InicioPage"
+             x:DataType="vm:InicioViewModel"
+             Style="{StaticResource PaginaOperador}"
+             Title="Inicio">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="14" Spacing="12">
+
+            <!-- Cabecera: quién trabaja y si hay enlace con Jacob CCO -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="12">
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Grid.Column="0" Spacing="1">
+                            <Label Text="Operador de campo" Style="{StaticResource TituloTarjeta}" />
+                            <Label Text="APK recortada · Modo vehicular · Campo"
+                                   Style="{StaticResource TextoSecundario}" />
+                        </VerticalStackLayout>
+
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaVerde}">
+                            <Label Text="{Binding TextoEnlace}" Style="{StaticResource TextoInsigniaVerde}" />
+                        </Border>
+                    </Grid>
+
+                    <Border Style="{StaticResource TarjetaInterna}">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                <Label Text="{Binding Operador}" FontAttributes="Bold" FontSize="14"
+                                       TextColor="{StaticResource TextoTitulo}" />
+                                <Label Text="Captura, evidencia y sincronizacion vehicular"
+                                       Style="{StaticResource TextoSecundario}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                <Border Style="{StaticResource InsigniaRosa}">
+                                    <Label Text="CAPTURA" Style="{StaticResource TextoInsigniaRosa}" />
+                                </Border>
+                                <Label Text="{Binding HoraActualizacion}"
+                                       Style="{StaticResource TextoSecundario}" FontSize="10"
+                                       HorizontalOptions="End" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="Captura operativa" Style="{StaticResource TituloTarjeta}" />
+                    <Label Text="Registro offline de incidencias de campo, evidencia y sincronizacion."
+                           Style="{StaticResource TextoSecundario}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Los cuatro indicadores del vistazo rápido -->
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource Tarjeta}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Pendientes sync" Style="{StaticResource TextoSecundario}" />
+                        <Label Text="{Binding Resumen.PendientesSincronizar}" Style="{StaticResource ValorIndicador}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource Tarjeta}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="KM actual" Style="{StaticResource TextoSecundario}" />
+                        <Label Text="{Binding KilometroActual}" Style="{StaticResource ValorIndicador}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Tarjeta}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Avisos" Style="{StaticResource TextoSecundario}" />
+                        <Label Text="{Binding Resumen.Avisos}" Style="{StaticResource ValorIndicador}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Tarjeta}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Evidencia local" Style="{StaticResource TextoSecundario}" />
+                        <Label Text="{Binding Resumen.EvidenciaLocal}" Style="{StaticResource ValorIndicador}" />
+                    </VerticalStackLayout>
+                </Border>
+
+            </Grid>
+
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Ultimos avisos" Style="{StaticResource TituloTarjeta}" />
+                    <Label Text="Sin avisos operativos." Style="{StaticResource TextoSecundario}" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

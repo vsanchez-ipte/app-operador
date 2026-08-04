@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Colores del tema nativo de Android: definen la barra de estado y el acento del
+    sistema, que quedan fuera del alcance de los estilos XAML de MAUI.
+    Es el vino de la identidad Jacob, no el morado de la plantilla de .NET MAUI.
+-->
+<resources>
+    <color name="colorPrimary">#7A1F3D</color>
+    <color name="colorPrimaryDark">#5E1730</color>
+    <color name="colorAccent">#7A1F3D</color>
+</resources>

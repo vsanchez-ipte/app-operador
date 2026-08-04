@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Paleta de la App Operador, tomada de la maqueta (Claudio\maqueta.md).
+    La app se fuerza a tema claro, así que estos colores no llevan AppThemeBinding:
+    la maqueta define una sola apariencia y el operador trabaja siempre con ella.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Identidad Jacob: vino/guinda de la barra superior y las acciones principales -->
+    <Color x:Key="Vino">#7A1F3D</Color>
+    <Color x:Key="VinoOscuro">#5E1730</Color>
+    <Color x:Key="VinoClaro">#92264F</Color>
+
+    <!-- Fondos: la maqueta usa un beige cálido con tarjetas blancas encima -->
+    <Color x:Key="FondoPagina">#E8DED0</Color>
+    <Color x:Key="FondoTarjeta">#FFFFFF</Color>
+    <Color x:Key="BordeTarjeta">#E0D6C6</Color>
+
+    <!-- Acción secundaria: beige más oscuro que el fondo, con texto oscuro -->
+    <Color x:Key="BotonSecundarioFondo">#E9E0CE</Color>
+    <Color x:Key="BotonSecundarioTexto">#3A2F2A</Color>
+
+    <!-- Texto -->
+    <Color x:Key="TextoTitulo">#241F1F</Color>
+    <Color x:Key="TextoCuerpo">#3A2F2A</Color>
+    <Color x:Key="TextoEtiqueta">#8A7B72</Color>
+    <Color x:Key="TextoDato">#6F6486</Color>
+
+    <!-- Franja mostaza del encabezado "APK OPERADOR DE CAMPO" -->
+    <Color x:Key="Mostaza">#9A8B2E</Color>
+
+    <!-- Estados favorables: ENLACE, SINCRONIZADO, VIGENTE -->
+    <Color x:Key="VerdeFondo">#D8F0E0</Color>
+    <Color x:Key="VerdeTexto">#1E7A46</Color>
+
+    <!-- Estados de atención o rol: CAPTURA, ADJUNTA, FOTO LOCAL -->
+    <Color x:Key="RosaFondo">#F7DCE6</Color>
+    <Color x:Key="RosaTexto">#92264F</Color>
+
+    <!-- Nivel WARN de la bitácora de auditoría -->
+    <Color x:Key="AmbarFondo">#FBE9C8</Color>
+    <Color x:Key="AmbarTexto">#8A6100</Color>
+
+    <!-- Errores junto al campo (por ejemplo, el aviso de GPS no disponible) -->
+    <Color x:Key="RojoError">#C0392B</Color>
+
+    <Color x:Key="Blanco">#FFFFFF</Color>
+
+    <!--
+        Brochas equivalentes. En Border es la brocha, no BackgroundColor, la que pinta el
+        relleno de forma fiable en Android: con solo el color las tarjetas salían grises.
+    -->
+    <SolidColorBrush x:Key="FondoTarjetaBrocha" Color="{StaticResource FondoTarjeta}" />
+    <SolidColorBrush x:Key="BlancoBrocha" Color="{StaticResource Blanco}" />
+    <SolidColorBrush x:Key="VerdeFondoBrocha" Color="{StaticResource VerdeFondo}" />
+    <SolidColorBrush x:Key="RosaFondoBrocha" Color="{StaticResource RosaFondo}" />
+    <SolidColorBrush x:Key="AmbarFondoBrocha" Color="{StaticResource AmbarFondo}" />
+
+</ResourceDictionary>
