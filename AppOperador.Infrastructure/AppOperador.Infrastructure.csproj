@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>net10.0-android</TargetFrameworks>
+		<!--
+			net10.0 sin plataforma existe para que AppOperador.IntegrationTests pueda
+			probar los adaptadores SQLite en el escritorio. Las APIs de MAUI que dependen
+			del dispositivo lanzan en este destino, por eso BaseDatosLocal admite una ruta
+			explícita: las pruebas le pasan un archivo temporal y nunca tocan FileSystem.
+		-->
+		<TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
 		<TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
 
@@ -29,11 +35,31 @@
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
 		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
-		<!-- Fijado por NU1903 (GHSA-2m69-gcr7-jv3q): bundle_green 2.1.11 arrastra
-		     lib.e_sqlite3 2.1.11, vulnerable. No hay bundle_green 2.1.12, asi que se
-		     fija la version parcheada de las librerias nativas directamente. -->
-		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+	</ItemGroup>
+
+	<!--
+		Fijado por NU1903 (GHSA-2m69-gcr7-jv3q): bundle_green 2.1.11 arrastra
+		lib.e_sqlite3 2.1.11, vulnerable. No hay bundle_green 2.1.12, asi que se fija la
+		version parcheada de las librerias nativas directamente.
+
+		OJO CON ANDROID. Los dos paquetes NO son intercambiables:
+		  · SQLitePCLRaw.lib.e_sqlite3         -> runtimes/linux-*/native/*.so  (glibc)
+		  · SQLitePCLRaw.lib.e_sqlite3.android -> un .aar con la libreria de Android (Bionic)
+
+		Si el primero entra con sus assets nativos en un destino Android, el empaquetador
+		mete el .so de Linux en lib/<abi>/ y descarta el correcto del .aar. La app compila
+		e instala, pero truena al abrir la base con:
+		    dlopen failed: library "libc.so.6" not found
+		Por eso en Android se conserva la referencia (para que la version siga fijada y
+		NU1903 quede resuelto) pero se excluyen sus assets nativos.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="native;runtime" />
 		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3.android" Version="2.1.12" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
 	</ItemGroup>
 
 	<ItemGroup>

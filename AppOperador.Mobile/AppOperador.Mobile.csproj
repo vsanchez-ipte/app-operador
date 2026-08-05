@@ -70,10 +70,24 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
-		<!-- Fijado por NU1903 (GHSA-2m69-gcr7-jv3q): sqlite-net-pcl llega transitivamente
-		     desde AppOperador.Infrastructure y arrastra lib.e_sqlite3 2.1.11, vulnerable. -->
-		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+	</ItemGroup>
+
+	<!--
+		Fijado por NU1903 (GHSA-2m69-gcr7-jv3q): sqlite-net-pcl llega transitivamente desde
+		AppOperador.Infrastructure y arrastra lib.e_sqlite3 2.1.11, vulnerable.
+
+		En Android se excluyen los assets nativos de lib.e_sqlite3 porque ese paquete solo
+		trae binarios de Linux de escritorio (glibc) y desplazan a la libreria correcta que
+		aporta el .aar de lib.e_sqlite3.android (Bionic). Explicacion completa en el .csproj
+		de Infrastructure y en Claudio/errores_comunes.md.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="native;runtime" />
 		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3.android" Version="2.1.12" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
+		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
 	</ItemGroup>
 
 	<ItemGroup>

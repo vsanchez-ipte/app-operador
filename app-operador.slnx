@@ -3,5 +3,6 @@
   <Project Path="AppOperador.Domain/AppOperador.Domain.csproj" />
   <Project Path="AppOperador.Infrastructure/AppOperador.Infrastructure.csproj" />
   <Project Path="AppOperador.Mobile/AppOperador.Mobile.csproj" />
+  <Project Path="AppOperador.IntegrationTests/AppOperador.IntegrationTests.csproj" />
   <Project Path="AppOperador.UnitTests/AppOperador.UnitTests.csproj" />
 </Solution>

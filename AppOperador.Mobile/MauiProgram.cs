@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Infrastructure.Sqlite;
 using AppOperador.Mobile.Mocks;
 using AppOperador.Mobile.ViewModels;
 using AppOperador.Mobile.Vistas;
@@ -60,27 +61,37 @@ public static class MauiProgram
 	/// Registra las implementaciones de los contratos de la capa de aplicación.
 	/// </summary>
 	/// <remarks>
-	/// Hoy todas son simuladores que viven en <c>Mocks</c>: permiten recorrer las
-	/// pantallas sin el canal móvil de Jacob ni base local. Al llegar JTT-1345 y
-	/// JTT-1347, aquí se cambia el tipo concreto por el de <c>Infrastructure</c> y ni los
-	/// ViewModels ni las vistas se enteran, porque solo conocen la interfaz.
+	/// Aquí conviven dos orígenes y la diferencia importa:
 	///
-	/// El almacén y la conectividad son singleton a propósito: el estado tiene que ser
-	/// el mismo en las cuatro pestañas.
+	/// <list type="bullet">
+	/// <item><b>SQLite</b> para incidencias, cola y bitácora: es persistencia real, los
+	/// datos sobreviven al cierre de la app.</item>
+	/// <item><b>Simuladores</b> de <c>Mocks</c> para lo que depende del canal móvil de
+	/// Jacob (autenticación) o del hardware (ubicación, conectividad). Se sustituyen al
+	/// llegar JTT-1345 y JTT-1347 sin que vistas ni ViewModels se enteren.</item>
+	/// </list>
+	///
+	/// Todo singleton: la base mantiene una sola conexión al archivo, y el estado debe
+	/// ser el mismo en las cuatro pestañas.
 	/// </remarks>
 	private static void RegistrarServicios(IServiceCollection servicios)
 	{
 		servicios.AddSingleton<IClock, RelojSistema>();
 		servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
-		servicios.AddSingleton<IAuditLog, BitacoraEnMemoria>();
 		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
-
-		// Ocupa el lugar de la base SQLite: compartido por el repositorio y la cola.
-		servicios.AddSingleton<AlmacenRegistrosEnMemoria>();
-		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasEnMemoria>();
-		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionEnMemoria>();
 		servicios.AddSingleton<IAuthenticationService, ServicioAutenticacionSimulado>();
+
+		// Persistencia real. BaseDatosLocal se registra por su tipo concreto además de por
+		// la interfaz porque los repositorios necesitan su conexión interna, que el
+		// contrato ILocalDatabase no expone a propósito.
+		// Fábrica explícita: el constructor recibe una ruta opcional y el contenedor no
+		// debe intentar resolverla como si fuera un servicio.
+		servicios.AddSingleton(_ => new BaseDatosLocal());
+		servicios.AddSingleton<ILocalDatabase>(sp => sp.GetRequiredService<BaseDatosLocal>());
+		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
+		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
+		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 	}
 
 	/// <summary>
