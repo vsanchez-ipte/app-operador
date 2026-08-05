@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!-- Casa. Trazo grueso y esquinas suaves para que se lea bien a 24 dp. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <path d="M12 3.2 2.8 10.4v10.4h6.4v-6h5.6v6h6.4V10.4Z"
+        fill="none" stroke="#7A1F3D" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round" />
+</svg>

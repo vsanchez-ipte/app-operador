@@ -25,23 +25,33 @@
 
     <TabBar Route="principal">
 
+        <!--
+            Los iconos se declaran como .png aunque el archivo fuente sea .svg: el SDK
+            los convierte al compilar, generando una imagen por densidad de pantalla.
+            Android los tiñe con los colores de la barra, así que el color del SVG no
+            se ve: manda TabBarTitleColor / TabBarUnselectedColor.
+        -->
         <ShellContent
             Title="Inicio"
+            Icon="tab_inicio.png"
             Route="inicio"
             ContentTemplate="{DataTemplate vistas:InicioPage}" />
 
         <ShellContent
             Title="Captura"
+            Icon="tab_captura.png"
             Route="captura"
             ContentTemplate="{DataTemplate vistas:CapturaPage}" />
 
         <ShellContent
             Title="Cola"
+            Icon="tab_cola.png"
             Route="cola"
             ContentTemplate="{DataTemplate vistas:ColaPage}" />
 
         <ShellContent
             Title="Perfil"
+            Icon="tab_perfil.png"
             Route="perfil"
             ContentTemplate="{DataTemplate vistas:PerfilPage}" />
 
