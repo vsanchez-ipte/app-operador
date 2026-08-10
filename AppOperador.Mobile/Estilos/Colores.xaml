@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!--
-    Paleta de la App Operador, tomada de la maqueta (Claudio\maqueta.md).
+    Paleta de la App Operador, tomada de la maqueta funcional de JTT-1346.
     La app se fuerza a tema claro, así que estos colores no llevan AppThemeBinding:
     la maqueta define una sola apariencia y el operador trabaja siempre con ella.
 -->

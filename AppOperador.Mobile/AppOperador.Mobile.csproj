@@ -78,8 +78,10 @@
 
 		En Android se excluyen los assets nativos de lib.e_sqlite3 porque ese paquete solo
 		trae binarios de Linux de escritorio (glibc) y desplazan a la libreria correcta que
-		aporta el .aar de lib.e_sqlite3.android (Bionic). Explicacion completa en el .csproj
-		de Infrastructure y en Claudio/errores_comunes.md.
+		aporta el .aar de lib.e_sqlite3.android (Bionic). Si entran los dos, la app compila
+		e instala pero revienta al abrir la base con:
+		    dlopen failed: library "libc.so.6" not found
+		Explicacion completa en el .csproj de AppOperador.Infrastructure.
 	-->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
 		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="native;runtime" />
