@@ -184,15 +184,22 @@ public sealed class ClientePreauthJacob : IPreauthClient
 	/// Convierte las unidades del contrato al modelo de la aplicación.
 	/// </summary>
 	/// <remarks>
-	/// Se deserializan porque forman parte de la respuesta, pero JTT-1378 no las muestra.
-	/// El identificador que consume el segundo paso del acceso no cabe en
-	/// <see cref="UnidadVehicular"/>; incorporarlo es trabajo de JTT-1380, cuando exista
-	/// quien lo use.
+	/// <para>
+	/// Se conserva el <c>id</c> además de la clave: es lo que el segundo paso del acceso le
+	/// envía a Jacob, que revalida la unidad contra él y no contra el número económico
+	/// (JTT-1381 CA 6).
+	/// </para>
+	/// <para>
+	/// Una unidad sin <c>id</c> o sin <c>clave</c> se descarta en vez de completarse con un
+	/// valor vacío: sin identificador no se puede seleccionar —el API la rechazaría— y sin
+	/// clave el operador no sabría cuál está eligiendo. Es preferible una lista más corta
+	/// que una entrada que no funciona.
+	/// </para>
 	/// </remarks>
 	private static IReadOnlyList<UnidadVehicular> ConvertirUnidades(IReadOnlyList<UnidadPreauth> unidades) =>
 		[.. unidades
-			.Where(unidad => !string.IsNullOrWhiteSpace(unidad.Clave))
-			.Select(unidad => new UnidadVehicular(unidad.Clave!, unidad.Descripcion ?? string.Empty))];
+			.Where(unidad => !string.IsNullOrWhiteSpace(unidad.Id) && !string.IsNullOrWhiteSpace(unidad.Clave))
+			.Select(unidad => new UnidadVehicular(unidad.Id!, unidad.Clave!, unidad.Descripcion ?? string.Empty))];
 
 	private string Url(string ruta) => $"{_configuracion.UrlBase.TrimEnd('/')}{ruta}";
 }

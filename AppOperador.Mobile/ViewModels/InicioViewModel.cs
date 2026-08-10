@@ -42,6 +42,15 @@ public sealed partial class InicioViewModel : ObservableObject
 	/// <summary>Cuenta del operador que tiene la sesión abierta.</summary>
 	public string Operador => _sesiones.Actual?.Operador ?? "-";
 
+	/// <summary>
+	/// Unidad con la que el operador está trabajando (JTT-1381 CA 13).
+	/// </summary>
+	/// <remarks>
+	/// Se muestra la <b>clave</b>, no el identificador técnico: al operador le sirve el número
+	/// económico que lleva pintado la unidad, no el uuid que usa Jacob.
+	/// </remarks>
+	public string UnidadVehicular => _sesiones.Actual?.UnidadVehicular ?? "-";
+
 	/// <summary>Etiqueta de enlace: verde cuando hay comunicación con Jacob CCO.</summary>
 	public string TextoEnlace => _conectividad.HayEnlace ? "ENLACE" : "OFFLINE";
 
@@ -65,6 +74,7 @@ public sealed partial class InicioViewModel : ObservableObject
 		// La comparación es en UTC; al operador se le presenta su hora local (DA-10).
 		HoraActualizacion = _reloj.UtcAhora.ToLocalTime().ToString("HH:mm:ss");
 		OnPropertyChanged(nameof(Operador));
+		OnPropertyChanged(nameof(UnidadVehicular));
 		OnPropertyChanged(nameof(KilometroActual));
 	}
 

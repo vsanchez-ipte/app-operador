@@ -67,7 +67,7 @@ public sealed class ClientePreauthJacobTests
 	}
 
 	[Fact]
-	public async Task Deserializa_las_unidades_aunque_esta_HUT_no_las_muestre()
+	public async Task Deserializa_las_unidades_que_devuelve_la_preautenticacion()
 	{
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, PreauthCorrecto));
 
@@ -75,6 +75,118 @@ public sealed class ClientePreauthJacobTests
 
 		Assert.Equal(2, resultado.Unidades.Count);
 		Assert.Equal("VEH-01", resultado.Unidades[0].Clave);
+	}
+
+	// ---------- Identificador de la unidad (JTT-1381) ----------
+
+	[Fact]
+	public async Task Conserva_el_identificador_tecnico_de_cada_unidad()
+	{
+		// JTT-1381 CA 6: el segundo paso del acceso envía este id, y Jacob revalida la unidad
+		// contra él. Si se perdiera al convertir, la selección sería imposible de completar.
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, PreauthCorrecto));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.Equal("11111111-1111-1111-1111-111111111111", resultado.Unidades[0].Id);
+		Assert.Equal("22222222-2222-2222-2222-222222222222", resultado.Unidades[1].Id);
+	}
+
+	[Fact]
+	public async Task El_identificador_y_la_clave_son_datos_distintos()
+	{
+		// Que nadie "arregle" el mapeo pasando la clave como id: el API rechazaría la unidad.
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, PreauthCorrecto));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.All(resultado.Unidades, unidad => Assert.NotEqual(unidad.Id, unidad.Clave));
+	}
+
+	[Fact]
+	public async Task Descarta_las_unidades_que_llegan_sin_identificador()
+	{
+		// Sin id no se puede seleccionar: el API la rechazaría. Mostrarla sería ofrecer una
+		// opción que no funciona.
+		const string ConUnidadIncompleta = """
+			{
+			  "resultado": {
+			    "challengeId": "3f2a0c1e-9d44-4f6b-8f21-6c0d8b7a1e55",
+			    "expiresAtUtc": "2026-08-05T19:05:00Z",
+			    "unidades": [
+			      { "id": null, "clave": "VEH-09", "descripcion": "Sin identificador" },
+			      { "id": "  ", "clave": "VEH-10", "descripcion": "Identificador en blanco" },
+			      { "id": "44444444-4444-4444-4444-444444444444", "clave": "VEH-11", "descripcion": "Completa" }
+			    ]
+			  },
+			  "codigoError": null,
+			  "mensajeError": null
+			}
+			""";
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, ConUnidadIncompleta));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.Single(resultado.Unidades);
+		Assert.Equal("VEH-11", resultado.Unidades[0].Clave);
+	}
+
+	[Fact]
+	public async Task Descarta_las_unidades_que_llegan_sin_clave()
+	{
+		// Con id pero sin clave el operador no sabría qué está eligiendo.
+		const string SinClave = """
+			{
+			  "resultado": {
+			    "challengeId": "3f2a0c1e-9d44-4f6b-8f21-6c0d8b7a1e55",
+			    "expiresAtUtc": "2026-08-05T19:05:00Z",
+			    "unidades": [
+			      { "id": "55555555-5555-5555-5555-555555555555", "clave": null, "descripcion": "Sin clave" }
+			    ]
+			  },
+			  "codigoError": null,
+			  "mensajeError": null
+			}
+			""";
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, SinClave));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.Empty(resultado.Unidades);
+	}
+
+	[Fact]
+	public async Task Una_unidad_sin_descripcion_se_conserva_con_descripcion_vacia()
+	{
+		// La descripción es texto de apoyo: su ausencia no invalida la unidad.
+		const string SinDescripcion = """
+			{
+			  "resultado": {
+			    "challengeId": "3f2a0c1e-9d44-4f6b-8f21-6c0d8b7a1e55",
+			    "expiresAtUtc": "2026-08-05T19:05:00Z",
+			    "unidades": [
+			      { "id": "66666666-6666-6666-6666-666666666666", "clave": "VEH-12" }
+			    ]
+			  },
+			  "codigoError": null,
+			  "mensajeError": null
+			}
+			""";
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, SinDescripcion));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.Single(resultado.Unidades);
+		Assert.Equal(string.Empty, resultado.Unidades[0].Descripcion);
+	}
+
+	[Fact]
+	public void La_unidad_se_muestra_por_su_clave_no_por_su_identificador()
+	{
+		// Lo que ve el operador en el desplegable es el número económico de la unidad.
+		var unidad = new UnidadVehicular("77777777-7777-7777-7777-777777777777", "VEH-13", "Grúa");
+
+		Assert.Equal("VEH-13", unidad.ToString());
 	}
 
 	[Fact]

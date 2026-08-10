@@ -40,7 +40,7 @@
                                 usuario: el API autentica por email y esa decisión está cerrada.
                                 La etiqueta cambia con el modo para no pedir un dato equivocado.
                             -->
-                            <VerticalStackLayout>
+                            <VerticalStackLayout IsVisible="{Binding MostrarCredenciales}">
                                 <Label Text="{Binding EtiquetaUsuario}" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Entry Style="{StaticResource CampoTexto}"
@@ -50,7 +50,7 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <VerticalStackLayout>
+                            <VerticalStackLayout IsVisible="{Binding MostrarCredenciales}">
                                 <Label Text="CONTRASEÑA" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Entry Style="{StaticResource CampoTexto}"
@@ -60,12 +60,14 @@
                             </VerticalStackLayout>
 
                             <!--
-                                Selección del catálogo: JTT-279 no admite texto libre.
-                                Oculta contra el API real: las unidades verdaderas las
-                                devuelve la preautenticación y JTT-1378 no las muestra
-                                todavía. Enseñar las del simulador induciría a error.
+                                Selección del catálogo: JTT-279 no admite texto libre y
+                                JTT-1381 exige que el ID salga del catálogo, nunca del
+                                teclado. Contra el simulador se ve desde el principio, como
+                                en la maqueta; contra el API real aparece en el segundo paso,
+                                cuando la preautenticación ya devolvió las unidades reales
+                                del operador.
                             -->
-                            <VerticalStackLayout IsVisible="{Binding UsaApiReal, Converter={StaticResource InvertirBooleano}}">
+                            <VerticalStackLayout IsVisible="{Binding MostrarSelectorUnidad}">
                                 <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Picker Style="{StaticResource CampoLista}"
@@ -105,7 +107,7 @@
 
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Button Grid.Column="0"
-                                        Text="Iniciar sesion"
+                                        Text="{Binding TextoBotonAcceso}"
                                         Style="{StaticResource BotonPrimario}"
                                         Command="{Binding IngresarCommand}"
                                         IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
@@ -115,6 +117,17 @@
                                         Command="{Binding ContinuarSinConexionCommand}"
                                         IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
                             </Grid>
+
+                            <!--
+                                Salida del segundo paso. Sin ella la pantalla es un callejón
+                                sin salida: el desafío vence a los cinco minutos y el operador
+                                tendría que cerrar la app para reintentar.
+                            -->
+                            <Button Text="Cambiar de cuenta"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding VolverACredencialesCommand}"
+                                    IsVisible="{Binding EnSeleccionDeUnidad}"
+                                    IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
                         </VerticalStackLayout>
                     </Border>

@@ -56,12 +56,14 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 
 	public Task<IReadOnlyList<UnidadVehicular>> ObtenerUnidadesAsync(CancellationToken cancelacion = default)
 	{
-		// En el diseño final este catálogo lo devuelve la preautenticación.
+		// En el diseño final este catálogo lo devuelve la preautenticación. Los identificadores
+		// imitan los uuid que emite Jacob, para que el simulador ejercite el mismo camino que
+		// el catálogo real y no una clave disfrazada de id.
 		IReadOnlyList<UnidadVehicular> unidades =
 		[
-			new("VEH-01", "Camioneta de campo 01"),
-			new("VEH-02", "Camioneta de campo 02"),
-			new("VEH-03", "Grúa ligera 03"),
+			new("11111111-1111-1111-1111-111111111111", "VEH-01", "Camioneta de campo 01"),
+			new("22222222-2222-2222-2222-222222222222", "VEH-02", "Camioneta de campo 02"),
+			new("33333333-3333-3333-3333-333333333333", "VEH-03", "Grúa ligera 03"),
 		];
 
 		return Task.FromResult(unidades);

@@ -34,6 +34,9 @@
                             <VerticalStackLayout Grid.Column="0" Spacing="1">
                                 <Label Text="{Binding Operador}" FontAttributes="Bold" FontSize="14"
                                        TextColor="{StaticResource TextoTitulo}" />
+                                <!-- Unidad con la que opera (JTT-1381 CA 13). Es la clave, no el id tecnico. -->
+                                <Label Text="{Binding UnidadVehicular, StringFormat='Unidad {0}'}"
+                                       Style="{StaticResource TextoSecundario}" />
                                 <Label Text="Captura, evidencia y sincronizacion vehicular"
                                        Style="{StaticResource TextoSecundario}" />
                             </VerticalStackLayout>

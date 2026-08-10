@@ -33,6 +33,10 @@ public sealed partial class AccesoViewModel : ObservableObject
 	// JTT-1378 se detiene tras la preautenticación: no hay sesión que abrir todavía.
 	private const string MensajeCredencialValidada = "Credenciales validadas por Jacob CCO";
 
+	// JTT-1381 llega hasta elegir la unidad. Enviarla y abrir sesión es JTT-1382.
+	private const string MensajeElijaUnidad = "Elija la unidad con la que va a operar";
+	private const string MensajeUnidadElegida = "Unidad seleccionada. El acceso se completa en la siguiente entrega";
+
 	// Detalle que acompaña al literal de ubicación (JTT-1380). El literal de JTT-279 es el
 	// que revisa QA y no se toca; esto explica *cuál* de los seis estados se encontró, que
 	// es lo que le dice al operador qué hacer.
@@ -179,10 +183,37 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// Indica si la pantalla habla con Jacob CCO de verdad.
 	/// </summary>
 	/// <remarks>
-	/// La vista lo usa para avisar que el acceso se detiene tras validar credenciales, sin
-	/// entrar a la app: el segundo paso llega en una historia posterior.
+	/// La vista lo usa para avisar que el acceso se detiene tras elegir la unidad, sin entrar
+	/// a la app: abrir la sesión llega en una historia posterior.
 	/// </remarks>
 	public bool UsaApiReal => _preauth is not null;
+
+	/// <summary>
+	/// Indica si la pantalla está en el segundo paso: elegir unidad.
+	/// </summary>
+	/// <remarks>
+	/// Sigue siendo <b>una sola pantalla con estados</b>, como fija el documento de
+	/// arquitectura (§5.1): primero credenciales, después unidades. No se navega a otra
+	/// página, así que el desafío no tiene que viajar entre vistas.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool EnSeleccionDeUnidad { get; set; }
+
+	/// <summary>Indica si se muestran los campos de credenciales.</summary>
+	public bool MostrarCredenciales => !EnSeleccionDeUnidad;
+
+	/// <summary>
+	/// Indica si se muestra el selector de unidad.
+	/// </summary>
+	/// <remarks>
+	/// Contra el simulador se muestra desde el principio, como en la maqueta. Contra el API
+	/// real aparece solo en el segundo paso: antes de la preautenticación no se conocen las
+	/// unidades del operador, y enseñar las del simulador induciría a error.
+	/// </remarks>
+	public bool MostrarSelectorUnidad => !UsaApiReal || EnSeleccionDeUnidad;
+
+	/// <summary>Texto del botón principal, según el paso.</summary>
+	public string TextoBotonAcceso => EnSeleccionDeUnidad ? "Ingresar" : "Iniciar sesion";
 
 	/// <summary>Etiqueta del primer campo.</summary>
 	/// <remarks>
@@ -212,6 +243,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 				return;
 			}
 
+			// Segundo paso del acceso real: la unidad ya está a la vista y solo falta
+			// confirmarla. No se vuelve a preautenticar: el desafío sigue vigente.
+			if (EnSeleccionDeUnidad)
+			{
+				ConfirmarUnidad();
+				return;
+			}
+
 			if (_preauth is not null)
 			{
 				await PreautenticarAsync();
@@ -237,13 +276,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// Aquí termina el alcance de JTT-1378. Con el desafío en mano <b>no</b> se consume
-	/// <c>POST ITS/AppLogin</c>, no se muestran las unidades recibidas, no se elige unidad y
-	/// no se abre sesión: todo eso pertenece a historias posteriores.
+	/// Con el desafío en mano se pasa al segundo paso —elegir unidad— pero <b>no</b> se
+	/// consume <c>POST ITS/AppLogin</c> ni se abre sesión: eso es JTT-1382.
 	/// </para>
 	/// <para>
-	/// Ni el desafío ni las unidades se muestran en pantalla. El operador solo ve que sus
-	/// credenciales fueron aceptadas.
+	/// El desafío nunca se muestra en pantalla. El operador solo ve que sus credenciales
+	/// fueron aceptadas y las unidades que Jacob le devolvió.
 	/// </para>
 	/// </remarks>
 	private async Task PreautenticarAsync()
@@ -257,10 +295,76 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
+		// Sin unidades no se completa el acceso (JTT-1381 CA 14). El API debería haber
+		// respondido `appoperador.sin.vehiculos` en vez de un resultado correcto, pero si no
+		// lo hace, avanzar dejaría al operador en un desplegable vacío sin explicación.
+		if (resultado.Unidades.Count == 0)
+		{
+			_desafioVigente = null;
+			MensajeError = MensajeSinUnidades;
+			return;
+		}
+
 		_desafioVigente = resultado.ChallengeId;
 		Contrasena = string.Empty;
 		MensajeError = null;
-		MensajeAviso = MensajeCredencialValidada;
+
+		MostrarUnidades(resultado.Unidades);
+		MensajeAviso = $"{MensajeCredencialValidada}. {MensajeElijaUnidad}";
+	}
+
+	/// <summary>Pasa la pantalla al segundo paso con las unidades que devolvió Jacob.</summary>
+	private void MostrarUnidades(IReadOnlyList<UnidadVehicular> unidades)
+	{
+		Unidades.Clear();
+		foreach (var unidad in unidades)
+		{
+			Unidades.Add(unidad);
+		}
+
+		// Preseleccionar la primera evita que "Ingresar" no haga nada porque el operador no
+		// tocó el desplegable. Sigue siendo una unidad del catálogo: no hay texto libre.
+		UnidadSeleccionada = Unidades.FirstOrDefault();
+		EnSeleccionDeUnidad = true;
+	}
+
+	/// <summary>
+	/// Cierra el alcance de JTT-1381: la unidad queda elegida y lista para el segundo paso.
+	/// </summary>
+	/// <remarks>
+	/// Aquí termina esta historia. La unidad elegida —con su identificador técnico— y el
+	/// desafío quedan en memoria; consumirlos con <c>POST ITS/AppLogin</c> es JTT-1382.
+	/// </remarks>
+	private void ConfirmarUnidad()
+	{
+		if (UnidadSeleccionada is null)
+		{
+			MensajeError = MensajeSinUnidades;
+			return;
+		}
+
+		MensajeError = null;
+		MensajeAviso = $"{MensajeUnidadElegida}: {UnidadSeleccionada.Clave}";
+	}
+
+	/// <summary>
+	/// Vuelve al primer paso y descarta el desafío.
+	/// </summary>
+	/// <remarks>
+	/// Sin esta salida el segundo paso es un callejón sin salida: el desafío vence a los
+	/// cinco minutos y el operador tendría que cerrar la app para reintentar. Descartarlo al
+	/// volver evita además que quede un desafío colgado en memoria.
+	/// </remarks>
+	[RelayCommand]
+	private void VolverACredenciales()
+	{
+		_desafioVigente = null;
+		EnSeleccionDeUnidad = false;
+		UnidadSeleccionada = null;
+		Unidades.Clear();
+		Contrasena = string.Empty;
+		MensajeError = null;
+		MensajeAviso = null;
 	}
 
 	[RelayCommand]
@@ -454,4 +558,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 	partial void OnDetalleUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayDetalleUbicacion));
 
 	partial void OnTextoAccionUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayAccionUbicacion));
+
+	partial void OnEnSeleccionDeUnidadChanged(bool value)
+	{
+		OnPropertyChanged(nameof(MostrarCredenciales));
+		OnPropertyChanged(nameof(MostrarSelectorUnidad));
+		OnPropertyChanged(nameof(TextoBotonAcceso));
+	}
 }
