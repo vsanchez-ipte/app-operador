@@ -69,4 +69,10 @@ public sealed class ConfiguracionApi
 
 	/// <summary>Ruta de la preautenticación. Anónima.</summary>
 	public const string RutaPreauth = "/ITS/AppLogin/Preauth";
+
+	/// <summary>
+	/// Ruta del segundo paso del acceso, que crea la sesión. Anónima: el desafío es la
+	/// credencial.
+	/// </summary>
+	public const string RutaLogin = "/ITS/AppLogin";
 }

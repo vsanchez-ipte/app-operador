@@ -1,5 +1,7 @@
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Aplicacion.Modelos;
+using AppOperador.Infrastructure.Almacenamiento;
 using AppOperador.Infrastructure.Dispositivo;
 using AppOperador.Infrastructure.Http;
 using AppOperador.Infrastructure.Sqlite;
@@ -82,6 +84,14 @@ public static class MauiProgram
 		servicios.AddSingleton<IClock, RelojSistema>();
 		servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
+
+		// Datos que el perfil muestra junto a la sesión y que Jacob no devuelve porque no los
+		// conoce. La versión de catálogos es fija mientras no exista su sincronización.
+		servicios.AddSingleton(new DatosDeInstalacion(
+			VersionAplicacion: AppInfo.Current.VersionString,
+			VersionCatalogos: new DateOnly(2026, 7, 23)));
+
+		RegistrarCustodiaDelToken(servicios);
 		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 		servicios.AddSingleton<IAuthenticationService, ServicioAutenticacionSimulado>();
 
@@ -99,6 +109,25 @@ public static class MauiProgram
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
 		RegistrarCanalJacob(servicios);
+	}
+
+	/// <summary>
+	/// Registra dónde se custodia el token de la sesión (JTT-1382).
+	/// </summary>
+	/// <remarks>
+	/// El almacenamiento seguro de la plataforma solo existe en el dispositivo:
+	/// <c>SecureStorage</c> lanza en el destino de escritorio, y en Windows exige identidad
+	/// de paquete que la demostración no siempre tiene. Ahí se usa el almacén en memoria, que
+	/// pierde el token al cerrar la app — aceptable, porque restaurar la sesión al arrancar
+	/// no es de esta historia.
+	/// </remarks>
+	private static void RegistrarCustodiaDelToken(IServiceCollection servicios)
+	{
+#if ANDROID || IOS || MACCATALYST
+		servicios.AddSingleton<ITokenProvider, AlmacenTokenSeguro>();
+#else
+		servicios.AddSingleton<ITokenProvider, AlmacenTokenEnMemoria>();
+#endif
 	}
 
 	/// <summary>
@@ -129,19 +158,19 @@ public static class MauiProgram
 	}
 
 	/// <summary>
-	/// Registra la comunicación con el canal móvil de Jacob CCO (JTT-1378).
+	/// Registra la comunicación con el canal móvil de Jacob CCO (JTT-1378, JTT-1382).
 	/// </summary>
 	/// <remarks>
 	/// <para>
 	/// <b>Este es el único interruptor entre la app simulada y la real.</b> Con
 	/// <see cref="ConfiguracionApi.UsarApiReal"/> apagado no se registra
-	/// <see cref="IPreauthClient"/>, el <c>AccesoViewModel</c> lo recibe nulo y la pantalla
-	/// se comporta exactamente como antes: recorrido completo contra simuladores.
+	/// <see cref="IAccesoJacobClient"/>, el <c>AccesoViewModel</c> recibe nulo el caso de uso
+	/// del acceso y la pantalla se comporta exactamente como antes: recorrido completo contra
+	/// simuladores.
 	/// </para>
 	/// <para>
-	/// Encendido, el botón de acceso ejecuta <c>GetPublicKey → cifrado → Preauth</c> contra
-	/// el API y se detiene ahí. JTT-1378 no abre sesión ni entra a la app: eso llega con el
-	/// segundo paso del acceso.
+	/// Encendido, el acceso ejecuta el flujo entero contra el API —credenciales, unidad y
+	/// apertura de sesión— y entra a la app.
 	/// </para>
 	/// <para>
 	/// La URL depende de dónde corra la app. Desde el emulador de Android hay que usar
@@ -175,12 +204,16 @@ public static class MauiProgram
 			return;
 		}
 
-		servicios.AddSingleton<IPreauthClient>(sp =>
+		servicios.AddSingleton<IAccesoJacobClient>(sp =>
 		{
 			var opciones = sp.GetRequiredService<ConfiguracionApi>();
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
-			return new ClientePreauthJacob(http, opciones);
+			return new ClienteAccesoJacob(http, opciones);
 		});
+
+		// Transitorio a propósito: cada pantalla de acceso retiene su propio desafío, así que
+		// uno no puede filtrarse de un intento a otro.
+		servicios.AddTransient<AbrirSesionMovil>();
 	}
 
 	/// <summary>

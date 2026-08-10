@@ -3,28 +3,29 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.Reglas;
 using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
 
 /// <summary>
-/// Preautenticación real contra el canal móvil de Jacob CCO.
+/// Acceso real contra el canal móvil de Jacob CCO, en sus dos pasos.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Ejecuta el flujo completo del primer paso del acceso:
-/// <c>GetPublicKey → cifrado RSA → POST Preauth</c>, y traduce cualquier desenlace a un
-/// <see cref="ResultadoPreauth"/>. Nunca deja escapar una excepción de red o de formato:
-/// para la pantalla de acceso, "no hubo red" y "la credencial es incorrecta" son dos
-/// resultados normales, no fallos del programa.
+/// Paso 1: <c>GetPublicKey → cifrado RSA → POST Preauth</c>, que devuelve un desafío y las
+/// unidades del operador. Paso 2: <c>POST AppLogin</c>, que consume el desafío junto con la
+/// unidad elegida y abre la sesión. Cualquier desenlace se traduce a un resultado; nunca se
+/// deja escapar una excepción de red o de formato: para la pantalla de acceso, "no hubo red"
+/// y "la credencial es incorrecta" son dos resultados normales, no fallos del programa.
 /// </para>
 /// <para>
 /// <b>Seguridad.</b> Esta clase no registra nada. No hay bitácora ni <c>ILogger</c> a
-/// propósito: por aquí pasan la contraseña en claro, su versión cifrada y el desafío, y
-/// ninguno de los tres puede acabar en un log (JTT-1378 §7).
+/// propósito: por aquí pasan la contraseña en claro, su versión cifrada, el desafío y el
+/// token de sesión, y ninguno puede acabar en un log (JTT-1378 §7).
 /// </para>
 /// </remarks>
-public sealed class ClientePreauthJacob : IPreauthClient
+public sealed class ClienteAccesoJacob : IAccesoJacobClient
 {
 	private static readonly JsonSerializerOptions OpcionesJson = new()
 	{
@@ -34,7 +35,7 @@ public sealed class ClientePreauthJacob : IPreauthClient
 	private readonly HttpClient _http;
 	private readonly ConfiguracionApi _configuracion;
 
-	public ClientePreauthJacob(HttpClient http, ConfiguracionApi configuracion)
+	public ClienteAccesoJacob(HttpClient http, ConfiguracionApi configuracion)
 	{
 		_http = http;
 		_configuracion = configuracion;
@@ -79,6 +80,146 @@ public sealed class ClientePreauthJacob : IPreauthClient
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinComunicacion, "tiempo.agotado");
 		}
 	}
+
+	public async Task<ResultadoLogin> CompletarAccesoAsync(
+		string challengeId,
+		string unidadId,
+		CancellationToken cancelacion = default)
+	{
+		try
+		{
+			// Endpoint anónimo: el desafío es la credencial. No se vuelve a cifrar nada,
+			// porque no viaja ningún dato del operador.
+			var solicitud = new SolicitudLogin { ChallengeId = challengeId, UnidadId = unidadId };
+
+			using var respuesta = await _http.PostAsJsonAsync(
+				Url(ConfiguracionApi.RutaLogin), solicitud, OpcionesJson, cancelacion);
+
+			return await InterpretarLoginAsync(respuesta, cancelacion);
+		}
+		catch (HttpRequestException)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinComunicacion, "conexion.fallida");
+		}
+		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinComunicacion, "tiempo.agotado");
+		}
+	}
+
+	/// <summary>
+	/// Traduce la respuesta del segundo paso a un resultado de dominio.
+	/// </summary>
+	/// <remarks>
+	/// Mismo criterio que el paso 1: el código HTTP no alcanza, porque el API responde
+	/// <c>400</c> tanto para un rechazo funcional como para un cuerpo mal formado o una
+	/// excepción no controlada.
+	/// </remarks>
+	private static async Task<ResultadoLogin> InterpretarLoginAsync(
+		HttpResponseMessage respuesta,
+		CancellationToken cancelacion)
+	{
+		if (respuesta.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "http.401");
+		}
+
+		var cuerpo = await respuesta.Content.ReadAsStringAsync(cancelacion);
+
+		Envelope<RespuestaLogin>? sobre;
+		try
+		{
+			sobre = JsonSerializer.Deserialize<Envelope<RespuestaLogin>>(cuerpo, OpcionesJson);
+		}
+		catch (JsonException)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.desconocida");
+		}
+
+		if (sobre is null)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.vacia");
+		}
+
+		if (sobre.HayError)
+		{
+			return ResultadoLogin.Rechazado(MotivoDe(sobre.CodigoError!), sobre.CodigoError);
+		}
+
+		var resultado = sobre.Resultado;
+		if (!respuesta.IsSuccessStatusCode || resultado is null)
+		{
+			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.incompleta");
+		}
+
+		var sesion = ConvertirSesion(resultado);
+
+		// Sin token no hay sesión utilizable, y sin las fechas del servidor no se puede
+		// saber hasta cuándo vale sin conexión. Cualquiera de las dos ausencias es un fallo
+		// de integración, no un rechazo del operador.
+		return sesion is null
+			? ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.incompleta")
+			: ResultadoLogin.Creada(sesion);
+	}
+
+	/// <summary>
+	/// Convierte la respuesta del API en la sesión de la app, o <see langword="null"/> si le
+	/// falta algo imprescindible.
+	/// </summary>
+	/// <remarks>
+	/// Las fechas se adoptan tal como llegan y se normalizan a UTC. <b>No se recalcula la
+	/// ventana offline</b>: la calcula el servidor, y rehacerla contra el reloj del teléfono
+	/// daría una vigencia distinta en cuanto ese reloj esté desfasado (JTT-1382 CA 3 y CA 4).
+	/// </remarks>
+	private static SesionValidada? ConvertirSesion(RespuestaLogin respuesta)
+	{
+		if (string.IsNullOrWhiteSpace(respuesta.AccessToken)
+			|| respuesta.LastValidatedAtUtc is null
+			|| respuesta.OfflineUntilUtc is null
+			|| respuesta.Unidad?.Id is null
+			|| string.IsNullOrWhiteSpace(respuesta.Unidad.Clave))
+		{
+			return null;
+		}
+
+		var validado = ComoUtc(respuesta.LastValidatedAtUtc.Value);
+		var hastaOffline = ComoUtc(respuesta.OfflineUntilUtc.Value);
+
+		if (hastaOffline < validado)
+		{
+			return null;
+		}
+
+		return new SesionValidada(
+			sessionId: respuesta.SessionId ?? string.Empty,
+			accessToken: respuesta.AccessToken,
+			tokenExpiraUtc: ComoUtc(respuesta.TokenExpiresAtUtc ?? hastaOffline),
+			operador: respuesta.Operador?.Nombre ?? respuesta.Operador?.Email ?? string.Empty,
+			rol: respuesta.Rol?.Nombre ?? string.Empty,
+			unidad: new UnidadVehicular(
+				respuesta.Unidad.Id,
+				respuesta.Unidad.Clave!,
+				respuesta.Unidad.Descripcion ?? string.Empty),
+			permisos: respuesta.Permisos ?? [],
+			vigencia: VigenciaOffline.DelServidor(validado, hastaOffline),
+			horaServidorUtc: ComoUtc(respuesta.ServerTimeUtc ?? validado));
+	}
+
+	/// <summary>
+	/// Normaliza a UTC lo que devuelve el deserializador.
+	/// </summary>
+	/// <remarks>
+	/// <c>System.Text.Json</c> convierte a hora local un instante con zona, y deja
+	/// <c>Unspecified</c> uno sin ella. La regla de vigencia exige <c>Kind.Utc</c> explícito
+	/// y lanza si no lo recibe, así que aquí se fija: lo que trae zona se convierte, lo que
+	/// no la trae se toma como UTC, que es lo que declara el contrato.
+	/// </remarks>
+	private static DateTime ComoUtc(DateTime instante) => instante.Kind switch
+	{
+		DateTimeKind.Utc => instante,
+		DateTimeKind.Local => instante.ToUniversalTime(),
+		_ => DateTime.SpecifyKind(instante, DateTimeKind.Utc),
+	};
 
 	/// <summary>
 	/// Trae la llave pública y arma el cifrador.
@@ -177,6 +318,14 @@ public sealed class ClientePreauthJacob : IPreauthClient
 		"appoperador.cuenta.inactiva" => MotivoRechazoAcceso.CuentaInactiva,
 		"appoperador.cuenta.bloqueada" => MotivoRechazoAcceso.CuentaBloqueada,
 		"appoperador.sin.vehiculos" => MotivoRechazoAcceso.SinUnidades,
+
+		// Del segundo paso. Los tres del desafío se unifican: la salida del operador es la
+		// misma —repetir el acceso— y distinguirlos solo le diría a un atacante en qué falló.
+		"appoperador.desafio.noexiste" => MotivoRechazoAcceso.DesafioNoValido,
+		"appoperador.desafio.expirado" => MotivoRechazoAcceso.DesafioNoValido,
+		"appoperador.desafio.consumido" => MotivoRechazoAcceso.DesafioNoValido,
+		"appoperador.vehiculo.noautorizado" => MotivoRechazoAcceso.UnidadNoAutorizada,
+
 		_ => MotivoRechazoAcceso.ErrorDelServicio,
 	};
 

@@ -10,7 +10,7 @@ namespace AppOperador.IntegrationTests.Http;
 /// Comprueba el flujo <c>GetPublicKey → cifrado → Preauth</c> y la traducción de cada
 /// desenlace posible, contra un servidor simulado.
 /// </summary>
-public sealed class ClientePreauthJacobTests
+public sealed class ClienteAccesoJacobTests
 {
 	private const string PreauthCorrecto = """
 		{
@@ -33,17 +33,17 @@ public sealed class ClientePreauthJacobTests
 		return Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
 	}
 
-	private static (ClientePreauthJacob Cliente, ManejadorHttpFalso Manejador) Construir(
+	private static (ClienteAccesoJacob Cliente, ManejadorHttpFalso Manejador) Construir(
 		HttpResponseMessage respuestaPreauth)
 	{
 		var manejador = ManejadorHttpFalso.ConLlaveY(LlavePublica(), respuestaPreauth);
 		return (Nuevo(manejador), manejador);
 	}
 
-	private static ClientePreauthJacob Nuevo(ManejadorHttpFalso manejador) =>
+	private static ClienteAccesoJacob Nuevo(ManejadorHttpFalso manejador) =>
 		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" });
 
-	private static Task<ResultadoPreauth> PreautenticarAsync(ClientePreauthJacob cliente) =>
+	private static Task<ResultadoPreauth> PreautenticarAsync(ClienteAccesoJacob cliente) =>
 		cliente.PreautenticarAsync("operador@ipte.com.mx", "Secreta123");
 
 	private static HttpResponseMessage ErrorFuncional(string codigo, string mensaje = "…") =>

@@ -33,9 +33,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 	// JTT-1378 se detiene tras la preautenticación: no hay sesión que abrir todavía.
 	private const string MensajeCredencialValidada = "Credenciales validadas por Jacob CCO";
 
-	// JTT-1381 llega hasta elegir la unidad. Enviarla y abrir sesión es JTT-1382.
 	private const string MensajeElijaUnidad = "Elija la unidad con la que va a operar";
-	private const string MensajeUnidadElegida = "Unidad seleccionada. El acceso se completa en la siguiente entrega";
+
+	// Textos provisionales de JTT-1382. Tampoco los fijó JTT-279; van con los otros cuatro
+	// a la ronda de Producto.
+	private const string MensajeDesafioNoValido = "La sesión de acceso venció. Vuelva a iniciar sesión";
+	private const string MensajeUnidadNoAutorizada = "La unidad ya no está disponible. Elija otra";
 
 	// Detalle que acompaña al literal de ubicación (JTT-1380). El literal de JTT-279 es el
 	// que revisa QA y no se toca; esto explica *cuál* de los seis estados se encontró, que
@@ -62,15 +65,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
 	private readonly VerificarUbicacionParaAcceso _ubicacion;
-	private readonly IPreauthClient? _preauth;
+	private readonly AbrirSesionMovil? _accesoJacob;
 
 	// Último veredicto de ubicación. Nulo mientras no se haya comprobado nada: sirve para no
 	// molestar al operador con el aviso antes de que intente entrar.
 	private ResultadoUbicacion? _ultimaUbicacion;
-
-	// El desafío vive solo en memoria y solo mientras dura la pantalla: es la credencial
-	// del segundo paso del acceso y no puede registrarse ni persistirse (JTT-1378 §7).
-	private string? _desafioVigente;
 
 	[ObservableProperty]
 	public partial string Usuario { get; set; }
@@ -112,22 +111,22 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// Comprobación del prerrequisito de ubicación (JTT-279 PR3, JTT-1380). Se ejecuta antes
 	/// de cualquier camino de acceso, en línea o sin conexión.
 	/// </param>
-	/// <param name="preauth">
-	/// Preautenticación real contra Jacob CCO. Es opcional a propósito: solo se registra
-	/// cuando <c>ConfiguracionApi.UsarApiReal</c> está encendido. Si es nulo, la pantalla
-	/// funciona íntegramente contra el simulador, que es como se demuestran las cinco
-	/// pantallas mientras el canal móvil no esté desplegado.
+	/// <param name="accesoJacob">
+	/// Acceso real contra Jacob CCO, en sus dos pasos. Es opcional a propósito: solo se
+	/// registra cuando <c>ConfiguracionApi.UsarApiReal</c> está encendido. Si es nulo, la
+	/// pantalla funciona íntegramente contra el simulador, que es como se demuestran las
+	/// cinco pantallas mientras el canal móvil no esté desplegado.
 	/// </param>
 	public AccesoViewModel(
 		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
 		VerificarUbicacionParaAcceso ubicacion,
-		IPreauthClient? preauth = null)
+		AbrirSesionMovil? accesoJacob = null)
 	{
 		_autenticacion = autenticacion;
 		_conectividad = conectividad;
 		_ubicacion = ubicacion;
-		_preauth = preauth;
+		_accesoJacob = accesoJacob;
 		_conectividad.EnlaceCambio += (_, _) => OnPropertyChanged(nameof(TextoEstadoEnlace));
 
 		Usuario = string.Empty;
@@ -186,7 +185,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// La vista lo usa para avisar que el acceso se detiene tras elegir la unidad, sin entrar
 	/// a la app: abrir la sesión llega en una historia posterior.
 	/// </remarks>
-	public bool UsaApiReal => _preauth is not null;
+	public bool UsaApiReal => _accesoJacob is not null;
 
 	/// <summary>
 	/// Indica si la pantalla está en el segundo paso: elegir unidad.
@@ -247,13 +246,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 			// confirmarla. No se vuelve a preautenticar: el desafío sigue vigente.
 			if (EnSeleccionDeUnidad)
 			{
-				ConfirmarUnidad();
+				await AbrirSesionAsync();
 				return;
 			}
 
-			if (_preauth is not null)
+			if (_accesoJacob is not null)
 			{
-				await PreautenticarAsync();
+				await IdentificarAsync();
 				return;
 			}
 
@@ -275,22 +274,16 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// Primer paso del acceso real: valida credenciales y obtiene el desafío.
 	/// </summary>
 	/// <remarks>
-	/// <para>
-	/// Con el desafío en mano se pasa al segundo paso —elegir unidad— pero <b>no</b> se
-	/// consume <c>POST ITS/AppLogin</c> ni se abre sesión: eso es JTT-1382.
-	/// </para>
-	/// <para>
-	/// El desafío nunca se muestra en pantalla. El operador solo ve que sus credenciales
-	/// fueron aceptadas y las unidades que Jacob le devolvió.
-	/// </para>
+	/// El desafío no lo toca esta clase: lo retiene el caso de uso, para que no pueda acabar
+	/// en un binding por descuido. El operador solo ve que sus credenciales fueron aceptadas
+	/// y las unidades que Jacob le devolvió.
 	/// </remarks>
-	private async Task PreautenticarAsync()
+	private async Task IdentificarAsync()
 	{
-		var resultado = await _preauth!.PreautenticarAsync(Usuario, Contrasena);
+		var resultado = await _accesoJacob!.IdentificarAsync(Usuario, Contrasena);
 
 		if (!resultado.Exitoso)
 		{
-			_desafioVigente = null;
 			MensajeError = TextoDe(resultado.Motivo);
 			return;
 		}
@@ -300,12 +293,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 		// lo hace, avanzar dejaría al operador en un desplegable vacío sin explicación.
 		if (resultado.Unidades.Count == 0)
 		{
-			_desafioVigente = null;
+			_accesoJacob.Descartar();
 			MensajeError = MensajeSinUnidades;
 			return;
 		}
 
-		_desafioVigente = resultado.ChallengeId;
 		Contrasena = string.Empty;
 		MensajeError = null;
 
@@ -329,13 +321,15 @@ public sealed partial class AccesoViewModel : ObservableObject
 	}
 
 	/// <summary>
-	/// Cierra el alcance de JTT-1381: la unidad queda elegida y lista para el segundo paso.
+	/// Segundo paso del acceso real: consume el desafío con la unidad elegida y entra.
 	/// </summary>
 	/// <remarks>
-	/// Aquí termina esta historia. La unidad elegida —con su identificador técnico— y el
-	/// desafío quedan en memoria; consumirlos con <c>POST ITS/AppLogin</c> es JTT-1382.
+	/// Un desafío vencido devuelve a las credenciales, que es la única salida real: es de un
+	/// solo uso y con cinco minutos de vigencia, así que reintentar aquí no llevaría a nada.
+	/// Una unidad que dejó de estar autorizada no exige eso —el desafío sigue sirviendo—,
+	/// solo elegir otra de la lista.
 	/// </remarks>
-	private void ConfirmarUnidad()
+	private async Task AbrirSesionAsync()
 	{
 		if (UnidadSeleccionada is null)
 		{
@@ -343,8 +337,26 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
+		var resultado = await _accesoJacob!.AbrirAsync(UnidadSeleccionada);
+
+		if (!resultado.Exitoso)
+		{
+			MensajeError = TextoDe(resultado.Motivo);
+
+			if (resultado.Motivo == MotivoRechazoAcceso.DesafioNoValido)
+			{
+				VolverACredenciales();
+				MensajeError = MensajeDesafioNoValido;
+			}
+
+			return;
+		}
+
+		Contrasena = string.Empty;
 		MensajeError = null;
-		MensajeAviso = $"{MensajeUnidadElegida}: {UnidadSeleccionada.Clave}";
+		MensajeAviso = null;
+
+		await Shell.Current.GoToAsync("//principal/inicio");
 	}
 
 	/// <summary>
@@ -358,7 +370,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	[RelayCommand]
 	private void VolverACredenciales()
 	{
-		_desafioVigente = null;
+		_accesoJacob?.Descartar();
 		EnSeleccionDeUnidad = false;
 		UnidadSeleccionada = null;
 		Unidades.Clear();
@@ -518,6 +530,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MotivoRechazoAcceso.CuentaInactiva => MensajeCuentaInactiva,
 		MotivoRechazoAcceso.CuentaBloqueada => MensajeCuentaBloqueada,
 		MotivoRechazoAcceso.SinUnidades => MensajeSinUnidades,
+		MotivoRechazoAcceso.DesafioNoValido => MensajeDesafioNoValido,
+		MotivoRechazoAcceso.UnidadNoAutorizada => MensajeUnidadNoAutorizada,
 		MotivoRechazoAcceso.ErrorDelServicio => MensajeErrorServicio,
 		// Un motivo que no esté en la lista es un descuido de programación, no una
 		// credencial mala: decirle al operador que se equivocó sería mentirle.

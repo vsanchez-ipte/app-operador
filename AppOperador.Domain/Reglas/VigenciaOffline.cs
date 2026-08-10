@@ -26,6 +26,12 @@ public sealed class VigenciaOffline
 		OfflineUntilUtc = lastValidatedAtUtc + Duracion;
 	}
 
+	private VigenciaOffline(DateTime lastValidatedAtUtc, DateTime offlineUntilUtc)
+	{
+		LastValidatedAtUtc = lastValidatedAtUtc;
+		OfflineUntilUtc = offlineUntilUtc;
+	}
+
 	/// <summary>Instante del último login o refresh exitoso, en UTC.</summary>
 	public DateTime LastValidatedAtUtc { get; }
 
@@ -41,6 +47,42 @@ public sealed class VigenciaOffline
 	{
 		ExigirUtc(instanteValidacionUtc, nameof(instanteValidacionUtc));
 		return new VigenciaOffline(instanteValidacionUtc);
+	}
+
+	/// <summary>
+	/// Adopta la ventana <b>tal como la calculó el servidor</b>, sin recalcularla.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Es la vía que debe usarse cuando la ventana viene de Jacob CCO (JTT-1382 CA 3 y CA 4):
+	/// el servidor manda <c>lastValidatedAtUtc</c> y <c>offlineUntilUtc</c>, y la app los
+	/// adopta. Volver a sumar ocho horas sobre el reloj del teléfono daría una ventana
+	/// distinta en cuanto ese reloj esté desfasado, y el operador seguiría trabajando
+	/// creyéndose en vigencia cuando el servidor ya lo dio por vencido.
+	/// </para>
+	/// <para>
+	/// No se valida que la diferencia sean ocho horas exactas: la duración la decide el
+	/// servidor y esta clase no está para discutírsela. Sí se exige que la ventana no vaya
+	/// hacia atrás, porque eso solo puede ser un error de integración.
+	/// </para>
+	/// </remarks>
+	/// <exception cref="ArgumentException">
+	/// Algún instante no está en UTC, o el fin de la ventana es anterior a la validación.
+	/// </exception>
+	public static VigenciaOffline DelServidor(DateTime lastValidatedAtUtc, DateTime offlineUntilUtc)
+	{
+		ExigirUtc(lastValidatedAtUtc, nameof(lastValidatedAtUtc));
+		ExigirUtc(offlineUntilUtc, nameof(offlineUntilUtc));
+
+		if (offlineUntilUtc < lastValidatedAtUtc)
+		{
+			throw new ArgumentException(
+				"La ventana offline no puede terminar antes de la validación que la abre; " +
+				$"se recibió {offlineUntilUtc:o} contra {lastValidatedAtUtc:o}.",
+				nameof(offlineUntilUtc));
+		}
+
+		return new VigenciaOffline(lastValidatedAtUtc, offlineUntilUtc);
 	}
 
 	/// <summary>
