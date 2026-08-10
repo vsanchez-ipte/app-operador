@@ -19,9 +19,12 @@ namespace AppOperador.Mobile.Mocks;
 ///   <item>Sin enlace: no se puede validar por primera vez.</item>
 /// </list>
 /// <para>
-/// La ubicación se consulta antes que nada, porque JTT-279 la exige para completar el
-/// acceso. Nada de esto es una regla de negocio: al llegar el API real esta clase
-/// desaparece completa.
+/// La ubicación <b>no</b> se comprueba aquí. Es un prerrequisito del dispositivo, no de
+/// Jacob CCO, y lo verifica <c>VerificarUbicacionParaAcceso</c> antes de llamar a este
+/// servicio, para que la regla valga igual contra el simulador y contra el API real.
+/// </para>
+/// <para>
+/// Nada de esto es una regla de negocio: al llegar el API real esta clase desaparece completa.
 /// </para>
 /// </remarks>
 public sealed class ServicioAutenticacionSimulado : IAuthenticationService
@@ -31,7 +34,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 
 	private readonly IClock _reloj;
 	private readonly IConnectivityService _conectividad;
-	private readonly ILocationService _ubicacion;
 	private readonly ISessionStore _sesiones;
 	private readonly IAuditLog _bitacora;
 
@@ -43,13 +45,11 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 	public ServicioAutenticacionSimulado(
 		IClock reloj,
 		IConnectivityService conectividad,
-		ILocationService ubicacion,
 		ISessionStore sesiones,
 		IAuditLog bitacora)
 	{
 		_reloj = reloj;
 		_conectividad = conectividad;
-		_ubicacion = ubicacion;
 		_sesiones = sesiones;
 		_bitacora = bitacora;
 	}
@@ -73,12 +73,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 		UnidadVehicular unidad,
 		CancellationToken cancelacion = default)
 	{
-		// La ubicación es obligatoria para completar el acceso (JTT-279).
-		if (!await _ubicacion.HayPermisoAsync(cancelacion))
-		{
-			return ResultadoAcceso.Rechazar(MotivoRechazoAcceso.UbicacionNoDisponible);
-		}
-
 		// El primer ingreso siempre exige enlace: no existe login sin validar contra Jacob.
 		if (!_conectividad.HayEnlace)
 		{

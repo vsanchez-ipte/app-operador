@@ -4,6 +4,13 @@
 <dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+		Ubicación (JTT-279 PR3, JTT-1380). iOS no muestra el diálogo de permiso si falta esta
+		descripción: la app se cerraría al pedirlo. El texto es el que lee el operador en el
+		diálogo, así que dice para qué se usa, no que se necesita.
+	-->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>La App Operador necesita la ubicación para validar el acceso y ubicar sus registros de campo en el corredor.</string>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>

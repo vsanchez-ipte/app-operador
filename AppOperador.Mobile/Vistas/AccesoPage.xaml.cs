@@ -17,5 +17,10 @@ public partial class AccesoPage : ContentPage
 	{
 		base.OnAppearing();
 		await _modelo.InicializarAsync();
+
+		// La pantalla reaparece al volver de la configuración del sistema. Si el operador
+		// concedió ahí el permiso o encendió la ubicación, el bloqueo tiene que desaparecer
+		// sin obligarlo a reiniciar la app (JTT-1380).
+		await _modelo.RevisarUbicacionAsync();
 	}
 }

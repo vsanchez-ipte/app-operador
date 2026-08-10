@@ -1,4 +1,6 @@
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Infrastructure.Dispositivo;
 using AppOperador.Infrastructure.Http;
 using AppOperador.Infrastructure.Sqlite;
 using AppOperador.Mobile.Mocks;
@@ -83,6 +85,8 @@ public static class MauiProgram
 		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 		servicios.AddSingleton<IAuthenticationService, ServicioAutenticacionSimulado>();
 
+		RegistrarUbicacion(servicios);
+
 		// Persistencia real. BaseDatosLocal se registra por su tipo concreto además de por
 		// la interfaz porque los repositorios necesitan su conexión interna, que el
 		// contrato ILocalDatabase no expone a propósito.
@@ -95,6 +99,33 @@ public static class MauiProgram
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
 		RegistrarCanalJacob(servicios);
+	}
+
+	/// <summary>
+	/// Registra la comprobación del prerrequisito de ubicación (JTT-1380).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// La implementación real solo se registra donde existen las API de permisos del sistema.
+	/// En Windows se registra el simulador, que responde "concedido": es el destino con el que
+	/// se demuestran las cinco pantallas, y ahí no hay permiso de ubicación que conceder ni
+	/// configuración que abrir. Devolver "no disponible" dejaría la app inutilizable en
+	/// escritorio por un requisito que en escritorio no aplica.
+	/// </para>
+	/// <para>
+	/// Como con el canal de Jacob, el interruptor es la inyección de dependencias: ni el
+	/// caso de uso ni el ViewModel saben en qué plataforma corren.
+	/// </para>
+	/// </remarks>
+	private static void RegistrarUbicacion(IServiceCollection servicios)
+	{
+#if ANDROID || IOS || MACCATALYST
+		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionDispositivo>();
+#else
+		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionSimulado>();
+#endif
+
+		servicios.AddSingleton<VerificarUbicacionParaAcceso>();
 	}
 
 	/// <summary>

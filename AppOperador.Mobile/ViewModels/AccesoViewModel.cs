@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -32,9 +33,36 @@ public sealed partial class AccesoViewModel : ObservableObject
 	// JTT-1378 se detiene tras la preautenticación: no hay sesión que abrir todavía.
 	private const string MensajeCredencialValidada = "Credenciales validadas por Jacob CCO";
 
+	// Detalle que acompaña al literal de ubicación (JTT-1380). El literal de JTT-279 es el
+	// que revisa QA y no se toca; esto explica *cuál* de los seis estados se encontró, que
+	// es lo que le dice al operador qué hacer.
+	private const string DetalleNoSolicitado =
+		"La app necesita su permiso para usar la ubicación del dispositivo.";
+	private const string DetalleRechazado =
+		"El permiso de ubicación está rechazado. Concédalo para continuar.";
+	private const string DetalleBloqueado =
+		"El permiso de ubicación quedó bloqueado. Actívelo desde la configuración de la app.";
+	private const string DetalleServicioApagado =
+		"El servicio de ubicación del dispositivo está apagado. Enciéndalo para continuar.";
+	private const string DetalleSinUbicacion =
+		"Este dispositivo no cuenta con servicio de ubicación, así que no es posible completar el acceso.";
+	private const string DetalleErrorUbicacion =
+		"No se pudo verificar el estado de la ubicación. Intente de nuevo.";
+	private const string DetalleAjustesNoAbrieron =
+		"No se pudo abrir la configuración del dispositivo. Ábrala manualmente y vuelva a la app.";
+
+	private const string AccionPermitir = "Permitir ubicación";
+	private const string AccionAjustesApp = "Abrir configuración de la app";
+	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
+
 	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
+	private readonly VerificarUbicacionParaAcceso _ubicacion;
 	private readonly IPreauthClient? _preauth;
+
+	// Último veredicto de ubicación. Nulo mientras no se haya comprobado nada: sirve para no
+	// molestar al operador con el aviso antes de que intente entrar.
+	private ResultadoUbicacion? _ultimaUbicacion;
 
 	// El desafío vive solo en memoria y solo mientras dura la pantalla: es la credencial
 	// del segundo paso del acceso y no puede registrarse ni persistirse (JTT-1378 §7).
@@ -62,6 +90,24 @@ public sealed partial class AccesoViewModel : ObservableObject
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
 
+	/// <summary>
+	/// Explicación del estado de ubicación encontrado. Acompaña al literal de JTT-279, que
+	/// por sí solo no distingue un permiso rechazado de un GPS apagado.
+	/// </summary>
+	[ObservableProperty]
+	public partial string? DetalleUbicacion { get; set; }
+
+	/// <summary>
+	/// Texto del botón que resuelve el bloqueo de ubicación. Nulo cuando no hay nada que el
+	/// operador pueda hacer desde la app.
+	/// </summary>
+	[ObservableProperty]
+	public partial string? TextoAccionUbicacion { get; set; }
+
+	/// <param name="ubicacion">
+	/// Comprobación del prerrequisito de ubicación (JTT-279 PR3, JTT-1380). Se ejecuta antes
+	/// de cualquier camino de acceso, en línea o sin conexión.
+	/// </param>
 	/// <param name="preauth">
 	/// Preautenticación real contra Jacob CCO. Es opcional a propósito: solo se registra
 	/// cuando <c>ConfiguracionApi.UsarApiReal</c> está encendido. Si es nulo, la pantalla
@@ -71,10 +117,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 	public AccesoViewModel(
 		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
+		VerificarUbicacionParaAcceso ubicacion,
 		IPreauthClient? preauth = null)
 	{
 		_autenticacion = autenticacion;
 		_conectividad = conectividad;
+		_ubicacion = ubicacion;
 		_preauth = preauth;
 		_conectividad.EnlaceCambio += (_, _) => OnPropertyChanged(nameof(TextoEstadoEnlace));
 
@@ -96,6 +144,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 	/// <summary>Indica si hay un aviso informativo que mostrar.</summary>
 	public bool HayAviso => !string.IsNullOrEmpty(MensajeAviso);
+
+	/// <summary>Indica si hay explicación del estado de ubicación que mostrar.</summary>
+	public bool HayDetalleUbicacion => !string.IsNullOrEmpty(DetalleUbicacion);
+
+	/// <summary>Indica si hay un botón de ubicación que ofrecer.</summary>
+	public bool HayAccionUbicacion => !string.IsNullOrEmpty(TextoAccionUbicacion);
 
 	/// <summary>Estado de comunicación con Jacob CCO, visible en la pantalla.</summary>
 	public string TextoEstadoEnlace => _conectividad.HayEnlace ? "Enlace CCO activo" : MensajeSinComunicacion;
@@ -150,6 +204,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
+			// JTT-279 PR3: sin ubicación habilitada y autorizada no se continúa. Se comprueba
+			// antes de mandar nada a Jacob CCO — si el acceso no puede completarse, no tiene
+			// sentido poner las credenciales del operador en la red.
+			if (!await UbicacionAutorizadaAsync())
+			{
+				return;
+			}
+
 			if (_preauth is not null)
 			{
 				await PreautenticarAsync();
@@ -207,6 +269,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
+			// El prerrequisito es del dispositivo, no de la red: reanudar sin conexión también
+			// abre sesión, así que también exige ubicación.
+			if (!await UbicacionAutorizadaAsync())
+			{
+				return;
+			}
+
 			var resultado = await _autenticacion.ContinuarSinConexionAsync();
 			await ProcesarResultadoAsync(resultado);
 		}
@@ -215,6 +284,112 @@ public sealed partial class AccesoViewModel : ObservableObject
 			Ocupado = false;
 		}
 	}
+
+	/// <summary>
+	/// Ejecuta lo que corresponda al estado de ubicación: pedir el permiso o llevar al
+	/// operador a la configuración del sistema.
+	/// </summary>
+	[RelayCommand]
+	private async Task EjecutarAccionUbicacionAsync()
+	{
+		if (_ultimaUbicacion is null)
+		{
+			return;
+		}
+
+		Ocupado = true;
+		try
+		{
+			if (_ultimaUbicacion.Accion == AccionUbicacion.SolicitarPermiso)
+			{
+				AplicarUbicacion(await _ubicacion.SolicitarPermisoAsync());
+				return;
+			}
+
+			// Al volver de la configuración no se puede reevaluar aquí: la app queda en
+			// segundo plano. De eso se encarga RevisarUbicacionAsync al reaparecer la pantalla.
+			if (!await _ubicacion.AbrirAjustesAsync(_ultimaUbicacion.Accion))
+			{
+				DetalleUbicacion = DetalleAjustesNoAbrieron;
+			}
+		}
+		finally
+		{
+			Ocupado = false;
+		}
+	}
+
+	/// <summary>
+	/// Vuelve a evaluar la ubicación al reaparecer la pantalla.
+	/// </summary>
+	/// <remarks>
+	/// Es lo que cierra el caso de "cambié el permiso en la configuración y volví": el
+	/// bloqueo desaparece solo, sin reiniciar la app. No se comprueba nada si la pantalla no
+	/// estaba mostrando un bloqueo, para no advertir de un permiso que todavía no se ha
+	/// pedido: eso ocurre cuando el operador pulsa Iniciar sesión, no al abrir la pantalla.
+	/// </remarks>
+	public async Task RevisarUbicacionAsync()
+	{
+		if (_ultimaUbicacion is null || _ultimaUbicacion.PermiteAcceder)
+		{
+			return;
+		}
+
+		AplicarUbicacion(await _ubicacion.RevisarAsync());
+	}
+
+	/// <summary>Comprueba el prerrequisito y deja la pantalla contando lo que encontró.</summary>
+	private async Task<bool> UbicacionAutorizadaAsync()
+	{
+		var resultado = await _ubicacion.ExigirAsync();
+		AplicarUbicacion(resultado);
+
+		return resultado.PermiteAcceder;
+	}
+
+	/// <summary>Vuelca un veredicto de ubicación en la pantalla.</summary>
+	private void AplicarUbicacion(ResultadoUbicacion resultado)
+	{
+		_ultimaUbicacion = resultado;
+
+		if (resultado.PermiteAcceder)
+		{
+			// Solo se retira el rechazo por ubicación: si en pantalla hay otro error, sigue
+			// siendo cierto y no lo borra haber concedido el permiso.
+			if (string.Equals(MensajeError, MensajeUbicacion, StringComparison.Ordinal))
+			{
+				MensajeError = null;
+			}
+
+			DetalleUbicacion = null;
+			TextoAccionUbicacion = null;
+			return;
+		}
+
+		// El literal lo fija JTT-279 y es el que revisa QA; el detalle y el botón son los que
+		// distinguen los estados que pide JTT-1380.
+		MensajeError = MensajeUbicacion;
+		DetalleUbicacion = DetalleDe(resultado.Estado);
+		TextoAccionUbicacion = TextoAccionDe(resultado.Accion);
+	}
+
+	private static string DetalleDe(EstadoUbicacion estado) => estado switch
+	{
+		EstadoUbicacion.NoSolicitado => DetalleNoSolicitado,
+		EstadoUbicacion.Rechazado => DetalleRechazado,
+		EstadoUbicacion.BloqueadoPermanentemente => DetalleBloqueado,
+		EstadoUbicacion.ServicioDesactivado => DetalleServicioApagado,
+		EstadoUbicacion.NoDisponibleEnElDispositivo => DetalleSinUbicacion,
+		_ => DetalleErrorUbicacion,
+	};
+
+	private static string? TextoAccionDe(AccionUbicacion accion) => accion switch
+	{
+		AccionUbicacion.SolicitarPermiso => AccionPermitir,
+		AccionUbicacion.AbrirAjustesDeLaApp => AccionAjustesApp,
+		AccionUbicacion.AbrirAjustesDeUbicacion => AccionAjustesUbicacion,
+		_ => null,
+	};
 
 	private async Task ProcesarResultadoAsync(ResultadoAcceso resultado)
 	{
@@ -256,6 +431,15 @@ public sealed partial class AccesoViewModel : ObservableObject
 		{
 			MensajeAviso = null;
 		}
+
+		// El detalle y el botón de ubicación solo tienen sentido junto a su literal. Si el
+		// mensaje pasa a ser otro —o ninguno—, se retiran: un botón "Permitir ubicación"
+		// debajo de "Usuario o contraseña no válidos" señalaría al problema equivocado.
+		if (!string.Equals(value, MensajeUbicacion, StringComparison.Ordinal))
+		{
+			DetalleUbicacion = null;
+			TextoAccionUbicacion = null;
+		}
 	}
 
 	partial void OnMensajeAvisoChanged(string? value)
@@ -266,4 +450,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 			MensajeError = null;
 		}
 	}
+
+	partial void OnDetalleUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayDetalleUbicacion));
+
+	partial void OnTextoAccionUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayAccionUbicacion));
 }

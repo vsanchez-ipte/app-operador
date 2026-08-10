@@ -79,6 +79,23 @@
                                    Style="{StaticResource MensajeError}"
                                    IsVisible="{Binding HayError}" />
 
+                            <!--
+                                Ubicación (JTT-1380). El literal de arriba lo fija JTT-279 y
+                                es igual para los seis estados; estos dos elementos son los
+                                que distinguen cuál se encontró y qué puede hacer el operador.
+                                Sin ellos, "Active la ubicación..." no dice si hay que
+                                conceder un permiso, desbloquearlo o encender el GPS.
+                            -->
+                            <Label Text="{Binding DetalleUbicacion}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   IsVisible="{Binding HayDetalleUbicacion}" />
+
+                            <Button Text="{Binding TextoAccionUbicacion}"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding EjecutarAccionUbicacionCommand}"
+                                    IsVisible="{Binding HayAccionUbicacion}"
+                                    IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+
                             <!-- Confirmación de la preautenticación. No muestra el desafío. -->
                             <Label Text="{Binding MensajeAviso}"
                                    Style="{StaticResource TextoSecundario}"
