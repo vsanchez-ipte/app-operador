@@ -19,7 +19,11 @@ internal sealed class ManejadorHttpFalso : HttpMessageHandler
 		_responder = responder;
 
 	/// <summary>Peticiones recibidas, en orden, para poder inspeccionar lo que se envió.</summary>
-	public List<(string Url, string? Cuerpo)> Peticiones { get; } = [];
+	/// <remarks>
+	/// <c>Autorizacion</c> guarda la cabecera <c>Authorization</c> tal cual, para comprobar
+	/// que el cierre de sesión viaja con el token (JTT-1390).
+	/// </remarks>
+	public List<(string Url, string? Cuerpo, string? Autorizacion)> Peticiones { get; } = [];
 
 	/// <summary>Responde con la llave pública y luego con lo que se indique para el Preauth.</summary>
 	public static ManejadorHttpFalso ConLlaveY(string llavePublicaBase64, HttpResponseMessage respuestaPreauth) =>
@@ -48,7 +52,7 @@ internal sealed class ManejadorHttpFalso : HttpMessageHandler
 		CancellationToken cancelacion)
 	{
 		var cuerpo = peticion.Content is null ? null : await peticion.Content.ReadAsStringAsync(cancelacion);
-		Peticiones.Add((peticion.RequestUri!.ToString(), cuerpo));
+		Peticiones.Add((peticion.RequestUri!.ToString(), cuerpo, peticion.Headers.Authorization?.ToString()));
 
 		return _responder(peticion);
 	}

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.ValueObjects;
@@ -13,23 +14,23 @@ namespace AppOperador.Mobile.ViewModels;
 public sealed partial class PerfilViewModel : ObservableObject
 {
 	private readonly ISessionStore _sesiones;
-	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
 	private readonly IAuditLog _bitacora;
 	private readonly IClock _reloj;
+	private readonly CerrarSesionMovil _cierre;
 
 	public PerfilViewModel(
 		ISessionStore sesiones,
-		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
 		IAuditLog bitacora,
-		IClock reloj)
+		IClock reloj,
+		CerrarSesionMovil cierre)
 	{
 		_sesiones = sesiones;
-		_autenticacion = autenticacion;
 		_conectividad = conectividad;
 		_bitacora = bitacora;
 		_reloj = reloj;
+		_cierre = cierre;
 	}
 
 	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
@@ -102,11 +103,18 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 	}
 
+	/// <summary>
+	/// Termina la sesión del operador (JTT-1390).
+	/// </summary>
+	/// <remarks>
+	/// Lo pendiente de enviar no se toca: cerrar sesión no es desinstalar la app. La
+	/// navegación ocurre siempre, incluso si no se pudo avisar a Jacob, porque el cierre
+	/// local ya se aplicó y dejar al operador en el perfil daría a entender lo contrario.
+	/// </remarks>
 	[RelayCommand]
 	private async Task CerrarSesionAsync()
 	{
-		// Cerrar sesión no borra los registros pendientes (JTT-328).
-		await _autenticacion.CerrarSesionAsync();
+		await _cierre.CerrarAsync();
 		await Shell.Current.GoToAsync("//acceso");
 	}
 }

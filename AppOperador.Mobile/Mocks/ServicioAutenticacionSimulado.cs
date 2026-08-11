@@ -125,12 +125,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 		return ResultadoAcceso.Autorizar(sesion);
 	}
 
-	public async Task CerrarSesionAsync(CancellationToken cancelacion = default)
-	{
-		// Se borra la sesión, no los pendientes: JTT-328 exige conservarlos.
-		_sesiones.Limpiar();
-		await _bitacora.RegistrarAsync(NivelAuditoria.Info, "Sesión cerrada por el operador.", cancelacion);
-	}
 
 	private static SesionOperador ConstruirSesion(string usuario, UnidadVehicular unidad, VigenciaOffline vigencia) =>
 		new(

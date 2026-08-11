@@ -157,6 +157,36 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// <summary>Estado de comunicación con Jacob CCO, visible en la pantalla.</summary>
 	public string TextoEstadoEnlace => _conectividad.HayEnlace ? "Enlace CCO activo" : MensajeSinComunicacion;
 
+	/// <summary>
+	/// Deja la pantalla como recién instalada, sin rastro del operador anterior (JTT-1390).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Se llama al <b>navegar</b> a la pantalla, no al reaparecer. La diferencia importa: al
+	/// volver de los ajustes del sistema tras conceder el permiso de ubicación, la pantalla
+	/// reaparece sin navegación, y borrar ahí lo tecleado obligaría a escribir el correo otra
+	/// vez (JTT-1380).
+	/// </para>
+	/// <para>
+	/// Descarta también el desafío: si quedó uno colgado de un acceso a medias, no puede
+	/// servirle a quien entre después.
+	/// </para>
+	/// </remarks>
+	public async Task ReiniciarAsync()
+	{
+		_accesoJacob?.Descartar();
+
+		Usuario = string.Empty;
+		Contrasena = string.Empty;
+		EnSeleccionDeUnidad = false;
+		UnidadSeleccionada = null;
+		Unidades.Clear();
+		MensajeError = null;
+		MensajeAviso = null;
+
+		await InicializarAsync();
+	}
+
 	/// <summary>Carga el catálogo de unidades al abrir la pantalla.</summary>
 	/// <remarks>
 	/// Con el API real no se carga nada: las unidades verdaderas las devuelve la

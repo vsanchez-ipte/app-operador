@@ -46,7 +46,13 @@ public sealed class ContextoSqlite : IAsyncDisposable
 
 	public RepositorioIncidenciasSqlite CrearRepositorio() => new(BaseDatos, Reloj, Sesion);
 
-	public ColaSincronizacionSqlite CrearCola() => new(BaseDatos, Reloj, Conectividad, Bitacora);
+	public ColaSincronizacionSqlite CrearCola() => new(BaseDatos, Reloj, Conectividad, Bitacora, Sesion);
+
+	/// <summary>
+	/// Cola vista por otra sesión, para comprobar que no se ve la cola ajena (JTT-1390 CA 7).
+	/// </summary>
+	public ColaSincronizacionSqlite CrearColaDe(ISessionStore sesion) =>
+		new(BaseDatos, Reloj, Conectividad, Bitacora, sesion);
 
 	/// <summary>
 	/// Abre una instancia nueva sobre el mismo archivo, como si la app se hubiera reiniciado.
@@ -101,16 +107,23 @@ public sealed class ConectividadControlada : IConnectivityService
 /// <summary>Sesión abierta fija, para que las incidencias tengan operador y unidad.</summary>
 public sealed class SesionFija : ISessionStore
 {
-	public SesionOperador? Actual { get; private set; } = new(
-		"admin",
+	public SesionFija(string operador = "admin")
+	{
+		Actual = De(operador);
+	}
+
+	public SesionOperador? Actual { get; private set; }
+
+	public void Guardar(SesionOperador sesion) => Actual = sesion;
+
+	public void Limpiar() => Actual = null;
+
+	private static SesionOperador De(string operador) => new(
+		operador,
 		"Operador",
 		"VEH-01",
 		VigenciaOffline.Validada(new DateTime(2026, 8, 4, 12, 0, 0, DateTimeKind.Utc)),
 		PermisosOperador.DelServidor(["CAPTURA", "SYNC"]),
 		"1.2.0",
 		new DateOnly(2026, 7, 23));
-
-	public void Guardar(SesionOperador sesion) => Actual = sesion;
-
-	public void Limpiar() => Actual = null;
 }

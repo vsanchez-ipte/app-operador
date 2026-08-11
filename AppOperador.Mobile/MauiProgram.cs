@@ -109,6 +109,10 @@ public static class MauiProgram
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
 		RegistrarCanalJacob(servicios);
+
+		// Después del canal: el cierre recibe el cliente de Jacob si está registrado, y se
+		// queda con el cierre puramente local si no lo está (JTT-1390).
+		servicios.AddSingleton<CerrarSesionMovil>();
 	}
 
 	/// <summary>

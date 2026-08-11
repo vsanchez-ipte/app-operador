@@ -75,4 +75,13 @@ public sealed class ConfiguracionApi
 	/// credencial.
 	/// </summary>
 	public const string RutaLogin = "/ITS/AppLogin";
+
+	/// <summary>
+	/// Ruta del cierre de sesión. Exige el token en la cabecera.
+	/// </summary>
+	/// <remarks>
+	/// Es idempotente en el servidor: cerrar dos veces la misma sesión responde
+	/// <c>200</c>, no un error. Eso permite reintentar sin comprobar antes si ya se cerró.
+	/// </remarks>
+	public const string RutaLogout = "/ITS/AppLogin/Logout";
 }

@@ -20,6 +20,10 @@ namespace AppOperador.Infrastructure.Sqlite;
 /// Las transiciones de estado no se escriben a mano: las autoriza
 /// <see cref="ReglaTransicionSincronizacion"/>, que es la regla de dominio. Si un cambio
 /// no es válido, se registra el intento y el registro se queda donde estaba.
+///
+/// <b>La cola es de quien tiene la sesión abierta</b> (JTT-1390 CA 7). Los registros de
+/// otros operadores siguen guardados y conservan su identidad, pero no se listan, no se
+/// cuentan y no se envían con el token de alguien más.
 /// </remarks>
 public sealed class ColaSincronizacionSqlite : ISyncQueueService
 {
@@ -27,28 +31,46 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	private readonly IClock _reloj;
 	private readonly IConnectivityService _conectividad;
 	private readonly IAuditLog _bitacora;
+	private readonly ISessionStore _sesiones;
 
 	public ColaSincronizacionSqlite(
 		BaseDatosLocal baseDatos,
 		IClock reloj,
 		IConnectivityService conectividad,
-		IAuditLog bitacora)
+		IAuditLog bitacora,
+		ISessionStore sesiones)
 	{
 		_baseDatos = baseDatos;
 		_reloj = reloj;
 		_conectividad = conectividad;
 		_bitacora = bitacora;
+		_sesiones = sesiones;
 	}
+
+	/// <summary>
+	/// Operador de la sesión abierta, o <see langword="null"/> si no hay ninguna.
+	/// </summary>
+	/// <remarks>
+	/// Sin sesión la cola se ve vacía. No es que se haya borrado: es que nadie tiene derecho
+	/// a verla todavía.
+	/// </remarks>
+	private string? OperadorActual => _sesiones.Actual?.Operador;
 
 	/// <inheritdoc />
 	public async Task<IReadOnlyList<RegistroCola>> ObtenerRegistrosAsync(CancellationToken cancelacion = default)
 	{
+		var operador = OperadorActual;
+		if (operador is null)
+		{
+			return [];
+		}
+
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var borrador = (int)EstadoSincronizacion.Borrador;
 
 		// Los borradores no son parte de la cola: nunca se envían.
 		var filas = await conexion.Table<IncidenciaLocal>()
-			.Where(i => i.Estado != borrador)
+			.Where(i => i.Estado != borrador && i.Operador == operador)
 			.OrderByDescending(i => i.CreadoUtcTicks)
 			.ToListAsync();
 
@@ -58,19 +80,32 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	/// <inheritdoc />
 	public async Task<int> ContarPendientesAsync(CancellationToken cancelacion = default)
 	{
+		var operador = OperadorActual;
+		if (operador is null)
+		{
+			return 0;
+		}
+
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var pendiente = (int)EstadoSincronizacion.Pendiente;
 		var fallido = (int)EstadoSincronizacion.Fallido;
 
 		// Fallido también cuenta: sigue esperando envío, solo que ya falló una vez.
 		return await conexion.Table<IncidenciaLocal>()
-			.Where(i => i.Estado == pendiente || i.Estado == fallido)
+			.Where(i => (i.Estado == pendiente || i.Estado == fallido) && i.Operador == operador)
 			.CountAsync();
 	}
 
 	/// <inheritdoc />
 	public async Task<int> SincronizarAsync(CancellationToken cancelacion = default)
 	{
+		var operador = OperadorActual;
+		if (operador is null)
+		{
+			// Sin sesión no hay con qué autenticarse ante Jacob. Los pendientes esperan.
+			return 0;
+		}
+
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 
 		if (!_conectividad.HayEnlace)
@@ -82,7 +117,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 			return 0;
 		}
 
-		var pendientes = await ObtenerEnviablesOrdenadosAsync(conexion);
+		var pendientes = await ObtenerEnviablesOrdenadosAsync(conexion, operador);
 		var confirmados = 0;
 
 		foreach (var fila in pendientes)
@@ -129,15 +164,19 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	/// Primero la prioridad y después la antigüedad: una incidencia crítica se envía antes
 	/// que una normal capturada antes que ella. <c>SyncPriority.Critica</c> vale más que
 	/// <c>Normal</c>, de ahí el orden descendente.
+	///
+	/// Solo se envía lo del operador de la sesión: mandar lo de otro con este token se lo
+	/// atribuiría a quien no lo capturó.
 	/// </remarks>
 	private static async Task<List<IncidenciaLocal>> ObtenerEnviablesOrdenadosAsync(
-		SQLite.SQLiteAsyncConnection conexion)
+		SQLite.SQLiteAsyncConnection conexion,
+		string operador)
 	{
 		var pendiente = (int)EstadoSincronizacion.Pendiente;
 		var fallido = (int)EstadoSincronizacion.Fallido;
 
 		return await conexion.Table<IncidenciaLocal>()
-			.Where(i => i.Estado == pendiente || i.Estado == fallido)
+			.Where(i => (i.Estado == pendiente || i.Estado == fallido) && i.Operador == operador)
 			.OrderByDescending(i => i.Prioridad)
 			.ThenBy(i => i.CreadoUtcTicks)
 			.ToListAsync();

@@ -64,4 +64,25 @@ public interface IAccesoJacobClient
 		string challengeId,
 		string unidadId,
 		CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Avisa a Jacob CCO que la sesión terminó, para que revoque su token (JTT-1390).
+	/// </summary>
+	/// <param name="accessToken">Token de la sesión que se está cerrando.</param>
+	/// <returns>
+	/// <see langword="true"/> si Jacob confirmó la revocación; <see langword="false"/> si no
+	/// se le pudo avisar.
+	/// </returns>
+	/// <remarks>
+	/// <para>
+	/// <b>No avisar no es un fallo.</b> El criterio pide que el cierre local ocurra de todas
+	/// formas: en campo lo normal es quedarse sin señal, y dejar al operador con la sesión
+	/// abierta porque el servidor no contesta sería justo lo contrario de lo que se busca.
+	/// Por eso devuelve un booleano en vez de lanzar.
+	/// </para>
+	/// <para>
+	/// La llamada es idempotente del lado del servidor.
+	/// </para>
+	/// </remarks>
+	Task<bool> CerrarSesionAsync(string accessToken, CancellationToken cancelacion = default);
 }

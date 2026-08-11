@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AppOperador.Aplicacion.Interfaces;
@@ -105,6 +106,35 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
 		{
 			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinComunicacion, "tiempo.agotado");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> CerrarSesionAsync(string accessToken, CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(accessToken))
+		{
+			return false;
+		}
+
+		try
+		{
+			using var peticion = new HttpRequestMessage(HttpMethod.Post, Url(ConfiguracionApi.RutaLogout));
+			peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+			using var respuesta = await _http.SendAsync(peticion, cancelacion);
+
+			// El endpoint es idempotente: un 200 basta como confirmación y no hay cuerpo que
+			// interpretar. Cualquier otro código significa que la revocación no consta.
+			return respuesta.IsSuccessStatusCode;
+		}
+		catch (HttpRequestException)
+		{
+			return false;
+		}
+		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
+		{
+			return false;
 		}
 	}
 
