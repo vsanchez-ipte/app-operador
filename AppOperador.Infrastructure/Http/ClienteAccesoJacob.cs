@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Http.Dtos;
@@ -36,11 +37,18 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 
 	private readonly HttpClient _http;
 	private readonly ConfiguracionApi _configuracion;
+	private readonly ITokenClaims _claims;
 
-	public ClienteAccesoJacob(HttpClient http, ConfiguracionApi configuracion)
+	/// <param name="claims">
+	/// Lectura de lo que el token trae firmado. Se recibe por el contrato y no se llama al
+	/// lector concreto: es el mismo cotejo que hacen la reanudación y la revalidación, y
+	/// tenerlo por dos caminos distintos permitiría que divergieran.
+	/// </param>
+	public ClienteAccesoJacob(HttpClient http, ConfiguracionApi configuracion, ITokenClaims claims)
 	{
 		_http = http;
 		_configuracion = configuracion;
+		_claims = claims;
 	}
 
 	public async Task<ResultadoPreauth> PreautenticarAsync(
@@ -119,10 +127,8 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 
 		try
 		{
-			using var peticion = new HttpRequestMessage(HttpMethod.Post, Url(ConfiguracionApi.RutaLogout));
-			peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-			using var respuesta = await _http.SendAsync(peticion, cancelacion);
+			using var respuesta = await EnviarConTokenAsync(
+				ConfiguracionApi.RutaLogout, accessToken, cancelacion);
 
 			// El endpoint es idempotente: un 200 basta como confirmación y no hay cuerpo que
 			// interpretar. Cualquier otro código significa que la revocación no consta.
@@ -138,6 +144,119 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 	}
 
+	/// <inheritdoc />
+	public async Task<ResultadoRevalidacion> RevalidarAsync(
+		string accessToken,
+		CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(accessToken))
+		{
+			return ResultadoRevalidacion.Negada(MotivoRechazoAcceso.SesionRevocada, "token.ausente");
+		}
+
+		try
+		{
+			using var respuesta = await EnviarConTokenAsync(
+				ConfiguracionApi.RutaRevalidar, accessToken, cancelacion);
+
+			return await InterpretarRevalidacionAsync(respuesta, cancelacion);
+		}
+		catch (HttpRequestException)
+		{
+			// Sin red no se sabe nada de la sesión: sigue valiendo la ventana offline.
+			return ResultadoRevalidacion.SinRespuesta("conexion.fallida");
+		}
+		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
+		{
+			return ResultadoRevalidacion.SinRespuesta("tiempo.agotado");
+		}
+	}
+
+	/// <summary>
+	/// Traduce la respuesta de la revalidación.
+	/// </summary>
+	/// <remarks>
+	/// La distinción que importa: un código funcional de Jacob es una negativa firme —la
+	/// sesión dejó de ser válida— mientras que un cuerpo ilegible o un error del servidor
+	/// solo significan que no se pudo preguntar. Tratar lo segundo como negativa sacaría al
+	/// operador de una sesión offline perfectamente vigente.
+	/// </remarks>
+	private static async Task<ResultadoRevalidacion> InterpretarRevalidacionAsync(
+		HttpResponseMessage respuesta,
+		CancellationToken cancelacion)
+	{
+		if (respuesta.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			// El token ya no autentica: la sesión se acabó para Jacob.
+			return ResultadoRevalidacion.Negada(MotivoRechazoAcceso.SesionRevocada, "http.401");
+		}
+
+		var cuerpo = await respuesta.Content.ReadAsStringAsync(cancelacion);
+
+		Envelope<RespuestaRevalidacion>? sobre;
+		try
+		{
+			sobre = JsonSerializer.Deserialize<Envelope<RespuestaRevalidacion>>(cuerpo, OpcionesJson);
+		}
+		catch (JsonException)
+		{
+			return ResultadoRevalidacion.SinRespuesta("respuesta.desconocida");
+		}
+
+		if (sobre is null)
+		{
+			return ResultadoRevalidacion.SinRespuesta("respuesta.vacia");
+		}
+
+		if (sobre.HayError)
+		{
+			return ResultadoRevalidacion.Negada(MotivoDe(sobre.CodigoError!), sobre.CodigoError);
+		}
+
+		var resultado = sobre.Resultado;
+		if (!respuesta.IsSuccessStatusCode || resultado is null)
+		{
+			return ResultadoRevalidacion.SinRespuesta("respuesta.incompleta");
+		}
+
+		return ConvertirRevalidacion(resultado);
+	}
+
+	/// <summary>
+	/// Arma el resultado de una revalidación confirmada.
+	/// </summary>
+	/// <remarks>
+	/// Sin las fechas o sin unidad la respuesta no sirve, pero tampoco es una negativa: se
+	/// informa como «no se pudo preguntar» y la sesión offline continúa.
+	/// </remarks>
+	private static ResultadoRevalidacion ConvertirRevalidacion(RespuestaRevalidacion respuesta)
+	{
+		if (respuesta.LastValidatedAtUtc is null
+			|| respuesta.OfflineUntilUtc is null
+			|| respuesta.Unidad?.Id is null
+			|| string.IsNullOrWhiteSpace(respuesta.Unidad.Clave))
+		{
+			return ResultadoRevalidacion.SinRespuesta("respuesta.incompleta");
+		}
+
+		var validado = ComoUtc(respuesta.LastValidatedAtUtc.Value);
+		var hastaOffline = ComoUtc(respuesta.OfflineUntilUtc.Value);
+
+		if (hastaOffline < validado)
+		{
+			return ResultadoRevalidacion.SinRespuesta("respuesta.incompleta");
+		}
+
+		return ResultadoRevalidacion.Confirmada(
+			rol: respuesta.Rol?.Nombre ?? string.Empty,
+			unidad: new UnidadVehicular(
+				respuesta.Unidad.Id,
+				respuesta.Unidad.Clave!,
+				respuesta.Unidad.Descripcion ?? string.Empty),
+			permisos: PermisosOperador.DelServidor(respuesta.Permisos),
+			vigencia: VigenciaOffline.DelServidor(validado, hastaOffline));
+	}
+
 	/// <summary>
 	/// Traduce la respuesta del segundo paso a un resultado de dominio.
 	/// </summary>
@@ -146,7 +265,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	/// <c>400</c> tanto para un rechazo funcional como para un cuerpo mal formado o una
 	/// excepción no controlada.
 	/// </remarks>
-	private static async Task<ResultadoLogin> InterpretarLoginAsync(
+	private async Task<ResultadoLogin> InterpretarLoginAsync(
 		HttpResponseMessage respuesta,
 		CancellationToken cancelacion)
 	{
@@ -211,7 +330,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	/// respuesta incoherente, no a un rechazo del operador.
 	/// </para>
 	/// </remarks>
-	private static SesionValidada? ConvertirSesion(RespuestaLogin respuesta)
+	private SesionValidada? ConvertirSesion(RespuestaLogin respuesta)
 	{
 		if (string.IsNullOrWhiteSpace(respuesta.AccessToken)
 			|| respuesta.LastValidatedAtUtc is null
@@ -231,7 +350,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 
 		var permisos = PermisosOperador.DelServidor(respuesta.Permisos);
-		if (!permisos.RespaldadosPor(ModulosDelToken.Leer(respuesta.AccessToken)))
+		if (!_claims.Respaldan(permisos, respuesta.AccessToken))
 		{
 			return null;
 		}
@@ -249,6 +368,25 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			permisos: permisos,
 			vigencia: VigenciaOffline.DelServidor(validado, hastaOffline),
 			horaServidorUtc: ComoUtc(respuesta.ServerTimeUtc ?? validado));
+	}
+
+	/// <summary>
+	/// Envía un POST autenticado con el token de la sesión.
+	/// </summary>
+	/// <remarks>
+	/// Las dos operaciones que lo necesitan —cierre y revalidación— arman la petición igual:
+	/// sin cuerpo y con el token en la cabecera <c>Authorization</c>. <b>El token no viaja en
+	/// el cuerpo</b>, para que no acabe en trazas intermedias.
+	/// </remarks>
+	private Task<HttpResponseMessage> EnviarConTokenAsync(
+		string ruta,
+		string accessToken,
+		CancellationToken cancelacion)
+	{
+		using var peticion = new HttpRequestMessage(HttpMethod.Post, Url(ruta));
+		peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+		return _http.SendAsync(peticion, cancelacion);
 	}
 
 	/// <summary>
@@ -371,6 +509,11 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		"appoperador.desafio.expirado" => MotivoRechazoAcceso.DesafioNoValido,
 		"appoperador.desafio.consumido" => MotivoRechazoAcceso.DesafioNoValido,
 		"appoperador.vehiculo.noautorizado" => MotivoRechazoAcceso.UnidadNoAutorizada,
+
+		// De la revalidación (JTT-1383). Las dos llevan a lo mismo: la sesión ya no existe
+		// para Jacob y hay que autenticarse de nuevo.
+		"appoperador.sesion.revocada" => MotivoRechazoAcceso.SesionRevocada,
+		"appoperador.sesion.invalida" => MotivoRechazoAcceso.SesionRevocada,
 
 		_ => MotivoRechazoAcceso.ErrorDelServicio,
 	};

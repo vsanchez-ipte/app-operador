@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Infrastructure.Almacenamiento;
 using AppOperador.Infrastructure.Dispositivo;
 using AppOperador.Infrastructure.Http;
@@ -82,6 +83,7 @@ public static class MauiProgram
 	private static void RegistrarServicios(IServiceCollection servicios)
 	{
 		servicios.AddSingleton<IClock, RelojSistema>();
+		servicios.AddSingleton<IMonotonicClock, RelojMonotonicoDispositivo>();
 		servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
 
@@ -107,6 +109,19 @@ public static class MauiProgram
 		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
+
+		// Sesión persistida y lectura de los claims del token (JTT-1383). El token sigue
+		// aparte, en el almacenamiento seguro: aquí solo van los metadatos.
+		servicios.AddSingleton<IOfflineSessionStore, AlmacenSesionOfflineSqlite>();
+		servicios.AddSingleton<ITokenClaims, LectorClaimsToken>();
+
+		// Punto único donde se abre y se cierra el rastro local de la sesión: token, sesión
+		// viva y sesión persistida. Los cuatro casos de uso que la tocan pasan por aquí.
+		servicios.AddSingleton<CustodiaSesionLocal>();
+
+		// Singleton: el aviso de modo offline debe verse igual en las cuatro pestañas, y una
+		// instancia por pantalla haría que cada una mostrara lo suyo (JTT-1383 CA 8).
+		servicios.AddSingleton<EstadoEnlaceViewModel>();
 
 		RegistrarCanalJacob(servicios);
 
@@ -185,11 +200,12 @@ public static class MauiProgram
 	{
 		var configuracion = new ConfiguracionApi
 		{
-			// Cambiar a true para probar contra el API local. Se deja apagado en el
-			// repositorio para que quien clone tenga la app funcionando sin servidor.
-			// Encendido, el acceso se detiene tras validar credenciales: no entra a la
-			// app, porque el segundo paso del acceso es de una historia posterior.
-			UsarApiReal = false,
+			// Encendido por defecto desde JTT-1383: el acceso, la sesión, la reanudación
+			// sin conexión, la revalidación y el cierre ya funcionan contra Jacob CCO, así
+			// que el canal real es el comportamiento normal de la app y no una prueba.
+			// Apagarlo deja el recorrido completo contra simuladores, útil para demostrar
+			// las pantallas sin levantar el servidor.
+			UsarApiReal = true,
 #if ANDROID
 			UrlBase = ConfiguracionApi.UrlBaseEmuladorAndroid,
 			Plataforma = "Android",
@@ -212,12 +228,18 @@ public static class MauiProgram
 		{
 			var opciones = sp.GetRequiredService<ConfiguracionApi>();
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
-			return new ClienteAccesoJacob(http, opciones);
+			return new ClienteAccesoJacob(http, opciones, sp.GetRequiredService<ITokenClaims>());
 		});
 
 		// Transitorio a propósito: cada pantalla de acceso retiene su propio desafío, así que
 		// uno no puede filtrarse de un intento a otro.
 		servicios.AddTransient<AbrirSesionMovil>();
+
+		// Va aquí y no fuera: sin canal real no hay sesión persistida que reanudar, y
+		// registrarla igual dejaría el recorrido del simulador sin su modo offline
+		// (JTT-1383).
+		servicios.AddSingleton<ReanudarSesionOffline>();
+		servicios.AddSingleton<RevalidarSesionMovil>();
 	}
 
 	/// <summary>

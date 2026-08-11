@@ -22,7 +22,7 @@ public class ClienteAccesoJacobLogoutTests
 	}
 
 	private static ClienteAccesoJacob Nuevo(ManejadorHttpFalso manejador) =>
-		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" });
+		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" }, new LectorClaimsToken());
 
 	[Fact]
 	public async Task Confirma_el_cierre_cuando_Jacob_responde_correctamente()

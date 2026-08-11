@@ -2,6 +2,7 @@ using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.ValueObjects;
 using NSubstitute;
 
@@ -18,9 +19,14 @@ public class AbrirSesionMovilTests
 	private readonly IAccesoJacobClient _jacob = Substitute.For<IAccesoJacobClient>();
 	private readonly ITokenProvider _tokens = Substitute.For<ITokenProvider>();
 	private readonly ISessionStore _sesiones = Substitute.For<ISessionStore>();
+	private readonly IOfflineSessionStore _persistida = Substitute.For<IOfflineSessionStore>();
+	private readonly IMonotonicClock _monotonico = Substitute.For<IMonotonicClock>();
 
 	private AbrirSesionMovil CrearCasoDeUso() =>
-		new(_jacob, _tokens, _sesiones, new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)));
+		new(_jacob,
+			new CustodiaSesionLocal(_sesiones, _tokens, _persistida),
+			new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)),
+			_monotonico);
 
 	private static SesionValidada SesionDePrueba(string token = "jwt-de-prueba") =>
 		new(

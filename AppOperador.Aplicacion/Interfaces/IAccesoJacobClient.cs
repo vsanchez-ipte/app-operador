@@ -85,4 +85,21 @@ public interface IAccesoJacobClient
 	/// </para>
 	/// </remarks>
 	Task<bool> CerrarSesionAsync(string accessToken, CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Revalida la sesión al recuperar el enlace, y renueva su ventana offline (JTT-1383).
+	/// </summary>
+	/// <param name="accessToken">Token de la sesión que se quiere revalidar.</param>
+	/// <remarks>
+	/// <para>
+	/// Comprueba que la sesión, el operador, el permiso y la unidad sigan vigentes, y
+	/// devuelve una ventana nueva calculada por el servidor. <b>No emite un token nuevo</b>:
+	/// si el que hay está por vencer, hay que autenticarse.
+	/// </para>
+	/// <para>
+	/// Distingue tres desenlaces —confirmada, negada y sin respuesta—, porque quedarse sin
+	/// red y que Jacob revoque la sesión piden cosas distintas.
+	/// </para>
+	/// </remarks>
+	Task<ResultadoRevalidacion> RevalidarAsync(string accessToken, CancellationToken cancelacion = default);
 }

@@ -2,6 +2,7 @@ using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.ValueObjects;
 using NSubstitute;
 
@@ -23,9 +24,14 @@ public class RevocacionDePermisoTests
 	private readonly IAccesoJacobClient _jacob = Substitute.For<IAccesoJacobClient>();
 	private readonly ITokenProvider _tokens = Substitute.For<ITokenProvider>();
 	private readonly ISessionStore _sesiones = Substitute.For<ISessionStore>();
+	private readonly IOfflineSessionStore _persistida = Substitute.For<IOfflineSessionStore>();
+	private readonly IMonotonicClock _monotonico = Substitute.For<IMonotonicClock>();
 
 	private AbrirSesionMovil CrearCasoDeUso() =>
-		new(_jacob, _tokens, _sesiones, new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)));
+		new(_jacob,
+			new CustodiaSesionLocal(_sesiones, _tokens, _persistida),
+			new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)),
+			_monotonico);
 
 	private void PreautenticacionDevuelve(ResultadoPreauth resultado) =>
 		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -56,6 +62,19 @@ public class RevocacionDePermisoTests
 
 		_sesiones.Received(1).Limpiar();
 		await _tokens.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Preauth_sin_permiso_borra_tambien_la_sesion_persistida()
+	{
+		// Esto se quedaba fuera: la revocacion limpiaba sesion y token pero dejaba en disco
+		// la sesion guardada para reanudar sin conexion.
+		PreautenticacionDevuelve(
+			ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinPermiso, "appoperador.permiso.requerido"));
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await _persistida.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
 	}
 
 	[Theory]

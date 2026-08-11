@@ -62,6 +62,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string AccionAjustesApp = "Abrir configuración de la app";
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
 
+	private readonly ReanudarSesionOffline? _reanudarOffline;
 	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
 	private readonly VerificarUbicacionParaAcceso _ubicacion;
@@ -117,16 +118,22 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// pantalla funciona íntegramente contra el simulador, que es como se demuestran las
 	/// cinco pantallas mientras el canal móvil no esté desplegado.
 	/// </param>
+	/// <param name="reanudarOffline">
+	/// Reanudación de una sesión guardada (JTT-1383). Opcional como el acceso real: sin el
+	/// canal de Jacob no hay sesión persistida que reanudar y manda el simulador.
+	/// </param>
 	public AccesoViewModel(
 		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
 		VerificarUbicacionParaAcceso ubicacion,
-		AbrirSesionMovil? accesoJacob = null)
+		AbrirSesionMovil? accesoJacob = null,
+		ReanudarSesionOffline? reanudarOffline = null)
 	{
 		_autenticacion = autenticacion;
 		_conectividad = conectividad;
 		_ubicacion = ubicacion;
 		_accesoJacob = accesoJacob;
+		_reanudarOffline = reanudarOffline;
 		_conectividad.EnlaceCambio += (_, _) => OnPropertyChanged(nameof(TextoEstadoEnlace));
 
 		Usuario = string.Empty;
@@ -212,8 +219,9 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// Indica si la pantalla habla con Jacob CCO de verdad.
 	/// </summary>
 	/// <remarks>
-	/// La vista lo usa para avisar que el acceso se detiene tras elegir la unidad, sin entrar
-	/// a la app: abrir la sesión llega en una historia posterior.
+	/// La vista lo usa para decidir qué mostrar en cada paso: contra el simulador el
+	/// selector de unidad está desde el principio, y contra Jacob aparece cuando la
+	/// preautenticación devuelve las unidades del operador.
 	/// </remarks>
 	public bool UsaApiReal => _accesoJacob is not null;
 
@@ -422,7 +430,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 				return;
 			}
 
-			var resultado = await _autenticacion.ContinuarSinConexionAsync();
+			// Con el canal real, la reanudación consulta la sesión que quedó guardada y mide
+			// su vigencia sin fiarse del reloj (JTT-1383). Sin canal, sigue el simulador.
+			var resultado = _reanudarOffline is not null
+				? await _reanudarOffline.ReanudarAsync()
+				: await _autenticacion.ContinuarSinConexionAsync();
+
 			await ProcesarResultadoAsync(resultado);
 		}
 		finally

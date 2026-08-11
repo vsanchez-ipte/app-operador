@@ -41,7 +41,7 @@ public sealed class ClienteAccesoJacobTests
 	}
 
 	private static ClienteAccesoJacob Nuevo(ManejadorHttpFalso manejador) =>
-		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" });
+		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" }, new LectorClaimsToken());
 
 	private static Task<ResultadoPreauth> PreautenticarAsync(ClienteAccesoJacob cliente) =>
 		cliente.PreautenticarAsync("operador@ipte.com.mx", "Secreta123");

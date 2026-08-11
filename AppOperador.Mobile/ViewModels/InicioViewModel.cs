@@ -27,8 +27,10 @@ public sealed partial class InicioViewModel : ObservableObject
 		ISessionStore sesiones,
 		IConnectivityService conectividad,
 		ISyncQueueService cola,
-		IClock reloj)
+		IClock reloj,
+		EstadoEnlaceViewModel enlace)
 	{
+		Enlace = enlace;
 		_sesiones = sesiones;
 		_conectividad = conectividad;
 		_cola = cola;
@@ -38,6 +40,9 @@ public sealed partial class InicioViewModel : ObservableObject
 		Resumen = ResumenOperativo.Vacio;
 		HoraActualizacion = string.Empty;
 	}
+
+	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
+	public EstadoEnlaceViewModel Enlace { get; }
 
 	/// <summary>Cuenta del operador que tiene la sesión abierta.</summary>
 	public string Operador => _sesiones.Actual?.Operador ?? "-";

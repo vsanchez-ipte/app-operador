@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
@@ -17,6 +18,7 @@ public class CerrarSesionMovilTests
 	private readonly IAuditLog _bitacora = Substitute.For<IAuditLog>();
 	private readonly ISyncQueueService _cola = Substitute.For<ISyncQueueService>();
 	private readonly IAccesoJacobClient _jacob = Substitute.For<IAccesoJacobClient>();
+	private readonly IOfflineSessionStore _persistida = Substitute.For<IOfflineSessionStore>();
 
 	public CerrarSesionMovilTests()
 	{
@@ -24,11 +26,13 @@ public class CerrarSesionMovilTests
 		_cola.ContarPendientesAsync(Arg.Any<CancellationToken>()).Returns(0);
 	}
 
+	private CustodiaSesionLocal Custodia() => new(_sesiones, _tokens, _persistida);
+
 	/// <summary>Caso de uso con el canal real de Jacob conectado.</summary>
-	private CerrarSesionMovil ConJacob() => new(_sesiones, _tokens, _bitacora, _cola, _jacob);
+	private CerrarSesionMovil ConJacob() => new(Custodia(), _bitacora, _cola, _jacob);
 
 	/// <summary>Caso de uso contra los simuladores: no hay a quién avisar.</summary>
-	private CerrarSesionMovil SinJacob() => new(_sesiones, _tokens, _bitacora, _cola);
+	private CerrarSesionMovil SinJacob() => new(Custodia(), _bitacora, _cola);
 
 	private void JacobResponde(bool exito) =>
 		_jacob.CerrarSesionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(exito);

@@ -19,8 +19,10 @@ public sealed class SesionOperador
 		VigenciaOffline vigencia,
 		PermisosOperador permisos,
 		string versionAplicacion,
-		DateOnly versionCatalogos)
+		DateOnly versionCatalogos,
+		string sessionId = "")
 	{
+		SessionId = sessionId;
 		Operador = operador;
 		Rol = rol;
 		UnidadVehicular = unidadVehicular;
@@ -29,6 +31,15 @@ public sealed class SesionOperador
 		VersionAplicacion = versionAplicacion;
 		VersionCatalogos = versionCatalogos;
 	}
+
+	/// <summary>
+	/// Identificador de la sesión en Jacob CCO.
+	/// </summary>
+	/// <remarks>
+	/// Sella las incidencias capturadas para saber de qué sesión salieron (JTT-1383 CA 12).
+	/// Vacío en los recorridos simulados, que no crean sesión en el servidor.
+	/// </remarks>
+	public string SessionId { get; }
 
 	/// <summary>Nombre de la cuenta del operador en Jacob CCO.</summary>
 	public string Operador { get; }

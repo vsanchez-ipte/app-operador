@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
@@ -26,25 +27,26 @@ namespace AppOperador.Aplicacion.CasosDeUso;
 /// </remarks>
 public sealed class CerrarSesionMovil
 {
-	private readonly ISessionStore _sesiones;
-	private readonly ITokenProvider _tokens;
+	private readonly CustodiaSesionLocal _custodia;
 	private readonly IAuditLog _bitacora;
 	private readonly ISyncQueueService _cola;
 	private readonly IAccesoJacobClient? _jacob;
 
+	/// <param name="custodia">
+	/// Rastro local de la sesión. Cerrarla lo borra entero: si quedara la sesión persistida,
+	/// bastaría reabrir la app para entrar sin autenticarse (JTT-1383).
+	/// </param>
 	/// <param name="jacob">
 	/// Canal real con Jacob CCO. Opcional a propósito: solo se registra con el API real
 	/// encendido, y con los simuladores el cierre es puramente local.
 	/// </param>
 	public CerrarSesionMovil(
-		ISessionStore sesiones,
-		ITokenProvider tokens,
+		CustodiaSesionLocal custodia,
 		IAuditLog bitacora,
 		ISyncQueueService cola,
 		IAccesoJacobClient? jacob = null)
 	{
-		_sesiones = sesiones;
-		_tokens = tokens;
+		_custodia = custodia;
 		_bitacora = bitacora;
 		_cola = cola;
 		_jacob = jacob;
@@ -59,8 +61,7 @@ public sealed class CerrarSesionMovil
 
 		var avisado = await AvisarAJacobAsync(cancelacion);
 
-		_sesiones.Limpiar();
-		await _tokens.LimpiarAsync(cancelacion);
+		await _custodia.RevocarAsync(cancelacion);
 
 		await _bitacora.RegistrarAsync(
 			NivelAuditoria.Info,
@@ -86,7 +87,7 @@ public sealed class CerrarSesionMovil
 			return false;
 		}
 
-		var token = await _tokens.ObtenerAsync(cancelacion);
+		var token = await _custodia.ObtenerTokenAsync(cancelacion);
 
 		return !string.IsNullOrWhiteSpace(token)
 			&& await _jacob.CerrarSesionAsync(token, cancelacion);

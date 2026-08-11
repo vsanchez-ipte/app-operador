@@ -37,14 +37,14 @@ public sealed class ConfiguracionApi
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// JTT-1378 solo implementa la preautenticación: no crea sesión ni entra a la app. Con
-	/// el interruptor apagado la app conserva el recorrido completo contra simuladores, que
-	/// es lo que permite seguir demostrando las cinco pantallas mientras el canal móvil no
-	/// esté desplegado.
+	/// <b>Encendido es lo normal.</b> El acceso en dos pasos, la creación de la sesión, la
+	/// reanudación sin conexión, la revalidación y el cierre están completos contra el canal
+	/// móvil de Jacob.
 	/// </para>
 	/// <para>
-	/// Encendido, el botón de acceso ejerce el flujo real
-	/// <c>GetPublicKey → cifrado → Preauth</c> y se detiene ahí a propósito.
+	/// Apagado, la app conserva el recorrido íntegro contra simuladores. Sigue sirviendo
+	/// para demostrar las pantallas sin levantar el servidor, pero <b>no</b> ejercita nada
+	/// del canal real: ni sesión persistida, ni revalidación, ni cierre remoto.
 	/// </para>
 	/// </remarks>
 	public bool UsarApiReal { get; init; }
@@ -84,4 +84,13 @@ public sealed class ConfiguracionApi
 	/// <c>200</c>, no un error. Eso permite reintentar sin comprobar antes si ya se cerró.
 	/// </remarks>
 	public const string RutaLogout = "/ITS/AppLogin/Logout";
+
+	/// <summary>
+	/// Ruta de la revalidación de sesión. Exige el token y que la sesión siga activa.
+	/// </summary>
+	/// <remarks>
+	/// Renueva la ventana offline otras ocho horas tras comprobar que la sesión, el
+	/// operador, el permiso y la unidad siguen vigentes. No emite un token nuevo.
+	/// </remarks>
+	public const string RutaRevalidar = "/ITS/AppLogin/Revalidar";
 }

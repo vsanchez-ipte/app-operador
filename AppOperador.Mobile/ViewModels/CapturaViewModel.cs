@@ -54,16 +54,23 @@ public sealed partial class CapturaViewModel : ObservableObject
 	[ObservableProperty]
 	public partial KilometerSource FuenteKilometro { get; set; }
 
-	public CapturaViewModel(IIncidentRepository incidencias, ILocationService ubicacion)
+	public CapturaViewModel(
+		IIncidentRepository incidencias,
+		ILocationService ubicacion,
+		EstadoEnlaceViewModel enlace)
 	{
 		_incidencias = incidencias;
 		_ubicacion = ubicacion;
+		Enlace = enlace;
 
 		Kilometro = string.Empty;
 		Nota = string.Empty;
 		GravedadSeleccionada = Gravedad.Media;
 		FuenteKilometro = KilometerSource.Manual;
 	}
+
+	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
+	public EstadoEnlaceViewModel Enlace { get; }
 
 	/// <summary>
 	/// Catálogo de tipos de incidencia.

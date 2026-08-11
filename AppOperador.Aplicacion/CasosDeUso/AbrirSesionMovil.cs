@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
@@ -24,22 +25,29 @@ namespace AppOperador.Aplicacion.CasosDeUso;
 public sealed class AbrirSesionMovil
 {
 	private readonly IAccesoJacobClient _jacob;
-	private readonly ITokenProvider _tokens;
-	private readonly ISessionStore _sesiones;
+	private readonly CustodiaSesionLocal _custodia;
 	private readonly DatosDeInstalacion _instalacion;
+	private readonly IMonotonicClock _monotonico;
 
 	private string? _desafio;
 
+	/// <param name="custodia">
+	/// Dónde queda el rastro local de la sesión: token, sesión viva y sesión persistida.
+	/// </param>
+	/// <param name="monotonico">
+	/// Contador que se guarda junto con la sesión para poder medir después cuánto tiempo
+	/// pasó de verdad, aunque muevan el reloj (JTT-1383).
+	/// </param>
 	public AbrirSesionMovil(
 		IAccesoJacobClient jacob,
-		ITokenProvider tokens,
-		ISessionStore sesiones,
-		DatosDeInstalacion instalacion)
+		CustodiaSesionLocal custodia,
+		DatosDeInstalacion instalacion,
+		IMonotonicClock monotonico)
 	{
 		_jacob = jacob;
-		_tokens = tokens;
-		_sesiones = sesiones;
+		_custodia = custodia;
 		_instalacion = instalacion;
+		_monotonico = monotonico;
 	}
 
 	/// <summary>
@@ -140,8 +148,7 @@ public sealed class AbrirSesionMovil
 			return;
 		}
 
-		_sesiones.Limpiar();
-		await _tokens.LimpiarAsync(cancelacion);
+		await _custodia.RevocarAsync(cancelacion);
 	}
 
 	/// <summary>
@@ -151,17 +158,20 @@ public sealed class AbrirSesionMovil
 	/// El token va primero: si fallara al guardarse, es preferible no haber anunciado una
 	/// sesión que después no podría autenticar ninguna petición.
 	/// </remarks>
-	private async Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
+	private Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
 	{
-		await _tokens.GuardarAsync(sesion.AccessToken, cancelacion);
+		// El contador monotónico se lee aquí, lo más cerca posible de la validación: es la
+		// referencia contra la que se medirá la ventana offline (JTT-1383).
+		var persistida = new SesionOfflinePersistida(
+			SessionId: sesion.SessionId,
+			Operador: sesion.Operador,
+			Rol: sesion.Rol,
+			Unidad: sesion.Unidad,
+			Permisos: sesion.Permisos,
+			Vigencia: sesion.Vigencia,
+			MonotonicoAlValidar: _monotonico.Transcurrido,
+			Instalacion: _instalacion);
 
-		_sesiones.Guardar(new SesionOperador(
-			operador: sesion.Operador,
-			rol: sesion.Rol,
-			unidadVehicular: sesion.Unidad.Clave,
-			vigencia: sesion.Vigencia,
-			permisos: sesion.Permisos,
-			versionAplicacion: _instalacion.VersionAplicacion,
-			versionCatalogos: _instalacion.VersionCatalogos));
+		return _custodia.AbrirAsync(persistida, sesion.AccessToken, cancelacion);
 	}
 }

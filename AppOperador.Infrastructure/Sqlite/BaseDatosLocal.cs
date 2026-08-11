@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 1;
+	public const int VersionEsquemaActual = 2;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -73,6 +73,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 			await conexion.CreateTableAsync<IntentoSincronizacion>();
 			await conexion.CreateTableAsync<EventoAuditoriaLocal>();
 			await conexion.CreateTableAsync<TipoIncidenciaLocal>();
+			await conexion.CreateTableAsync<SesionLocal>();
 
 			await MigrarAsync(conexion);
 			await SembrarCatalogoAsync(conexion);
@@ -126,7 +127,10 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 			return;
 		}
 
-		// De 0 a 1: primera versión publicada. Las tablas ya quedaron creadas arriba.
+		// De 0 a 1: primera versión publicada.
+		// De 1 a 2: sesión persistida y sello de origen de las incidencias (JTT-1383).
+		// Ambos cambios son aditivos y CreateTableAsync ya los aplicó arriba, así que solo
+		// queda sellar la versión.
 		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
 	}
 

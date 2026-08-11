@@ -77,4 +77,15 @@ public enum MotivoRechazoAcceso
 	/// refrescar la lista, no reintentar con la misma.
 	/// </remarks>
 	UnidadNoAutorizada = 11,
+
+	/// <summary>
+	/// Jacob ya no reconoce la sesión: se revocó o dejó de ser válida
+	/// (<c>appoperador.sesion.revocada</c>, <c>appoperador.sesion.invalida</c>).
+	/// </summary>
+	/// <remarks>
+	/// Aparece al revalidar tras recuperar el enlace (JTT-1383 CA 11). No es un fallo de
+	/// red: la sesión existió y el servidor la dio de baja, así que reintentar no sirve y
+	/// hay que autenticarse otra vez.
+	/// </remarks>
+	SesionRevocada = 12,
 }

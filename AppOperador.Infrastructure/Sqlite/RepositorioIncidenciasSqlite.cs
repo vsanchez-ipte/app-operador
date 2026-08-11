@@ -19,12 +19,22 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	private readonly BaseDatosLocal _baseDatos;
 	private readonly IClock _reloj;
 	private readonly ISessionStore _sesion;
+	private readonly IMonotonicClock? _monotonico;
 
-	public RepositorioIncidenciasSqlite(BaseDatosLocal baseDatos, IClock reloj, ISessionStore sesion)
+	/// <param name="monotonico">
+	/// Contador con el que se sella cada captura (JTT-1383 CA 12). Opcional para no obligar
+	/// a las pruebas que solo miran la persistencia a proporcionarlo.
+	/// </param>
+	public RepositorioIncidenciasSqlite(
+		BaseDatosLocal baseDatos,
+		IClock reloj,
+		ISessionStore sesion,
+		IMonotonicClock? monotonico = null)
 	{
 		_baseDatos = baseDatos;
 		_reloj = reloj;
 		_sesion = sesion;
+		_monotonico = monotonico;
 	}
 
 	/// <inheritdoc />
@@ -71,6 +81,12 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			UnidadVehicular = _sesion.Actual?.UnidadVehicular ?? string.Empty,
 			CreadoUtcTicks = ahora,
 			ActualizadoUtcTicks = ahora,
+
+			// Sello de origen (JTT-1383 CA 12): la fecha del dispositivo va arriba, la
+			// monotónica aquí y la sesión de la que salió el registro. Con el reloj solo no
+			// se podría ordenar lo capturado si alguien lo movió a media jornada.
+			MonotonicoTicks = _monotonico?.Transcurrido.Ticks ?? 0,
+			SesionOrigen = _sesion.Actual?.SessionId ?? string.Empty,
 		};
 
 		await conexion.InsertAsync(fila);

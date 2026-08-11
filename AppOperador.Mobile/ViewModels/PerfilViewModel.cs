@@ -24,14 +24,19 @@ public sealed partial class PerfilViewModel : ObservableObject
 		IConnectivityService conectividad,
 		IAuditLog bitacora,
 		IClock reloj,
-		CerrarSesionMovil cierre)
+		CerrarSesionMovil cierre,
+		EstadoEnlaceViewModel enlace)
 	{
+		Enlace = enlace;
 		_sesiones = sesiones;
 		_conectividad = conectividad;
 		_bitacora = bitacora;
 		_reloj = reloj;
 		_cierre = cierre;
 	}
+
+	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
+	public EstadoEnlaceViewModel Enlace { get; }
 
 	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
 	public ObservableCollection<EventoAuditoriaVista> Eventos { get; } = [];

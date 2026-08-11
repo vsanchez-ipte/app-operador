@@ -53,7 +53,7 @@ public class ClienteAccesoJacobLoginTests
 	}
 
 	private static ClienteAccesoJacob Nuevo(ManejadorHttpFalso manejador) =>
-		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" });
+		new(new HttpClient(manejador), new ConfiguracionApi { UrlBase = "http://localhost:5231" }, new LectorClaimsToken());
 
 	private static Task<ResultadoLogin> AbrirAsync(ClienteAccesoJacob cliente) =>
 		cliente.CompletarAccesoAsync("d-1", "veh-1");
