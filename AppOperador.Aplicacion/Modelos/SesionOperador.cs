@@ -1,4 +1,5 @@
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -16,7 +17,7 @@ public sealed class SesionOperador
 		string rol,
 		string unidadVehicular,
 		VigenciaOffline vigencia,
-		IReadOnlyList<string> permisos,
+		PermisosOperador permisos,
 		string versionAplicacion,
 		DateOnly versionCatalogos)
 	{
@@ -41,8 +42,14 @@ public sealed class SesionOperador
 	/// <summary>Ventana de trabajo sin conexión derivada de la última validación en línea.</summary>
 	public VigenciaOffline Vigencia { get; }
 
-	/// <summary>Permisos efectivos, tal como se muestran en el perfil.</summary>
-	public IReadOnlyList<string> Permisos { get; }
+	/// <summary>
+	/// Permisos efectivos, tal como se muestran en el perfil.
+	/// </summary>
+	/// <remarks>
+	/// Llegan de Jacob y no se pueden alterar desde la app: ver
+	/// <see cref="PermisosOperador"/> (JTT-1379 CA 7).
+	/// </remarks>
+	public PermisosOperador Permisos { get; }
 
 	/// <summary>Versión de la aplicación instalada.</summary>
 	public string VersionAplicacion { get; }

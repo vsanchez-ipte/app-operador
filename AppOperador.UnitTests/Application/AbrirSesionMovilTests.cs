@@ -2,6 +2,7 @@ using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
@@ -29,7 +30,7 @@ public class AbrirSesionMovilTests
 			operador: "Juan Pérez",
 			rol: "Operador de campo",
 			unidad: Unidad,
-			permisos: ["APP_OPERADOR_MOVIL"],
+			permisos: PermisosOperador.DelServidor(["APP_OPERADOR_MOVIL"]),
 			vigencia: VigenciaOffline.DelServidor(Validacion, Validacion.AddHours(8)),
 			horaServidorUtc: Validacion);
 
@@ -156,7 +157,7 @@ public class AbrirSesionMovilTests
 		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
 			.Returns(ResultadoLogin.Creada(new SesionValidada(
 				"s-1", "jwt", Validacion.AddHours(6), "Juan Pérez", "Operador de campo",
-				Unidad, ["APP_OPERADOR_MOVIL"], delServidor, Validacion)));
+				Unidad, PermisosOperador.DelServidor(["APP_OPERADOR_MOVIL"]), delServidor, Validacion)));
 		SesionOperador? guardada = null;
 		_sesiones.When(s => s.Guardar(Arg.Any<SesionOperador>())).Do(c => guardada = c.Arg<SesionOperador>());
 		var casoDeUso = CrearCasoDeUso();

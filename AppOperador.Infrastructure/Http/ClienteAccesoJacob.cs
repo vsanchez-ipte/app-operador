@@ -4,6 +4,7 @@ using System.Text.Json;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
@@ -167,9 +168,18 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	/// falta algo imprescindible.
 	/// </summary>
 	/// <remarks>
+	/// <para>
 	/// Las fechas se adoptan tal como llegan y se normalizan a UTC. <b>No se recalcula la
 	/// ventana offline</b>: la calcula el servidor, y rehacerla contra el reloj del teléfono
 	/// daría una vigencia distinta en cuanto ese reloj esté desfasado (JTT-1382 CA 3 y CA 4).
+	/// </para>
+	/// <para>
+	/// Los permisos del cuerpo se cotejan contra el claim <c>module</c> del token antes de
+	/// aceptarlos (JTT-1379 CA 8). Si el cuerpo concede algo que el token no respalda, la
+	/// sesión no se construye: el acceso termina en
+	/// <see cref="MotivoRechazoAcceso.ErrorDelServicio"/>, que es lo que corresponde a una
+	/// respuesta incoherente, no a un rechazo del operador.
+	/// </para>
 	/// </remarks>
 	private static SesionValidada? ConvertirSesion(RespuestaLogin respuesta)
 	{
@@ -190,6 +200,12 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			return null;
 		}
 
+		var permisos = PermisosOperador.DelServidor(respuesta.Permisos);
+		if (!permisos.RespaldadosPor(ModulosDelToken.Leer(respuesta.AccessToken)))
+		{
+			return null;
+		}
+
 		return new SesionValidada(
 			sessionId: respuesta.SessionId ?? string.Empty,
 			accessToken: respuesta.AccessToken,
@@ -200,7 +216,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 				respuesta.Unidad.Id,
 				respuesta.Unidad.Clave!,
 				respuesta.Unidad.Descripcion ?? string.Empty),
-			permisos: respuesta.Permisos ?? [],
+			permisos: permisos,
 			vigencia: VigenciaOffline.DelServidor(validado, hastaOffline),
 			horaServidorUtc: ComoUtc(respuesta.ServerTimeUtc ?? validado));
 	}

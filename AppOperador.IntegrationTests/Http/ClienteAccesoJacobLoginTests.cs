@@ -14,16 +14,29 @@ namespace AppOperador.IntegrationTests.Http;
 /// </remarks>
 public class ClienteAccesoJacobLoginTests
 {
-	private const string LoginCorrecto = """
+	/// <summary>Token con el permiso funcional firmado, como el que emite Jacob.</summary>
+	private static readonly string TokenConPermiso = TokenDePrueba.Con("APP_OPERADOR_MOVIL");
+
+	private static readonly string LoginCorrecto =
+		CuerpoLogin(TokenConPermiso, """["APP_OPERADOR_MOVIL"]""");
+
+	/// <summary>
+	/// Respuesta correcta de <c>AppLogin</c>, con el token y los permisos que se le indiquen.
+	/// </summary>
+	/// <remarks>
+	/// Los dos son parámetros porque el cotejo de JTT-1379 CA 8 se prueba desalineándolos: un
+	/// cuerpo que conceda algo que el token no respalda no debe abrir sesión.
+	/// </remarks>
+	private static string CuerpoLogin(string token, string permisosJson) => $$"""
 		{
 		  "resultado": {
-		    "accessToken": "eyJhbGciOi.token.firmado",
+		    "accessToken": "{{token}}",
 		    "tokenExpiresAtUtc": "2026-08-11T03:00:00Z",
 		    "sessionId": "9c1f0b2e-4d3a-4a55-9f01-2b7c8d9e0a11",
 		    "operador": { "id": "op-1", "email": "operador@ipte.com.mx", "nombre": "Juan Pérez" },
 		    "rol": { "id": 45, "nombre": "Operador Prueba" },
 		    "unidad": { "id": "veh-1", "clave": "VEH-01", "descripcion": "Unidad local de prueba" },
-		    "permisos": ["APP_OPERADOR_MOVIL"],
+		    "permisos": {{permisosJson}},
 		    "lastValidatedAtUtc": "2026-08-10T19:00:00Z",
 		    "offlineUntilUtc": "2026-08-11T03:00:00Z",
 		    "serverTimeUtc": "2026-08-10T19:00:00Z"
@@ -61,7 +74,7 @@ public class ClienteAccesoJacobLoginTests
 
 		Assert.True(resultado.Exitoso);
 		var sesion = resultado.Sesion!;
-		Assert.Equal("eyJhbGciOi.token.firmado", sesion.AccessToken);
+		Assert.Equal(TokenConPermiso, sesion.AccessToken);
 		Assert.Equal("9c1f0b2e-4d3a-4a55-9f01-2b7c8d9e0a11", sesion.SessionId);
 		Assert.Equal("Juan Pérez", sesion.Operador);
 		Assert.Equal("Operador Prueba", sesion.Rol);
@@ -269,6 +282,87 @@ public class ClienteAccesoJacobLoginTests
 
 		Assert.Equal(MotivoRechazoAcceso.ErrorDelServicio, resultado.Motivo);
 		Assert.Equal("http.401", resultado.CodigoError);
+	}
+
+	// ---------- Cotejo de permisos contra el token (JTT-1379 CA 8) ----------
+
+	[Fact]
+	public async Task Acepta_los_permisos_que_el_token_respalda()
+	{
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, LoginCorrecto));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.True(resultado.Exitoso);
+		Assert.Equal(["APP_OPERADOR_MOVIL"], resultado.Sesion!.Permisos);
+	}
+
+	[Fact]
+	public async Task Un_cuerpo_que_concede_mas_que_el_token_no_produce_sesion()
+	{
+		// El caso que el criterio persigue: alguien altera la lista de permisos de la
+		// respuesta. El token sigue firmado con lo que Jacob concedió de verdad, así que la
+		// diferencia se nota y el acceso no se completa.
+		var cuerpo = CuerpoLogin(TokenConPermiso, """["APP_OPERADOR_MOVIL", "ADMINISTRAR"]""");
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.False(resultado.Exitoso);
+		Assert.Equal(MotivoRechazoAcceso.ErrorDelServicio, resultado.Motivo);
+		Assert.Equal("respuesta.incompleta", resultado.CodigoError);
+	}
+
+	[Fact]
+	public async Task Un_token_sin_el_claim_del_modulo_no_respalda_ningun_permiso()
+	{
+		var cuerpo = CuerpoLogin(TokenDePrueba.SinModulo(), """["APP_OPERADOR_MOVIL"]""");
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.False(resultado.Exitoso);
+	}
+
+	[Fact]
+	public async Task Un_token_ilegible_no_respalda_ningun_permiso()
+	{
+		// Ilegible no es lo mismo que ausente: bloquear es la salida correcta ante algo que
+		// no se puede interpretar.
+		var cuerpo = CuerpoLogin("no.es-un.jwt", """["APP_OPERADOR_MOVIL"]""");
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.False(resultado.Exitoso);
+	}
+
+	[Fact]
+	public async Task Un_token_con_varios_modulos_respalda_el_permiso()
+	{
+		// El claim admite arreglo además de cadena. Hoy Jacob manda uno, pero el formato
+		// permite varios y no debe romper el acceso el día que los mande.
+		var token = TokenDePrueba.Con("APP_OPERADOR_MOVIL", "OTRO_MODULO");
+		var cuerpo = CuerpoLogin(token, """["APP_OPERADOR_MOVIL"]""");
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.True(resultado.Exitoso);
+	}
+
+	[Fact]
+	public async Task Una_sesion_sin_permisos_se_acepta_porque_no_concede_nada()
+	{
+		// No hay nada que respaldar. El acceso queda abierto pero sin capacidades, y qué se
+		// habilita con ellas es de JTT-1385.
+		var cuerpo = CuerpoLogin(TokenDePrueba.SinModulo(), "[]");
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
+
+		var resultado = await AbrirAsync(cliente);
+
+		Assert.True(resultado.Exitoso);
+		Assert.Empty(resultado.Sesion!.Permisos);
 	}
 
 	// ---------- Red ----------

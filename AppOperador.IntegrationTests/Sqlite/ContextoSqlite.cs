@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
@@ -105,7 +106,7 @@ public sealed class SesionFija : ISessionStore
 		"Operador",
 		"VEH-01",
 		VigenciaOffline.Validada(new DateTime(2026, 8, 4, 12, 0, 0, DateTimeKind.Utc)),
-		["CAPTURA", "SYNC"],
+		PermisosOperador.DelServidor(["CAPTURA", "SYNC"]),
 		"1.2.0",
 		new DateOnly(2026, 7, 23));
 

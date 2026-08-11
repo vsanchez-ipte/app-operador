@@ -46,8 +46,14 @@ public sealed class AbrirSesionMovil
 	/// Paso 1: valida credenciales y retiene el desafío para el paso 2.
 	/// </summary>
 	/// <remarks>
+	/// <para>
 	/// Un rechazo descarta cualquier desafío anterior: si el operador se equivocó de cuenta,
 	/// el desafío de la anterior no puede seguir sirviendo.
+	/// </para>
+	/// <para>
+	/// Si Jacob responde que la cuenta ya no tiene el permiso funcional, se revoca lo que
+	/// hubiera quedado guardado del acceso anterior (JTT-1379 CA 6).
+	/// </para>
 	/// </remarks>
 	public async Task<ResultadoPreauth> IdentificarAsync(
 		string email,
@@ -56,6 +62,8 @@ public sealed class AbrirSesionMovil
 	{
 		var resultado = await _jacob.PreautenticarAsync(email, contrasena, cancelacion);
 		_desafio = resultado.Exitoso ? resultado.ChallengeId : null;
+
+		await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
 
 		return resultado;
 	}
@@ -89,6 +97,9 @@ public sealed class AbrirSesionMovil
 		var resultado = await _jacob.CompletarAccesoAsync(desafio, unidad.Id, cancelacion);
 		if (!resultado.Exitoso)
 		{
+			// El permiso se revalida al crear la sesión, no solo al preautenticar: puede
+			// retirarse entre un paso y el otro.
+			await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
 			return resultado;
 		}
 
@@ -98,6 +109,40 @@ public sealed class AbrirSesionMovil
 
 	/// <summary>Olvida el desafío retenido, al abandonar el acceso.</summary>
 	public void Descartar() => _desafio = null;
+
+	/// <summary>
+	/// Borra sesión y token locales cuando Jacob niega el permiso funcional (JTT-1379 CA 6).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// La revocación se decide en Jacob y llega a la app en la siguiente validación en línea.
+	/// Sin este paso, un operador al que le retiraron el permiso conservaría la sesión de su
+	/// último acceso correcto y podría seguir trabajando sin conexión hasta que venciera la
+	/// ventana offline. El criterio pide justamente lo contrario.
+	/// </para>
+	/// <para>
+	/// <b>Solo se revoca ante <see cref="MotivoRechazoAcceso.SinPermiso"/>.</b> Una
+	/// contraseña mal escrita o una caída de red no dicen nada sobre la autorización del
+	/// operador, y cerrarle la sesión por eso convertiría cualquier tropiezo en una salida
+	/// forzada.
+	/// </para>
+	/// <para>
+	/// <b>No toca los registros pendientes.</b> Lo capturado es del operador y de la unidad,
+	/// no del permiso; borrarlo aquí perdería trabajo de campo ya hecho (JTT-1390).
+	/// </para>
+	/// </remarks>
+	private async Task AplicarRevocacionAsync(
+		MotivoRechazoAcceso? motivo,
+		CancellationToken cancelacion)
+	{
+		if (motivo != MotivoRechazoAcceso.SinPermiso)
+		{
+			return;
+		}
+
+		_sesiones.Limpiar();
+		await _tokens.LimpiarAsync(cancelacion);
+	}
 
 	/// <summary>
 	/// Custodia el token y publica la sesión para el resto de las pantallas.

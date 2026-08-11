@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Mobile.Mocks;
 
@@ -137,7 +138,9 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 			rol: "Operador de campo",
 			unidadVehicular: unidad.Clave,
 			vigencia: vigencia,
-			permisos: ["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"],
+			// El simulador hace de Jacob: por eso puede entregar permisos. Ninguna otra parte
+			// de la app puede construirlos (JTT-1379 CA 7).
+			permisos: PermisosOperador.DelServidor(["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"]),
 			versionAplicacion: "1.2.0",
 			versionCatalogos: new DateOnly(2026, 7, 23));
 }

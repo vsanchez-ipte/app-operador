@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -71,8 +72,15 @@ public sealed partial class PerfilViewModel : ObservableObject
 	/// <summary>Modo de operación visible en el perfil.</summary>
 	public string Modo => _conectividad.HayEnlace ? "ONLINE" : "OFFLINE";
 
-	/// <summary>Permisos efectivos, mostrados como etiquetas.</summary>
-	public IReadOnlyList<string> Permisos => _sesiones.Actual?.Permisos ?? [];
+	/// <summary>
+	/// Permisos efectivos, mostrados como etiquetas.
+	/// </summary>
+	/// <remarks>
+	/// El perfil los muestra, no los administra: la lista es de solo lectura por construcción
+	/// (JTT-1379 CA 7).
+	/// </remarks>
+	public IReadOnlyCollection<string> Permisos =>
+		_sesiones.Actual?.Permisos ?? PermisosOperador.Ninguno;
 
 	/// <summary>Refresca los datos de la pantalla.</summary>
 	public async Task ActualizarAsync()

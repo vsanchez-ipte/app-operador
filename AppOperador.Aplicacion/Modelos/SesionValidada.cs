@@ -1,4 +1,5 @@
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -26,7 +27,7 @@ public sealed class SesionValidada
 		string operador,
 		string rol,
 		UnidadVehicular unidad,
-		IReadOnlyList<string> permisos,
+		PermisosOperador permisos,
 		VigenciaOffline vigencia,
 		DateTime horaServidorUtc)
 	{
@@ -65,8 +66,10 @@ public sealed class SesionValidada
 	/// <summary>Unidad con la que va a operar, con su identificador técnico.</summary>
 	public UnidadVehicular Unidad { get; }
 
-	/// <summary>Capacidades activas que devuelve Jacob.</summary>
-	public IReadOnlyList<string> Permisos { get; }
+	/// <summary>
+	/// Capacidades activas que devuelve Jacob, cotejadas contra el token (JTT-1379 CA 7 y 8).
+	/// </summary>
+	public PermisosOperador Permisos { get; }
 
 	/// <summary>
 	/// Ventana offline, <b>calculada por el servidor</b> y adoptada sin recalcular
