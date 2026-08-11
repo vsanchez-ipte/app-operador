@@ -96,6 +96,18 @@
                                     IsVisible="{Binding HayAccionUbicacion}"
                                     IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
+                            <!--
+                                Accion explicita de revalidacion. Se ofrece siempre que el
+                                acceso este bloqueado por ubicacion: dos estados -dispositivo
+                                sin ubicacion y fallo al consultar- no tienen ninguna otra, y
+                                sin esto el operador se queda sin nada que pulsar.
+                            -->
+                            <Button Text="{Binding TextoRevalidarUbicacion}"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding RevalidarUbicacionCommand}"
+                                    IsVisible="{Binding PuedeRevalidarUbicacion}"
+                                    IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+
                             <!-- Confirmación de la preautenticación. No muestra el desafío. -->
                             <Label Text="{Binding MensajeAviso}"
                                    Style="{StaticResource TextoSecundario}"
