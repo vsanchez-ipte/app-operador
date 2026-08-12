@@ -49,20 +49,16 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 	public string VersionCatalogos => _sesiones.Actual?.VersionCatalogos.ToString("yyyy-MM-dd") ?? "-";
 
-	/// <summary>Estado de la ventana offline: VIGENTE mientras quede tiempo.</summary>
-	public string EstadoVigencia
-	{
-		get
-		{
-			var vigencia = _sesiones.Actual?.Vigencia;
-			if (vigencia is null)
-			{
-				return "SIN SESIÓN";
-			}
-
-			return vigencia.EstaVigenteEn(_reloj.UtcAhora) ? "VIGENTE" : "EXPIRADA";
-		}
-	}
+	/// <summary>
+	/// Estado de la ventana offline.
+	/// </summary>
+	/// <remarks>
+	/// Con sesión abierta siempre es VIGENTE, y no es un atajo: la pantalla comprueba la
+	/// vigencia antes de mostrarse y una sesión vencida ya no existe cuando esto se pinta
+	/// (JTT-1384). Antes se recalculaba aquí contra el reloj del dispositivo, que es
+	/// justamente la medición que el resto de la app dejó de usar por manipulable.
+	/// </remarks>
+	public string EstadoVigencia => _sesiones.Actual is null ? "SIN SESIÓN" : "VIGENTE";
 
 	public bool VigenciaActiva => EstadoVigencia == "VIGENTE";
 

@@ -118,6 +118,11 @@ public static class MauiProgram
 		// viva y sesión persistida. Los cuatro casos de uso que la tocan pasan por aquí.
 		servicios.AddSingleton<CustodiaSesionLocal>();
 
+		// Por qué terminó la última sesión, para poder decírselo al operador al volver al
+		// acceso. Singleton: lo escribe quien cierra la sesión y lo consume otra pantalla.
+		servicios.AddSingleton<AvisoDeSesionTerminada>();
+		servicios.AddSingleton<ComprobarVigenciaOffline>();
+
 		// Singleton: el aviso de modo offline debe verse igual en las cuatro pestañas, y una
 		// instancia por pantalla haría que cada una mostrara lo suyo (JTT-1383 CA 8).
 		servicios.AddSingleton<EstadoEnlaceViewModel>();

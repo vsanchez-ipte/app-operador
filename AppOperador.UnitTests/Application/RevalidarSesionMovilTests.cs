@@ -35,8 +35,10 @@ public class RevalidarSesionMovilTests
 		_persistida.ObtenerAsync(Arg.Any<CancellationToken>()).Returns(Guardada());
 	}
 
+	private readonly AvisoDeSesionTerminada _aviso = new();
+
 	private RevalidarSesionMovil Crear() =>
-		new(_jacob, new CustodiaSesionLocal(_sesiones, _tokens, _persistida),
+		new(_jacob, new CustodiaSesionLocal(_sesiones, _tokens, _persistida), _aviso,
 			_claims, _monotonico, _cola, _bitacora);
 
 	private static SesionOfflinePersistida Guardada() => new(
@@ -147,6 +149,18 @@ public class RevalidarSesionMovilTests
 		_sesiones.Received(1).Limpiar();
 		await _tokens.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
 		await _persistida.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Si_Jacob_niega_la_sesion_deja_el_motivo_para_la_pantalla_de_acceso()
+	{
+		// Sin esto el operador aparece en el formulario sin explicacion (CA 11).
+		_jacob.RevalidarAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoRevalidacion.Negada(MotivoRechazoAcceso.SesionRevocada));
+
+		await Crear().RevalidarAsync();
+
+		Assert.Equal(MotivoRechazoAcceso.SesionRevocada, _aviso.Consumir());
 	}
 
 	[Fact]

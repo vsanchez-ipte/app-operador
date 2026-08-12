@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -63,6 +64,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
 
 	private readonly ReanudarSesionOffline? _reanudarOffline;
+	private readonly AvisoDeSesionTerminada _aviso;
 	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
 	private readonly VerificarUbicacionParaAcceso _ubicacion;
@@ -126,9 +128,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
 		VerificarUbicacionParaAcceso ubicacion,
+		AvisoDeSesionTerminada aviso,
 		AbrirSesionMovil? accesoJacob = null,
 		ReanudarSesionOffline? reanudarOffline = null)
 	{
+		_aviso = aviso;
 		_autenticacion = autenticacion;
 		_conectividad = conectividad;
 		_ubicacion = ubicacion;
@@ -192,6 +196,15 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MensajeAviso = null;
 
 		await InicializarAsync();
+
+		// Si se llegó aquí porque la sesión se cerró sola —ventana vencida, revalidación
+		// negada o permiso retirado— hay que decir por qué. Sin esto el operador aparecería
+		// en el formulario sin explicación (JTT-1384 CA 3).
+		var motivo = _aviso.Consumir();
+		if (motivo is not null)
+		{
+			MensajeError = TextoDe(motivo);
+		}
 
 		// El indicador de enlace de esta pantalla debe reflejar el estado real, no el último
 		// que se conociera (JTT-1391 CA 6). Sin sesión la sonda no puede autenticarse, así

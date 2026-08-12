@@ -23,6 +23,7 @@ public sealed class RevalidarSesionMovil
 {
 	private readonly IAccesoJacobClient _jacob;
 	private readonly CustodiaSesionLocal _custodia;
+	private readonly AvisoDeSesionTerminada _aviso;
 	private readonly ITokenClaims _claims;
 	private readonly IMonotonicClock _monotonico;
 	private readonly ISyncQueueService _cola;
@@ -31,6 +32,7 @@ public sealed class RevalidarSesionMovil
 	public RevalidarSesionMovil(
 		IAccesoJacobClient jacob,
 		CustodiaSesionLocal custodia,
+		AvisoDeSesionTerminada aviso,
 		ITokenClaims claims,
 		IMonotonicClock monotonico,
 		ISyncQueueService cola,
@@ -38,6 +40,7 @@ public sealed class RevalidarSesionMovil
 	{
 		_jacob = jacob;
 		_custodia = custodia;
+		_aviso = aviso;
 		_claims = claims;
 		_monotonico = monotonico;
 		_cola = cola;
@@ -134,6 +137,10 @@ public sealed class RevalidarSesionMovil
 		CancellationToken cancelacion)
 	{
 		await _custodia.RevocarAsync(cancelacion);
+
+		// Para que la pantalla de acceso pueda decir por qué se cerró la sesión, en vez de
+		// aparecer en blanco (JTT-1383 CA 11: «solicita autenticación»).
+		_aviso.Registrar(resultado.Motivo ?? MotivoRechazoAcceso.SesionRevocada);
 
 		await _bitacora.RegistrarAsync(
 			NivelAuditoria.Advertencia,
