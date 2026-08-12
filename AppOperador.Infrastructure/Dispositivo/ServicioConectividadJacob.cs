@@ -96,7 +96,27 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 			return;
 		}
 
-		_ = ComprobarAsync();
+		_ = SondearSinPropagarFallosAsync();
+	}
+
+	/// <summary>
+	/// Sondea sin dejar escapar excepciones.
+	/// </summary>
+	/// <remarks>
+	/// Lo llama el sistema al recuperar la red y nadie espera el resultado, así que una
+	/// excepción aquí no tendría quién la recogiera. Si el sondeo falla, el estado se queda
+	/// como estaba y el operador tiene el reintento manual.
+	/// </remarks>
+	private async Task SondearSinPropagarFallosAsync()
+	{
+		try
+		{
+			await ComprobarAsync();
+		}
+		catch (Exception)
+		{
+			Publicar(false);
+		}
 	}
 
 	/// <summary>

@@ -90,6 +90,35 @@ public class ClienteAccesoJacobEstadoTests
 		Assert.False(await cliente.ComprobarEnlaceAsync(Token));
 	}
 
+	// ---------- Regresión: la petición no se libera con el envío en vuelo ----------
+
+	[Fact]
+	public async Task La_peticion_sigue_viva_mientras_el_envio_esta_en_curso()
+	{
+		// El fallo que esto fija: el metodo devolvia la tarea de SendAsync sin esperarla, asi
+		// que el using desechaba la peticion con el envio todavia en vuelo. Con red estable
+		// no se notaba; al reconectar, el camino lento perdia la carrera y salia
+		// "Cannot access a disposed object" al pulsar Reintentar.
+		var manejador = ManejadorHttpFalso.Lento(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
+		var cliente = Nuevo(manejador);
+
+		var hayEnlace = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.False(manejador.PeticionLiberadaEnVuelo);
+		Assert.True(hayEnlace);
+	}
+
+	[Fact]
+	public async Task El_cierre_de_sesion_tampoco_libera_la_peticion_antes_de_tiempo()
+	{
+		// Comparte el mismo metodo de envio, asi que compartia el mismo fallo.
+		var manejador = ManejadorHttpFalso.Lento(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
+
+		await Nuevo(manejador).CerrarSesionAsync(Token);
+
+		Assert.False(manejador.PeticionLiberadaEnVuelo);
+	}
+
 	[Theory]
 	[InlineData("")]
 	[InlineData("   ")]

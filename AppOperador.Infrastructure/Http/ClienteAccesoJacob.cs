@@ -374,11 +374,25 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	/// Envía un POST autenticado con el token de la sesión.
 	/// </summary>
 	/// <remarks>
-	/// Las dos operaciones que lo necesitan —cierre y revalidación— arman la petición igual:
-	/// sin cuerpo y con el token en la cabecera <c>Authorization</c>. <b>El token no viaja en
-	/// el cuerpo</b>, para que no acabe en trazas intermedias.
+	/// <para>
+	/// Las tres operaciones que lo necesitan —cierre, revalidación y sonda de enlace— arman
+	/// la petición igual: sin cuerpo y con el token en la cabecera <c>Authorization</c>.
+	/// <b>El token no viaja en el cuerpo</b>, para que no acabe en trazas intermedias.
+	/// </para>
+	/// <para>
+	/// <b>El envío se espera aquí dentro, y no es un detalle de estilo.</b> Devolver la tarea
+	/// sin esperarla dejaba que el <c>using</c> desechara la petición con el envío todavía en
+	/// vuelo: cuando la capa HTTP volvía a tocarla, ya estaba liberada y salía «Cannot access
+	/// a disposed object». Con la red estable el envío alcanzaba a consumir la petición antes
+	/// y no se notaba; al reconectar, el camino lento —socket nuevo, DNS— llegaba tarde y
+	/// perdía la carrera. De ahí que solo apareciera al reintentar tras recuperar la red.
+	/// </para>
+	/// <para>
+	/// Desechar la petición no afecta a la respuesta, así que quien llama la sigue usando
+	/// igual.
+	/// </para>
 	/// </remarks>
-	private Task<HttpResponseMessage> EnviarConTokenAsync(
+	private async Task<HttpResponseMessage> EnviarConTokenAsync(
 		string ruta,
 		string accessToken,
 		CancellationToken cancelacion,
@@ -387,7 +401,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		using var peticion = new HttpRequestMessage(metodo ?? HttpMethod.Post, Url(ruta));
 		peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-		return _http.SendAsync(peticion, cancelacion);
+		return await _http.SendAsync(peticion, cancelacion).ConfigureAwait(false);
 	}
 
 	/// <inheritdoc />
