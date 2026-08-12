@@ -4,15 +4,38 @@ namespace AppOperador.Aplicacion.Interfaces;
 /// Estado de comunicación de la app con Jacob CCO.
 /// </summary>
 /// <remarks>
-/// No informa si hay red genérica, sino si se puede hablar con Jacob: la maqueta muestra
-/// ese estado como "ENLACE" u "OFFLINE" y de él dependen la cola y la sincronización.
-/// El nombre está fijado en inglés por el documento de arquitectura.
+/// <para>
+/// <b>No informa si hay red genérica, sino si se puede hablar con Jacob</b> (JTT-1391 CA 2).
+/// En campo se dan las dos situaciones por separado: cobertura sin servidor alcanzable, y
+/// servidor levantado al que no se llega. Un indicador basado solo en el WiFi mentiría en
+/// las dos.
+/// </para>
+/// <para>
+/// La maqueta muestra ese estado como "ENLACE" u "OFFLINE" y de él dependen la cola y la
+/// sincronización. El nombre está fijado en inglés por el documento de arquitectura.
+/// </para>
 /// </remarks>
 public interface IConnectivityService
 {
-	/// <summary>Indica si en este momento hay enlace con Jacob CCO.</summary>
-	bool HayEnlace { get; }
+    /// <summary>
+    /// Último estado conocido del enlace con Jacob CCO.
+    /// </summary>
+    /// <remarks>
+    /// Es una lectura cacheada, no una comprobación: consultarla no genera tráfico. Para
+    /// forzar una comprobación está <see cref="ComprobarAsync"/>.
+    /// </remarks>
+    bool HayEnlace { get; }
 
-	/// <summary>Se dispara cuando el enlace se establece o se pierde.</summary>
-	event EventHandler<bool>? EnlaceCambio;
+    /// <summary>Se dispara cuando el enlace se establece o se pierde.</summary>
+    event EventHandler<bool>? EnlaceCambio;
+
+    /// <summary>
+    /// Comprueba ahora mismo si se alcanza a Jacob CCO y actualiza el estado.
+    /// </summary>
+    /// <returns>El estado resultante del enlace.</returns>
+    /// <remarks>
+    /// La usan el reintento manual del operador y la recuperación de red. No lanza: un fallo
+    /// de comunicación es un desenlace normal y se traduce a "no hay enlace".
+    /// </remarks>
+    Task<bool> ComprobarAsync(CancellationToken cancelacion = default);
 }

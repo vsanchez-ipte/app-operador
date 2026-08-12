@@ -93,4 +93,13 @@ public sealed class ConfiguracionApi
 	/// operador, el permiso y la unidad siguen vigentes. No emite un token nuevo.
 	/// </remarks>
 	public const string RutaRevalidar = "/ITS/AppLogin/Revalidar";
+
+	/// <summary>
+	/// Ruta de la comprobación de comunicación. Exige el token y sesión activa.
+	/// </summary>
+	/// <remarks>
+	/// Respuesta mínima y pensada para invocarse con frecuencia: no devuelve datos del
+	/// operador ni de la unidad. Es la sonda del indicador de enlace (JTT-1391).
+	/// </remarks>
+	public const string RutaEstado = "/ITS/AppLogin/Estado";
 }

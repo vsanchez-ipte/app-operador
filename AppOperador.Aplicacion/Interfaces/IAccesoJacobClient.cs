@@ -102,4 +102,22 @@ public interface IAccesoJacobClient
 	/// </para>
 	/// </remarks>
 	Task<ResultadoRevalidacion> RevalidarAsync(string accessToken, CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Comprueba que se alcanza a Jacob CCO y que la sesión sigue viva (JTT-1391 CA 3).
+	/// </summary>
+	/// <param name="accessToken">Token de la sesión abierta.</param>
+	/// <returns><see langword="true"/> solo si Jacob contestó que la sesión sigue activa.</returns>
+	/// <remarks>
+	/// <para>
+	/// Es la comprobación <b>liviana</b>: no devuelve datos del operador ni de la unidad y
+	/// está pensada para invocarse a menudo. Para renovar la vigencia está
+	/// <see cref="RevalidarAsync"/>, que es otra cosa y no debe usarse como sonda.
+	/// </para>
+	/// <para>
+	/// Cualquier fallo —sin red, sin servidor, token vencido— devuelve <see langword="false"/>
+	/// sin lanzar: para el indicador de enlace todos significan lo mismo.
+	/// </para>
+	/// </remarks>
+	Task<bool> ComprobarEnlaceAsync(string accessToken, CancellationToken cancelacion = default);
 }

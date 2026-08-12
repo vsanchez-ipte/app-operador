@@ -59,7 +59,7 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	public string Texto => TextoModoOffline;
 
 	/// <summary>Indica si se puede ofrecer el reintento.</summary>
-	public bool PuedeReintentar => _revalidar is not null && !Ocupado;
+	public bool PuedeReintentar => !Ocupado;
 
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
@@ -73,17 +73,25 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	public bool HayDetalle => !string.IsNullOrEmpty(Detalle);
 
 	/// <summary>
-	/// Vuelve a preguntar a Jacob si la sesión sigue siendo válida.
+	/// Comprueba el enlace y, si lo hay, revalida la sesión.
 	/// </summary>
 	/// <remarks>
+	/// <para>
+	/// Los dos pasos, y en ese orden: primero se sondea a Jacob para saber si se le alcanza
+	/// (JTT-1391) y solo entonces se le pide que revalide la sesión (JTT-1383 CA 9). Ir
+	/// directo a la revalidación gastaría una petición pesada para averiguar algo que la
+	/// sonda liviana responde.
+	/// </para>
+	/// <para>
 	/// Es el reintento manual. La recuperación automática llega por
 	/// <see cref="IConnectivityService.EnlaceCambio"/>, pero en campo conviene poder forzarla
 	/// sin esperar a que el sistema note el cambio.
+	/// </para>
 	/// </remarks>
 	[RelayCommand]
 	private async Task ReintentarAsync()
 	{
-		if (_revalidar is null || Ocupado)
+		if (Ocupado)
 		{
 			return;
 		}
@@ -92,6 +100,18 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 		OnPropertyChanged(nameof(PuedeReintentar));
 		try
 		{
+			if (!await _conectividad.ComprobarAsync())
+			{
+				Detalle = "Sigue sin haber comunicación con Jacob CCO.";
+				return;
+			}
+
+			if (_revalidar is null || _sesiones.Actual is null)
+			{
+				Detalle = "Enlace recuperado.";
+				return;
+			}
+
 			var resultado = await _revalidar.RevalidarAsync();
 
 			Detalle = resultado switch
@@ -127,11 +147,25 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	{
 		Refrescar();
 
+		// Aquí no se vuelve a sondear: el servicio de conectividad ya lo hizo para poder
+		// levantar este evento. Solo queda revalidar.
 		if (!hayEnlace || _revalidar is null || _sesiones.Actual is null)
 		{
 			return;
 		}
 
-		_ = ReintentarAsync();
+		_ = RevalidarTrasRecuperarAsync();
+	}
+
+	/// <summary>Revalida la sesión al volver el enlace, sin bloquear a quien avisó.</summary>
+	private async Task RevalidarTrasRecuperarAsync()
+	{
+		var resultado = await _revalidar!.RevalidarAsync();
+
+		Detalle = resultado.EsRechazoDefinitivo
+			? "La sesión ya no es válida. Vuelva a iniciar sesión."
+			: "Enlace recuperado. Sesión revalidada.";
+
+		Refrescar();
 	}
 }

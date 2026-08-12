@@ -102,6 +102,10 @@ public sealed class ConectividadControlada : IConnectivityService
 	}
 
 	public event EventHandler<bool>? EnlaceCambio;
+
+	/// <summary>La prueba fija el estado a mano: comprobar solo devuelve lo que hay.</summary>
+	public Task<bool> ComprobarAsync(CancellationToken cancelacion = default) =>
+		Task.FromResult(HayEnlace);
 }
 
 /// <summary>Sesión abierta fija, para que las incidencias tengan operador y unidad.</summary>

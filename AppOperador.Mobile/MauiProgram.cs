@@ -84,7 +84,6 @@ public static class MauiProgram
 	{
 		servicios.AddSingleton<IClock, RelojSistema>();
 		servicios.AddSingleton<IMonotonicClock, RelojMonotonicoDispositivo>();
-		servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
 
 		// Datos que el perfil muestra junto a la sesión y que Jacob no devuelve porque no los
@@ -221,6 +220,9 @@ public static class MauiProgram
 
 		if (!configuracion.UsarApiReal)
 		{
+			// Sin canal no hay a quién sondear: el estado de enlace se simula, como el resto
+			// del recorrido.
+			servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
 			return;
 		}
 
@@ -230,6 +232,10 @@ public static class MauiProgram
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
 			return new ClienteAccesoJacob(http, opciones, sp.GetRequiredService<ITokenClaims>());
 		});
+
+		// Estado de enlace real: red del dispositivo más una sonda autenticada a Jacob. Va
+		// aquí porque necesita el cliente que se acaba de registrar (JTT-1391).
+		servicios.AddSingleton<IConnectivityService, ServicioConectividadJacob>();
 
 		// Transitorio a propósito: cada pantalla de acceso retiene su propio desafío, así que
 		// uno no puede filtrarse de un intento a otro.

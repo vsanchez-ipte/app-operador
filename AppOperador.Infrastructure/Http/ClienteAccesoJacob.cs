@@ -381,12 +381,42 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	private Task<HttpResponseMessage> EnviarConTokenAsync(
 		string ruta,
 		string accessToken,
-		CancellationToken cancelacion)
+		CancellationToken cancelacion,
+		HttpMethod? metodo = null)
 	{
-		using var peticion = new HttpRequestMessage(HttpMethod.Post, Url(ruta));
+		using var peticion = new HttpRequestMessage(metodo ?? HttpMethod.Post, Url(ruta));
 		peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
 		return _http.SendAsync(peticion, cancelacion);
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> ComprobarEnlaceAsync(
+		string accessToken,
+		CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(accessToken))
+		{
+			return false;
+		}
+
+		try
+		{
+			using var respuesta = await EnviarConTokenAsync(
+				ConfiguracionApi.RutaEstado, accessToken, cancelacion, HttpMethod.Get);
+
+			// Basta el código: el cuerpo no aporta nada al indicador. Un 401 significa que la
+			// sesión se acabó, y para el enlace eso también es "no se puede operar".
+			return respuesta.IsSuccessStatusCode;
+		}
+		catch (HttpRequestException)
+		{
+			return false;
+		}
+		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
+		{
+			return false;
+		}
 	}
 
 	/// <summary>

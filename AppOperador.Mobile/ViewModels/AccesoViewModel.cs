@@ -192,6 +192,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MensajeAviso = null;
 
 		await InicializarAsync();
+
+		// El indicador de enlace de esta pantalla debe reflejar el estado real, no el último
+		// que se conociera (JTT-1391 CA 6). Sin sesión la sonda no puede autenticarse, así
+		// que lo que se comprueba aquí es la red.
+		await _conectividad.ComprobarAsync();
+		OnPropertyChanged(nameof(TextoEstadoEnlace));
 	}
 
 	/// <summary>Carga el catálogo de unidades al abrir la pantalla.</summary>
