@@ -23,6 +23,14 @@
                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
                         <Label Text="{Binding Enlace.Texto}" FontAttributes="Bold"
                                TextColor="{StaticResource AmbarTexto}" />
+                        <!--
+                            Hasta cuando se admite trabajo sin conexion (JTT-1386 CA 4). Lleva la
+                            fecha y no solo la hora: la ventana puede vencer al dia siguiente. El
+                            instante lo calculo el servidor y aqui solo se pasa a hora local.
+                        -->
+                        <Label Text="{Binding Enlace.ExpiraEl, StringFormat='Trabajo sin conexión permitido hasta el {0}'}"
+                               Style="{StaticResource TextoSecundario}"
+                               IsVisible="{Binding Enlace.HayExpiracion}" />
                         <Label Text="{Binding Enlace.Detalle}" Style="{StaticResource TextoSecundario}"
                                IsVisible="{Binding Enlace.HayDetalle}" />
                     </VerticalStackLayout>
@@ -38,25 +46,61 @@
 
                     <Grid ColumnDefinitions="*,Auto">
                         <VerticalStackLayout Grid.Column="0" Spacing="1">
-                            <Label Text="Operador de campo" Style="{StaticResource TituloTarjeta}" />
-                            <Label Text="APK recortada · Modo vehicular · Campo"
+                            <!--
+                                Titulo neutro a proposito. Antes decia "Operador de campo", que
+                                cualquiera leia como el rol sin serlo: el rol real venia en la
+                                sesion y no se mostraba en ninguna pantalla.
+                            -->
+                            <Label Text="Sesión activa" Style="{StaticResource TituloTarjeta}" />
+                            <Label Text="Modo vehicular · Campo"
                                    Style="{StaticResource TextoSecundario}" />
                         </VerticalStackLayout>
 
-                        <Border Grid.Column="1" Style="{StaticResource InsigniaVerde}">
-                            <Label Text="{Binding TextoEnlace}" Style="{StaticResource TextoInsigniaVerde}" />
+                        <!--
+                            Estado de la comunicacion con Jacob CCO (JTT-1386 CA 2). Son cuatro
+                            insignias excluyentes y no una con el color enlazado: en este proyecto
+                            el fondo de un Border se pinta con brocha desde un estilo, y elegir el
+                            estilo por disparadores sobre un enum obliga a acrobacias en XAML.
+
+                            El verde exige comunicacion exitosa con Jacob, no que el telefono
+                            tenga red (CA 10 y CA 11). Antes la insignia se quedaba verde aunque
+                            dijera OFFLINE.
+                        -->
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaVerde}"
+                                IsVisible="{Binding Enlace.EstaEnLinea}">
+                            <Label Text="{Binding Enlace.TextoEstado}" Style="{StaticResource TextoInsigniaVerde}" />
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaAmbar}"
+                                IsVisible="{Binding Enlace.EstaSinConexion}">
+                            <Label Text="{Binding Enlace.TextoEstado}" Style="{StaticResource TextoInsigniaAmbar}" />
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaRosa}"
+                                IsVisible="{Binding Enlace.EstaRevalidando}">
+                            <Label Text="{Binding Enlace.TextoEstado}" Style="{StaticResource TextoInsigniaRosa}" />
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource InsigniaRoja}"
+                                IsVisible="{Binding Enlace.EstaEnErrorDeServicio}">
+                            <Label Text="{Binding Enlace.TextoEstado}" Style="{StaticResource TextoInsigniaRoja}" />
                         </Border>
                     </Grid>
 
                     <Border Style="{StaticResource TarjetaInterna}">
                         <Grid ColumnDefinitions="*,Auto">
+                            <!--
+                                Identidad y unidad, todo desde la sesion (JTT-1386 CA 1 y CA 9).
+                                Van etiquetados para que se puedan verificar sin adivinar cual es
+                                cual: el rol de un operador puede parecer un nombre.
+                            -->
                             <VerticalStackLayout Grid.Column="0" Spacing="1">
                                 <Label Text="{Binding Operador}" FontAttributes="Bold" FontSize="14"
                                        TextColor="{StaticResource TextoTitulo}" />
+                                <Label Text="{Binding Rol, StringFormat='Rol: {0}'}"
+                                       Style="{StaticResource TextoSecundario}" />
                                 <!-- Unidad con la que opera (JTT-1381 CA 13). Es la clave, no el id tecnico. -->
                                 <Label Text="{Binding UnidadVehicular, StringFormat='Unidad {0}'}"
-                                       Style="{StaticResource TextoSecundario}" />
-                                <Label Text="Captura, evidencia y sincronizacion vehicular"
                                        Style="{StaticResource TextoSecundario}" />
                             </VerticalStackLayout>
 

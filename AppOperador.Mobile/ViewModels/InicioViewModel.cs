@@ -48,6 +48,16 @@ public sealed partial class InicioViewModel : ObservableObject
 	public string Operador => _sesiones.Actual?.Operador ?? "-";
 
 	/// <summary>
+	/// Rol funcional con el que ingresó el operador (JTT-1386 CA 1).
+	/// </summary>
+	/// <remarks>
+	/// Sale de la sesión, como el resto de lo que se muestra aquí (CA 9). Antes la pantalla
+	/// llevaba un «Operador de campo» escrito en el XAML que parecía el rol y no lo era: quien
+	/// ingresara con otro rol veía igualmente ese texto.
+	/// </remarks>
+	public string Rol => _sesiones.Actual?.Rol ?? "-";
+
+	/// <summary>
 	/// Unidad con la que el operador está trabajando (JTT-1381 CA 13).
 	/// </summary>
 	/// <remarks>
@@ -55,9 +65,6 @@ public sealed partial class InicioViewModel : ObservableObject
 	/// económico que lleva pintado la unidad, no el uuid que usa Jacob.
 	/// </remarks>
 	public string UnidadVehicular => _sesiones.Actual?.UnidadVehicular ?? "-";
-
-	/// <summary>Etiqueta de enlace: verde cuando hay comunicación con Jacob CCO.</summary>
-	public string TextoEnlace => _conectividad.HayEnlace ? "ENLACE" : "OFFLINE";
 
 	public bool HayEnlace => _conectividad.HayEnlace;
 
@@ -79,6 +86,7 @@ public sealed partial class InicioViewModel : ObservableObject
 		// La comparación es en UTC; al operador se le presenta su hora local (DA-10).
 		HoraActualizacion = _reloj.UtcAhora.ToLocalTime().ToString("HH:mm:ss");
 		OnPropertyChanged(nameof(Operador));
+		OnPropertyChanged(nameof(Rol));
 		OnPropertyChanged(nameof(UnidadVehicular));
 		OnPropertyChanged(nameof(KilometroActual));
 	}
@@ -87,11 +95,7 @@ public sealed partial class InicioViewModel : ObservableObject
 	// demostración para los desarrolladores, no funcionalidad del producto. No se
 	// implementan aquí: obligarían al ViewModel a conocer un simulador concreto.
 
-	private void NotificarEstadoEnlace()
-	{
-		OnPropertyChanged(nameof(TextoEnlace));
-		OnPropertyChanged(nameof(HayEnlace));
-	}
+	private void NotificarEstadoEnlace() => OnPropertyChanged(nameof(HayEnlace));
 
 	partial void OnResumenChanged(ResumenOperativo value) => OnPropertyChanged(nameof(KilometroActual));
 }

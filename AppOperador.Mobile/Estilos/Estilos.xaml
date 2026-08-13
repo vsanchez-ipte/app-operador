@@ -145,6 +145,10 @@
         <Setter Property="Background" Value="{StaticResource AmbarFondoBrocha}" />
     </Style>
 
+    <Style x:Key="InsigniaRoja" TargetType="Border" BasedOn="{StaticResource InsigniaVerde}">
+        <Setter Property="Background" Value="{StaticResource RojoFondoBrocha}" />
+    </Style>
+
     <Style x:Key="TextoInsigniaVerde" TargetType="Label">
         <Setter Property="FontSize" Value="10" />
         <Setter Property="FontAttributes" Value="Bold" />
@@ -158,6 +162,10 @@
 
     <Style x:Key="TextoInsigniaAmbar" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
         <Setter Property="TextColor" Value="{StaticResource AmbarTexto}" />
+    </Style>
+
+    <Style x:Key="TextoInsigniaRoja" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
+        <Setter Property="TextColor" Value="{StaticResource RojoTexto}" />
     </Style>
 
     <!-- ===== Indicadores del tablero de Inicio ===== -->

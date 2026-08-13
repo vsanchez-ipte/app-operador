@@ -25,6 +25,15 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	/// <summary>Texto exigido por JTT-279 para el modo sin conexión.</summary>
 	public const string TextoModoOffline = "Sin conexión / Modo offline";
 
+	/// <summary>Texto del estado en línea, fijado por JTT-1386 CA 2.</summary>
+	public const string TextoEnLinea = "En línea";
+
+	/// <summary>Texto del estado mientras se comprueba, fijado por JTT-1386 CA 2.</summary>
+	public const string TextoRevalidando = "Revalidando";
+
+	/// <summary>Texto del estado de error del servidor, fijado por JTT-1386 CA 2.</summary>
+	public const string TextoErrorDeServicio = "Error de servicio";
+
 	private const string MensajeSinComunicacion = "Sigue sin haber comunicación con Jacob CCO.";
 	private const string MensajeRevalidada = "Enlace recuperado. Sesión revalidada.";
 	private const string MensajeSesionNoValida = "La sesión ya no es válida. Vuelva a iniciar sesión.";
@@ -63,6 +72,15 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	private readonly ILogger<EstadoEnlaceViewModel> _registro;
 	private readonly RevalidarSesionMovil? _revalidar;
 
+	/// <summary>
+	/// Por qué falló el último sondeo. Distingue «error de servicio» de «sin conexión».
+	/// </summary>
+	/// <remarks>
+	/// Se guarda porque el estado no se puede deducir solo de <c>HayEnlace</c>: sin enlace, que
+	/// el servidor haya contestado o no cambia lo que el operador debe hacer.
+	/// </remarks>
+	private CausaSinEnlace _ultimaCausa = CausaSinEnlace.Ninguna;
+
 	/// <param name="vigencia">
 	/// Vigilancia de la ventana offline mientras se trabaja (JTT-1384).
 	/// </param>
@@ -92,6 +110,63 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 
 	/// <summary>Indica si hay enlace con Jacob en este momento.</summary>
 	public bool HayEnlace => _conectividad.HayEnlace;
+
+	/// <summary>
+	/// Estado de la comunicación que se pinta en la insignia (JTT-1386 CA 2).
+	/// </summary>
+	/// <remarks>
+	/// La decisión vive en <see cref="ReglaEstadoComunicacion"/>, en la capa de aplicación, para
+	/// que tenga pruebas. Aquí solo se le pasa lo que se sabe y se traduce a texto.
+	/// </remarks>
+	public EstadoComunicacion Estado =>
+		ReglaEstadoComunicacion.Determinar(_conectividad.HayEnlace, Ocupado, _ultimaCausa);
+
+	/// <summary>Texto del estado, con los literales que fija la historia.</summary>
+	public string TextoEstado => Estado switch
+	{
+		EstadoComunicacion.EnLinea => TextoEnLinea,
+		EstadoComunicacion.Revalidando => TextoRevalidando,
+		EstadoComunicacion.ErrorDeServicio => TextoErrorDeServicio,
+		_ => TextoModoOffline,
+	};
+
+	/// <summary>
+	/// Banderas de estado para la vista.
+	/// </summary>
+	/// <remarks>
+	/// Se exponen así, y no como un color o un estilo, para que el ViewModel no decida la
+	/// apariencia: la vista muestra la insignia que corresponda. Enlazar un estilo por
+	/// disparadores sobre un enum obliga a acrobacias en XAML sin ganar nada.
+	/// </remarks>
+	public bool EstaEnLinea => Estado == EstadoComunicacion.EnLinea;
+
+	/// <inheritdoc cref="EstaEnLinea"/>
+	public bool EstaSinConexion => Estado == EstadoComunicacion.SinConexion;
+
+	/// <inheritdoc cref="EstaEnLinea"/>
+	public bool EstaRevalidando => Estado == EstadoComunicacion.Revalidando;
+
+	/// <inheritdoc cref="EstaEnLinea"/>
+	public bool EstaEnErrorDeServicio => Estado == EstadoComunicacion.ErrorDeServicio;
+
+	/// <summary>
+	/// Fecha y hora <b>local</b> hasta la que se admite trabajo sin conexión (CA 4).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Lleva la fecha y no solo la hora: la ventana puede vencer al día siguiente, y «11:30 p. m.»
+	/// a secas no dice cuál.
+	/// </para>
+	/// <para>
+	/// El instante lo calculó el servidor y la app lo adopta sin recalcularlo (CA 5); lo único
+	/// que se hace aquí es pasarlo a la hora del dispositivo para presentarlo (DA-10).
+	/// </para>
+	/// </remarks>
+	public string? ExpiraEl =>
+		_sesiones.Actual?.Vigencia.OfflineUntilUtc.ToLocalTime().ToString("dd/MM/yyyy, hh:mm tt");
+
+	/// <summary>Indica si hay una expiración que mostrar.</summary>
+	public bool HayExpiracion => ExpiraEl is not null;
 
 	/// <summary>
 	/// Indica si hay que mostrar el aviso de modo offline.
@@ -151,6 +226,7 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 			// escucha revalida por su cuenta. Mientras Ocupado esté encendido ese camino se
 			// abstiene, así que la revalidación de aquí abajo es la única que corre.
 			var sondeo = await _conectividad.ComprobarAsync();
+			_ultimaCausa = sondeo.Causa;
 
 			if (!sondeo.HayEnlace)
 			{
@@ -236,13 +312,65 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 
 		Refrescar();
 
-		if (estado != EstadoVigenciaSesion.Expirada)
+		if (estado == EstadoVigenciaSesion.Expirada)
 		{
-			return true;
+			await Shell.Current.GoToAsync("//acceso");
+			return false;
 		}
 
-		await Shell.Current.GoToAsync("//acceso");
-		return false;
+		// Sin esto el estado se queda como lo dejó el último sondeo. Ver las notas del método.
+		_ = ActualizarEstadoDelEnlaceAsync();
+		return true;
+	}
+
+	/// <summary>
+	/// Vuelve a preguntar a Jacob CCO en qué estado está el enlace (JTT-1386 CA 10).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Hace falta porque el estado del enlace es un valor guardado, no una medición viva.</b>
+	/// Solo se actualiza al sondear o cuando el dispositivo cambia de red, y apagar el servidor
+	/// no cambia la red del teléfono: la app seguía anunciando «En línea» contra un API caído
+	/// hasta que alguien pulsara «Reintentar».
+	/// </para>
+	/// <para>
+	/// Se lanza <b>sin esperarlo</b>: la pantalla debe aparecer ya, y no retenida hasta veinte
+	/// segundos si el servidor no contesta. Al llegar la respuesta se refresca lo visible.
+	/// </para>
+	/// <para>
+	/// <b>No enciende <see cref="Ocupado"/></b>, y es deliberado. Ese indicador lo mira
+	/// <see cref="AlCambiarElEnlace"/> para abstenerse de revalidar cuando ya hay un reintento
+	/// manual en curso; encenderlo aquí haría que una recuperación detectada por este sondeo
+	/// no revalidara la sesión, que es lo que pide JTT-1383 CA 9.
+	/// </para>
+	/// <para>
+	/// Es el mismo criterio de JTT-1384: se comprueba al entrar a cada pantalla y no con un
+	/// temporizador, para no dejar un reloj corriendo en segundo plano gastando batería.
+	/// </para>
+	/// </remarks>
+	private async Task ActualizarEstadoDelEnlaceAsync()
+	{
+		// Sin sesión no hay sonda autenticada que enviar, y la pantalla de acceso ya dice lo suyo.
+		if (_sesiones.Actual is null)
+		{
+			return;
+		}
+
+		try
+		{
+			var sondeo = await _conectividad.ComprobarAsync();
+			_ultimaCausa = sondeo.Causa;
+		}
+		catch (Exception excepcion)
+		{
+			// Nadie espera este resultado, así que una excepción aquí no tendría quién la
+			// recogiera y en el hilo de interfaz cierra la app.
+			_registro.LogError(excepcion, "Falló el sondeo del enlace al mostrar una pantalla.");
+		}
+		finally
+		{
+			Refrescar();
+		}
 	}
 
 	/// <summary>Reevalúa el estado visible. La llaman las pantallas al aparecer.</summary>
@@ -251,7 +379,29 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 		OnPropertyChanged(nameof(HayEnlace));
 		OnPropertyChanged(nameof(EnModoOffline));
 		OnPropertyChanged(nameof(PuedeReintentar));
+		OnPropertyChanged(nameof(ExpiraEl));
+		OnPropertyChanged(nameof(HayExpiracion));
+		NotificarEstado();
 	}
+
+	/// <summary>
+	/// Avisa de que cambió el estado de comunicación y todo lo que se deriva de él.
+	/// </summary>
+	/// <remarks>
+	/// Se llama también al empezar y terminar una comprobación: mientras dura, el estado es
+	/// «Revalidando», y sin esto la insignia se quedaría con el valor anterior.
+	/// </remarks>
+	private void NotificarEstado()
+	{
+		OnPropertyChanged(nameof(Estado));
+		OnPropertyChanged(nameof(TextoEstado));
+		OnPropertyChanged(nameof(EstaEnLinea));
+		OnPropertyChanged(nameof(EstaSinConexion));
+		OnPropertyChanged(nameof(EstaRevalidando));
+		OnPropertyChanged(nameof(EstaEnErrorDeServicio));
+	}
+
+	partial void OnOcupadoChanged(bool value) => NotificarEstado();
 
 	/// <summary>
 	/// Al recuperar el enlace, revalida la sesión (CA 9).
@@ -262,6 +412,11 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	/// </remarks>
 	private void AlCambiarElEnlace(object? origen, bool hayEnlace)
 	{
+		// El evento solo dice si hay enlace, no por qué se perdió, así que la causa del sondeo
+		// anterior deja de valer. Sin esto, un «Error de servicio» viejo seguiría pintado tras
+		// una caída posterior que nada tuvo que ver con el servidor.
+		_ultimaCausa = CausaSinEnlace.Ninguna;
+
 		Refrescar();
 
 		// Aquí no se vuelve a sondear: el servicio de conectividad ya lo hizo para poder
