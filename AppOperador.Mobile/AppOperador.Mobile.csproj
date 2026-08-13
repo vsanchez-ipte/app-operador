@@ -76,6 +76,28 @@
 		       Text="Ambiente '$(Ambiente)' no reconocido. Use Local, Desarrollo, QA o Simulado." />
 	</Target>
 
+	<!--
+		Nombre del paquete que se entrega: AppOperador-<Ambiente>-<aaaa-MM-dd>.apk
+
+		El SDK de Android nombra el APK con el identificador de la aplicacion
+		(com.companyname.appoperador.mobile-Signed.apk), que no dice a que ambiente apunta ni
+		cuando se armo. Como los paquetes se entregan por correo o carpeta compartida y se ven
+		identicos entre si, al terminar la publicacion se deja al lado una copia ya nombrada.
+
+		El original no se borra: el SDK lo usa para instalar y desplegar desde el IDE.
+	-->
+	<Target Name="NombrarPaqueteEntregable" AfterTargets="Publish"
+	        Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PropertyGroup>
+			<_PaqueteFirmado>$(PublishDir)$(ApplicationId)-Signed.apk</_PaqueteFirmado>
+			<_PaqueteEntregable>$(PublishDir)AppOperador-$(Ambiente)-$([System.DateTime]::Now.ToString('yyyy-MM-dd')).apk</_PaqueteEntregable>
+		</PropertyGroup>
+		<Copy SourceFiles="$(_PaqueteFirmado)" DestinationFiles="$(_PaqueteEntregable)"
+		      Condition="Exists('$(_PaqueteFirmado)')" />
+		<Message Importance="high" Condition="Exists('$(_PaqueteEntregable)')"
+		         Text="Paquete para entregar: $(_PaqueteEntregable)" />
+	</Target>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

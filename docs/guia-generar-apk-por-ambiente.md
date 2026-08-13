@@ -10,9 +10,15 @@ propiedad `Ambiente`. Un mismo código fuente produce el paquete de cualquier am
 
 ## 1. Los comandos
 
-Desde la raíz del repositorio (`c:\repos\app-operador`), en PowerShell:
+Desde la raíz del repositorio (`c:\repos\app-operador`), en PowerShell. **Copiar el bloque
+completo, incluidas las dos primeras líneas:**
 
 ```powershell
+# Temporales fuera del perfil de usuario. Ver el punto 5: si la ruta del perfil
+# lleva acentos o eñes, sin esto la compilación falla entera.
+mkdir D:\build-temp -Force
+$env:TMP = 'D:\build-temp'; $env:TEMP = 'D:\build-temp'
+
 # Desarrollo
 dotnet publish AppOperador.Mobile -f net10.0-android -c Release -p:Ambiente=Desarrollo -p:AndroidPackageFormat=apk
 
@@ -21,6 +27,9 @@ dotnet publish AppOperador.Mobile -f net10.0-android -c Release -p:Ambiente=QA -
 ```
 
 Es el mismo comando: **solo cambia la palabra después de `-p:Ambiente=`.**
+
+Las dos primeras líneas valen para la terminal abierta: al abrir otra, hay que repetirlas.
+En una máquina cuyo usuario no lleve acentos no hacen falta, pero tampoco estorban.
 
 | Ambiente | A dónde apunta | Para qué |
 |---|---|---|
@@ -35,12 +44,29 @@ Es el mismo comando: **solo cambia la palabra después de `-p:Ambiente=`.**
 AppOperador.Mobile\bin\Release\net10.0-android\publish\
 ```
 
-Ahí aparecen dos `.apk`. **El que se instala es el que termina en `-Signed.apk`**; el otro no
-está firmado y Android lo rechaza.
+Ahí aparecen tres `.apk`. **El que se entrega es el que lleva el nombre con el ambiente y la
+fecha:**
 
-> **Esa carpeta siempre se llama igual.** Si se generan dos ambientes seguidos, el segundo
-> pisa al primero. Conviene copiar el APK y renombrarlo en cuanto sale, por ejemplo
-> `AppOperador-QA-2026-08-13.apk`.
+```
+AppOperador-QA-2026-08-13.apk                      <- este
+com.companyname.appoperador.mobile-Signed.apk      lo genera el SDK; mismo contenido
+com.companyname.appoperador.mobile.apk             sin firmar, Android lo rechaza
+```
+
+La compilación lo nombra sola, con el patrón `AppOperador-<Ambiente>-<aaaa-MM-dd>.apk`, y lo
+anuncia al terminar:
+
+```
+Paquete para entregar: bin\Release\net10.0-android\publish\AppOperador-QA-2026-08-13.apk
+```
+
+Los que empiezan con `com.companyname` son los que arma el SDK de Android a partir del
+identificador de la aplicación. No se borran porque el IDE los usa para instalar y depurar,
+pero **no son los que se mandan**: entre dos ambientes se ven idénticos.
+
+> **La carpeta siempre se llama igual.** Si se generan dos ambientes seguidos, los archivos
+> `com.companyname...` se pisan; los nombrados no, mientras cambien de ambiente o de día.
+> Aun así, conviene sacar el paquete de ahí en cuanto sale.
 
 ## 3. Cómo comprobar que apunta a donde debe
 
@@ -74,18 +100,24 @@ error : Ambiente 'Produccion' no reconocido. Use Local, Desarrollo, QA o Simulad
 Es deliberado: si cayera a `Local` en silencio, saldría un paquete apuntando a la máquina de
 quien lo compiló y nadie lo notaría hasta que fallara en manos de otro.
 
-## 5. Nota para máquinas con acentos en el nombre de usuario
+## 5. El error del AOT y los acentos del perfil
 
 Si la ruta del perfil de Windows lleva acentos o eñes —por ejemplo
-`C:\Users\VíctorAlfonsoSánchez`—, la precompilación AOT falla en **todos** los ensamblados
-con *«The specified response file can not be read»*. En ese caso, mandar los temporales a
-otra ruta antes de publicar:
+`C:\Users\VíctorAlfonsoSánchez`— y **no** se ejecutaron las dos primeras líneas del punto 1,
+la compilación falla con veintitantos errores como este, uno por ensamblado:
 
-```powershell
-mkdir D:\build-temp -Force
-$env:TMP = 'D:\build-temp'; $env:TEMP = 'D:\build-temp'
-# y luego el comando del punto 1
 ```
+error : Precompiling failed for ...\linked\AppOperador.Aplicacion.dll with exit code 1.
+        The specified response file can not be read
+```
+
+Asusta por la cantidad, pero **la causa es una sola**: la precompilación AOT escribe un
+archivo de respuesta en la carpeta temporal del usuario y no logra leerlo de vuelta cuando la
+ruta tiene caracteres no ASCII. Mandando los temporales a `D:\build-temp` desaparece.
+
+La solución está en el punto 1. Si ya falló, basta con ejecutar esas dos líneas y repetir el
+comando; no hace falta limpiar nada. Si aun así se repite, borrar
+`AppOperador.Mobile\obj\Release` y volver a intentar.
 
 Salida de emergencia si aún así falla: agregar `-p:RunAOTCompilation=false
 -p:AndroidEnableProfiledAot=false`. Da un APK válido y algo más lento (~25 MB en vez de ~32).
