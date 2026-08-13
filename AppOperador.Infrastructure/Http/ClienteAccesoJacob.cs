@@ -405,13 +405,13 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	}
 
 	/// <inheritdoc />
-	public async Task<bool> ComprobarEnlaceAsync(
+	public async Task<ResultadoSondeo> ComprobarEnlaceAsync(
 		string accessToken,
 		CancellationToken cancelacion = default)
 	{
 		if (string.IsNullOrWhiteSpace(accessToken))
 		{
-			return false;
+			return ResultadoSondeo.SinSesion();
 		}
 
 		try
@@ -419,17 +419,17 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			using var respuesta = await EnviarConTokenAsync(
 				ConfiguracionApi.RutaEstado, accessToken, cancelacion, HttpMethod.Get);
 
-			// Basta el código: el cuerpo no aporta nada al indicador. Un 401 significa que la
-			// sesión se acabó, y para el enlace eso también es "no se puede operar".
-			return respuesta.IsSuccessStatusCode;
+			// Basta el código: el cuerpo no aporta nada al indicador. Lo que importa es que
+			// haber contestado ya distingue un problema del servidor de uno de comunicación.
+			return ResultadoSondeo.Desde((int)respuesta.StatusCode);
 		}
-		catch (HttpRequestException)
+		catch (HttpRequestException excepcion)
 		{
-			return false;
+			return ResultadoSondeo.SinTransporte($"No se alcanzó a Jacob CCO: {excepcion.Message}");
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
 		{
-			return false;
+			return ResultadoSondeo.SinTransporte("Jacob CCO no contestó dentro del tiempo de espera.");
 		}
 	}
 

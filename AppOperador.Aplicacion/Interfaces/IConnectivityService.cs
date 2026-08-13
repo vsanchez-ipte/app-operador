@@ -1,3 +1,5 @@
+using AppOperador.Aplicacion.Modelos;
+
 namespace AppOperador.Aplicacion.Interfaces;
 
 /// <summary>
@@ -32,10 +34,14 @@ public interface IConnectivityService
     /// <summary>
     /// Comprueba ahora mismo si se alcanza a Jacob CCO y actualiza el estado.
     /// </summary>
-    /// <returns>El estado resultante del enlace.</returns>
+    /// <returns>
+    /// El estado resultante del enlace y, si no lo hay, por qué. Quien presenta necesita esa
+    /// causa: decir "sin conexión" cuando el servidor sí contestó manda a buscar el problema
+    /// donde no está.
+    /// </returns>
     /// <remarks>
     /// La usan el reintento manual del operador y la recuperación de red. No lanza: un fallo
-    /// de comunicación es un desenlace normal y se traduce a "no hay enlace".
+    /// de comunicación es un desenlace normal y viaja dentro del resultado.
     /// </remarks>
-    Task<bool> ComprobarAsync(CancellationToken cancelacion = default);
+    Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default);
 }

@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Infrastructure.Dispositivo;
 
@@ -57,12 +58,13 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 	public event EventHandler<bool>? EnlaceCambio;
 
 	/// <inheritdoc />
-	public async Task<bool> ComprobarAsync(CancellationToken cancelacion = default)
+	public async Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default)
 	{
 		// Sin red no hace falta molestar al servidor: la respuesta ya se conoce.
 		if (!HayRed)
 		{
-			return Publicar(false);
+			return Publicar(ResultadoSondeo.SinTransporte(
+				"El dispositivo declara no tener acceso a internet."));
 		}
 
 		var token = await _tokens.ObtenerAsync(cancelacion);
@@ -70,7 +72,7 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		// Sin sesión no hay sonda autenticada posible. Ver las notas del tipo.
 		if (string.IsNullOrWhiteSpace(token))
 		{
-			return Publicar(true);
+			return Publicar(ResultadoSondeo.SegunLaRed());
 		}
 
 		return Publicar(await _jacob.ComprobarEnlaceAsync(token, cancelacion));
@@ -92,7 +94,7 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 	{
 		if (argumentos.NetworkAccess != NetworkAccess.Internet)
 		{
-			Publicar(false);
+			Publicar(ResultadoSondeo.SinTransporte("El dispositivo perdió el acceso a internet."));
 			return;
 		}
 
@@ -113,9 +115,9 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		{
 			await ComprobarAsync();
 		}
-		catch (Exception)
+		catch (Exception excepcion)
 		{
-			Publicar(false);
+			Publicar(ResultadoSondeo.SinTransporte($"Falló el sondeo automático: {excepcion.Message}"));
 		}
 	}
 
@@ -123,25 +125,31 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 	/// Guarda el estado y avisa solo si cambió.
 	/// </summary>
 	/// <remarks>
+	/// <para>
 	/// Avisar en cada comprobación dispararía la revalidación una y otra vez, porque quien
 	/// escucha el evento la lanza al recuperar el enlace.
+	/// </para>
+	/// <para>
+	/// El evento sigue llevando un booleano: para el indicador de la pantalla solo cuenta si
+	/// se puede operar. La causa viaja en el resultado, hacia quien la pidió.
+	/// </para>
 	/// </remarks>
-	private bool Publicar(bool hayEnlace)
+	private ResultadoSondeo Publicar(ResultadoSondeo sondeo)
 	{
-		if (_hayEnlace == hayEnlace)
+		if (_hayEnlace == sondeo.HayEnlace)
 		{
-			return hayEnlace;
+			return sondeo;
 		}
 
-		_hayEnlace = hayEnlace;
+		_hayEnlace = sondeo.HayEnlace;
 
 		var suscriptores = EnlaceCambio;
 		if (suscriptores is not null)
 		{
-			MainThread.BeginInvokeOnMainThread(() => suscriptores(this, hayEnlace));
+			MainThread.BeginInvokeOnMainThread(() => suscriptores(this, sondeo.HayEnlace));
 		}
 
-		return hayEnlace;
+		return sondeo;
 	}
 
 	public void Dispose()

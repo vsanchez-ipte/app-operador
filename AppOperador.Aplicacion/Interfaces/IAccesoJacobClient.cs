@@ -107,7 +107,10 @@ public interface IAccesoJacobClient
 	/// Comprueba que se alcanza a Jacob CCO y que la sesión sigue viva (JTT-1391 CA 3).
 	/// </summary>
 	/// <param name="accessToken">Token de la sesión abierta.</param>
-	/// <returns><see langword="true"/> solo si Jacob contestó que la sesión sigue activa.</returns>
+	/// <returns>
+	/// Si hay enlace y, cuando no lo hay, por qué. Nunca lanza: todos los fallos son
+	/// desenlaces esperados y viajan dentro del resultado.
+	/// </returns>
 	/// <remarks>
 	/// <para>
 	/// Es la comprobación <b>liviana</b>: no devuelve datos del operador ni de la unidad y
@@ -115,9 +118,10 @@ public interface IAccesoJacobClient
 	/// <see cref="RevalidarAsync"/>, que es otra cosa y no debe usarse como sonda.
 	/// </para>
 	/// <para>
-	/// Cualquier fallo —sin red, sin servidor, token vencido— devuelve <see langword="false"/>
-	/// sin lanzar: para el indicador de enlace todos significan lo mismo.
+	/// <b>Devolvía un booleano y no bastaba.</b> Agrupaba «no se alcanzó al servidor» con «el
+	/// servidor contestó un error», así que un <c>404</c> —la ruta no está publicada— se
+	/// mostraba como falta de conexión y mandaba a revisar la red en vez del despliegue.
 	/// </para>
 	/// </remarks>
-	Task<bool> ComprobarEnlaceAsync(string accessToken, CancellationToken cancelacion = default);
+	Task<ResultadoSondeo> ComprobarEnlaceAsync(string accessToken, CancellationToken cancelacion = default);
 }

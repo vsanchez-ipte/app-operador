@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Mobile.Mocks;
 
@@ -35,8 +36,14 @@ public sealed class ServicioConectividadSimulado : IConnectivityService
 	/// <summary>
 	/// Comprobación simulada: devuelve lo que ya se tenga, sin consultar nada.
 	/// </summary>
-	public Task<bool> ComprobarAsync(CancellationToken cancelacion = default) =>
-		Task.FromResult(HayEnlace);
+	/// <remarks>
+	/// El modo offline se fuerza a mano con <see cref="Alternar"/>, así que aquí la falta de
+	/// enlace es siempre de transporte: no hay servidor que pueda contestar un error.
+	/// </remarks>
+	public Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default) =>
+		Task.FromResult(HayEnlace
+			? ResultadoSondeo.Alcanzado()
+			: ResultadoSondeo.SinTransporte("Modo offline forzado desde el simulador."));
 
 	/// <summary>Alterna el estado de enlace. Solo existe mientras trabajamos con simuladores.</summary>
 	public void Alternar() => HayEnlace = !HayEnlace;

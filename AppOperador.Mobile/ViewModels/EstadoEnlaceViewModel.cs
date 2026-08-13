@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Aplicacion.Modelos;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,23 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	private const string MensajeSinComunicacion = "Sigue sin haber comunicación con Jacob CCO.";
 	private const string MensajeRevalidada = "Enlace recuperado. Sesión revalidada.";
 	private const string MensajeSesionNoValida = "La sesión ya no es válida. Vuelva a iniciar sesión.";
+
+	/// <summary>
+	/// Lo que ve el operador cuando el servidor contestó, pero con un error.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// No dice «sin conexión» porque sí la hubo: el servidor respondió. Decirlo mandaba a
+	/// revisar la señal cuando el problema estaba en el despliegue —un <c>404</c> porque el
+	/// servidor no publicaba la ruta del canal móvil— y costó una sesión entera de diagnóstico.
+	/// </para>
+	/// <para>
+	/// Lleva el código porque es lo primero que va a preguntar quien dé soporte. El resto del
+	/// detalle técnico va al registro.
+	/// </para>
+	/// </remarks>
+	private const string MensajeServidorConError =
+		"Jacob CCO respondió con un error ({0}). No es su conexión: repórtelo a soporte.";
 
 	/// <summary>
 	/// Lo que ve el operador cuando algo falla de forma imprevista.
@@ -132,9 +150,11 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 			// Comprobar el enlace puede levantar el evento de recuperación, y quien lo
 			// escucha revalida por su cuenta. Mientras Ocupado esté encendido ese camino se
 			// abstiene, así que la revalidación de aquí abajo es la única que corre.
-			if (!await _conectividad.ComprobarAsync())
+			var sondeo = await _conectividad.ComprobarAsync();
+
+			if (!sondeo.HayEnlace)
 			{
-				Detalle = MensajeSinComunicacion;
+				Detalle = ExplicarSondeo(sondeo);
 				return;
 			}
 
@@ -165,6 +185,37 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 			Ocupado = false;
 			Refrescar();
 		}
+	}
+
+	/// <summary>
+	/// Traduce el sondeo a algo que el operador pueda usar, y deja el detalle en el registro.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Las tres causas piden cosas distintas de quien lee: sin transporte, esperar o moverse;
+	/// sesión rechazada, volver a entrar; error del servidor, avisar a soporte. Un único
+	/// «sin conexión» las tapaba todas.
+	/// </para>
+	/// <para>
+	/// El registro se lleva siempre el detalle técnico, incluida la ruta y el código, porque en
+	/// campo nadie va a copiar un mensaje de pantalla.
+	/// </para>
+	/// </remarks>
+	private string ExplicarSondeo(ResultadoSondeo sondeo)
+	{
+		_registro.LogWarning(
+			"Sondeo del enlace sin éxito. Causa: {Causa}. Código: {Codigo}. Detalle: {Detalle}",
+			sondeo.Causa,
+			sondeo.CodigoHttp,
+			sondeo.Detalle);
+
+		return sondeo.Causa switch
+		{
+			CausaSinEnlace.RespuestaDeError =>
+				string.Format(MensajeServidorConError, sondeo.CodigoHttp),
+			CausaSinEnlace.SesionRechazada => MensajeSesionNoValida,
+			_ => MensajeSinComunicacion,
+		};
 	}
 
 	/// <summary>

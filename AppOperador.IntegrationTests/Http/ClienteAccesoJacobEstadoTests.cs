@@ -1,4 +1,5 @@
 using System.Net;
+using AppOperador.Aplicacion.Modelos;
 using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
@@ -32,7 +33,10 @@ public class ClienteAccesoJacobEstadoTests
 	{
 		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
 
-		Assert.True(await cliente.ComprobarEnlaceAsync(Token));
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.True(sondeo.HayEnlace);
+		Assert.Equal(CausaSinEnlace.Ninguna, sondeo.Causa);
 	}
 
 	[Fact]
@@ -66,10 +70,10 @@ public class ClienteAccesoJacobEstadoTests
 	public async Task Cualquier_respuesta_que_no_sea_correcta_es_falta_de_enlace(HttpStatusCode codigo)
 	{
 		// Para el indicador, "la sesion se acabo" y "el servidor fallo" significan lo mismo:
-		// no se puede operar contra Jacob.
+		// no se puede operar contra Jacob. La causa si los separa.
 		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(codigo));
 
-		Assert.False(await cliente.ComprobarEnlaceAsync(Token));
+		Assert.False((await cliente.ComprobarEnlaceAsync(Token)).HayEnlace);
 	}
 
 	[Fact]
@@ -77,7 +81,11 @@ public class ClienteAccesoJacobEstadoTests
 	{
 		var cliente = Nuevo(ManejadorHttpFalso.ConexionRechazada());
 
-		Assert.False(await cliente.ComprobarEnlaceAsync(Token));
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.False(sondeo.HayEnlace);
+		Assert.Equal(CausaSinEnlace.SinTransporte, sondeo.Causa);
+		Assert.False(sondeo.ServidorRespondio);
 	}
 
 	[Fact]
@@ -87,7 +95,60 @@ public class ClienteAccesoJacobEstadoTests
 		// servidor no responde.
 		var cliente = Nuevo(ManejadorHttpFalso.TiempoAgotado());
 
-		Assert.False(await cliente.ComprobarEnlaceAsync(Token));
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.False(sondeo.HayEnlace);
+		Assert.Equal(CausaSinEnlace.SinTransporte, sondeo.Causa);
+	}
+
+	// ---------- Regresión: un 404 no es falta de conexión ----------
+
+	[Theory]
+	[InlineData(HttpStatusCode.NotFound)]
+	[InlineData(HttpStatusCode.InternalServerError)]
+	[InlineData(HttpStatusCode.BadGateway)]
+	[InlineData(HttpStatusCode.ServiceUnavailable)]
+	public async Task Un_error_del_servidor_no_se_confunde_con_falta_de_comunicacion(HttpStatusCode codigo)
+	{
+		// El fallo que esto fija: la app apuntaba a un servidor que no publicaba
+		// ITS/AppLogin/Estado, respondia 404, y la pantalla decia "Sin conexion / Modo
+		// offline". Mando a revisar la red durante una sesion entera cuando el problema era
+		// de despliegue. Si el servidor contesto, hubo comunicacion.
+		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(codigo));
+
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.False(sondeo.HayEnlace);
+		Assert.True(sondeo.ServidorRespondio);
+		Assert.Equal(CausaSinEnlace.RespuestaDeError, sondeo.Causa);
+		Assert.Equal((int)codigo, sondeo.CodigoHttp);
+		Assert.NotEqual(CausaSinEnlace.SinTransporte, sondeo.Causa);
+	}
+
+	[Theory]
+	[InlineData(HttpStatusCode.Unauthorized)]
+	[InlineData(HttpStatusCode.Forbidden)]
+	public async Task Que_Jacob_niegue_la_sesion_se_distingue_de_un_fallo_del_servidor(HttpStatusCode codigo)
+	{
+		// Tambien hubo comunicacion, pero el remedio es otro: volver a autenticarse.
+		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(codigo));
+
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.False(sondeo.HayEnlace);
+		Assert.True(sondeo.ServidorRespondio);
+		Assert.Equal(CausaSinEnlace.SesionRechazada, sondeo.Causa);
+	}
+
+	[Fact]
+	public async Task El_detalle_tecnico_lleva_el_codigo_para_el_registro()
+	{
+		// No se muestra en pantalla: es lo que se escribe en el log para poder diagnosticar.
+		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.NotFound));
+
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
+
+		Assert.Contains("404", sondeo.Detalle);
 	}
 
 	// ---------- Regresión: la petición no se libera con el envío en vuelo ----------
@@ -102,10 +163,10 @@ public class ClienteAccesoJacobEstadoTests
 		var manejador = ManejadorHttpFalso.Lento(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
 		var cliente = Nuevo(manejador);
 
-		var hayEnlace = await cliente.ComprobarEnlaceAsync(Token);
+		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
 
 		Assert.False(manejador.PeticionLiberadaEnVuelo);
-		Assert.True(hayEnlace);
+		Assert.True(sondeo.HayEnlace);
 	}
 
 	[Fact]
@@ -126,7 +187,10 @@ public class ClienteAccesoJacobEstadoTests
 	{
 		var (cliente, manejador) = Construir(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
 
-		Assert.False(await cliente.ComprobarEnlaceAsync(token));
+		var sondeo = await cliente.ComprobarEnlaceAsync(token);
+
+		Assert.False(sondeo.HayEnlace);
+		Assert.Equal(CausaSinEnlace.SinSesion, sondeo.Causa);
 		Assert.Empty(manejador.Peticiones);
 	}
 }
