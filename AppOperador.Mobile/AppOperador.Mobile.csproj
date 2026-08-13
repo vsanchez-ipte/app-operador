@@ -47,6 +47,35 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!--
+		A qué ambiente apunta el paquete. Se elige al compilar y no editando código:
+
+		  dotnet publish AppOperador.Mobile -f net10.0-android -c Release -p:Ambiente=Desarrollo
+
+		Valores admitidos:
+		  · Local      (omisión) API en el equipo de quien desarrolla
+		  · Desarrollo             servidor de desarrollo de IPTE
+		  · QA                     servidor de calidad de IPTE, donde prueba el equipo de QA
+		  · Simulado               sin servidor, recorrido completo contra simuladores
+
+		El nombre se traduce a un símbolo de compilación que lee Configuracion/AmbienteDeCompilacion.cs.
+	-->
+	<PropertyGroup>
+		<Ambiente Condition="'$(Ambiente)' == ''">Local</Ambiente>
+		<DefineConstants Condition="'$(Ambiente)' == 'Desarrollo'">$(DefineConstants);AMBIENTE_DESARROLLO</DefineConstants>
+		<DefineConstants Condition="'$(Ambiente)' == 'QA'">$(DefineConstants);AMBIENTE_QA</DefineConstants>
+		<DefineConstants Condition="'$(Ambiente)' == 'Simulado'">$(DefineConstants);AMBIENTE_SIMULADO</DefineConstants>
+	</PropertyGroup>
+
+	<!--
+		Un ambiente mal escrito compilaría como Local sin avisar, y el paquete saldría
+		apuntando a un servidor que no es el que se pidió. Mejor que reviente aquí.
+	-->
+	<Target Name="ValidarAmbiente" BeforeTargets="BeforeBuild">
+		<Error Condition="'$(Ambiente)' != 'Local' AND '$(Ambiente)' != 'Desarrollo' AND '$(Ambiente)' != 'QA' AND '$(Ambiente)' != 'Simulado'"
+		       Text="Ambiente '$(Ambiente)' no reconocido. Use Local, Desarrollo, QA o Simulado." />
+	</Target>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

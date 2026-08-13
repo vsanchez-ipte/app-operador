@@ -29,6 +29,27 @@ public sealed class ConfiguracionApi
 	/// <summary>URL base del API vista desde el escritorio (pruebas y Windows).</summary>
 	public const string UrlBaseEscritorio = "http://localhost:5231";
 
+	/// <summary>
+	/// URL base del API en el servidor de desarrollo de IPTE.
+	/// </summary>
+	/// <remarks>
+	/// Es una dirección de la red interna: el dispositivo tiene que estar en esa red para
+	/// alcanzarla. Va por HTTP y no por HTTPS porque ese despliegue no publica el 443, así
+	/// que el host figura en la lista de tráfico en claro de Android.
+	/// </remarks>
+	public const string UrlBaseDesarrollo = "http://192.168.100.215:81";
+
+	/// <summary>
+	/// URL base del API en el servidor de QA de IPTE.
+	/// </summary>
+	/// <remarks>
+	/// Es el ambiente donde prueba el equipo de calidad, con sus propios datos. Vale lo mismo
+	/// que para desarrollo: dirección de la red interna, por HTTP porque ese despliegue
+	/// tampoco publica el 443, así que el host figura en la lista de tráfico en claro de
+	/// Android.
+	/// </remarks>
+	public const string UrlBaseQa = "http://192.168.100.230:81";
+
 	/// <summary>Dirección del API. Debe terminar sin barra final.</summary>
 	public string UrlBase { get; init; } = UrlBaseEscritorio;
 

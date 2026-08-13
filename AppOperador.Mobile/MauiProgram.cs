@@ -6,6 +6,7 @@ using AppOperador.Infrastructure.Almacenamiento;
 using AppOperador.Infrastructure.Dispositivo;
 using AppOperador.Infrastructure.Http;
 using AppOperador.Infrastructure.Sqlite;
+using AppOperador.Mobile.Configuracion;
 using AppOperador.Mobile.Mocks;
 using AppOperador.Mobile.ViewModels;
 using AppOperador.Mobile.Vistas;
@@ -89,7 +90,7 @@ public static class MauiProgram
 		// Datos que el perfil muestra junto a la sesión y que Jacob no devuelve porque no los
 		// conoce. La versión de catálogos es fija mientras no exista su sincronización.
 		servicios.AddSingleton(new DatosDeInstalacion(
-			VersionAplicacion: AppInfo.Current.VersionString,
+			VersionAplicacion: AmbienteDeCompilacion.EtiquetaDeVersion(AppInfo.Current.VersionString),
 			VersionCatalogos: new DateOnly(2026, 7, 23)));
 
 		RegistrarCustodiaDelToken(servicios);
@@ -196,30 +197,14 @@ public static class MauiProgram
 	/// apertura de sesión— y entra a la app.
 	/// </para>
 	/// <para>
-	/// La URL depende de dónde corra la app. Desde el emulador de Android hay que usar
-	/// <c>10.0.2.2</c>, porque ahí <c>localhost</c> es el propio dispositivo virtual.
+	/// A qué servidor apunta y si el canal real está encendido lo decide el ambiente elegido
+	/// al compilar (ver <see cref="AmbienteDeCompilacion"/>). Por omisión es el ambiente
+	/// local, con el canal real contra el API que corre en el equipo de quien desarrolla.
 	/// </para>
 	/// </remarks>
 	private static void RegistrarCanalJacob(IServiceCollection servicios)
 	{
-		var configuracion = new ConfiguracionApi
-		{
-			// Encendido por defecto desde JTT-1383: el acceso, la sesión, la reanudación
-			// sin conexión, la revalidación y el cierre ya funcionan contra Jacob CCO, así
-			// que el canal real es el comportamiento normal de la app y no una prueba.
-			// Apagarlo deja el recorrido completo contra simuladores, útil para demostrar
-			// las pantallas sin levantar el servidor.
-			UsarApiReal = true,
-#if ANDROID
-			UrlBase = ConfiguracionApi.UrlBaseEmuladorAndroid,
-			Plataforma = "Android",
-#elif IOS
-			UrlBase = ConfiguracionApi.UrlBaseEscritorio,
-			Plataforma = "iOS",
-#else
-			UrlBase = ConfiguracionApi.UrlBaseEscritorio,
-#endif
-		};
+		var configuracion = AmbienteDeCompilacion.Resolver();
 
 		servicios.AddSingleton(configuracion);
 
