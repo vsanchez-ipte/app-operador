@@ -134,7 +134,12 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 			vigencia: vigencia,
 			// El simulador hace de Jacob: por eso puede entregar permisos. Ninguna otra parte
 			// de la app puede construirlos (JTT-1379 CA 7).
-			permisos: PermisosOperador.DelServidor(["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"]),
+			//
+			// Entrega lo mismo que el servidor real, que hoy es un unico permiso. Antes daba
+			// CAPTURA, EVIDENCIA, SYNC y OFFLINE, codigos que nunca existieron en Jacob: con
+			// ellos el recorrido simulado quedaba sin ninguna capacidad concedida (JTT-1385) y
+			// ademas hacia creer que el catalogo de capacidades finas ya estaba resuelto.
+			permisos: PermisosOperador.DelServidor([ReglaCapacidades.PermisoAppOperadorMovil]),
 			versionAplicacion: "1.2.0",
 			versionCatalogos: new DateOnly(2026, 7, 23));
 }

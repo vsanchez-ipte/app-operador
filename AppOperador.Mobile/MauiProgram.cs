@@ -87,6 +87,10 @@ public static class MauiProgram
 		servicios.AddSingleton<IMonotonicClock, RelojMonotonicoDispositivo>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
 
+		// Qué autoriza la sesión abierta (JTT-1385). Va aquí, junto al almacén de sesión, porque
+		// es lo único que necesita: pregunta por la sesión vigente en cada consulta.
+		servicios.AddSingleton<CapacidadesDeLaSesion>();
+
 		// Datos que el perfil muestra junto a la sesión y que Jacob no devuelve porque no los
 		// conoce. La versión de catálogos es fija mientras no exista su sincronización.
 		servicios.AddSingleton(new DatosDeInstalacion(

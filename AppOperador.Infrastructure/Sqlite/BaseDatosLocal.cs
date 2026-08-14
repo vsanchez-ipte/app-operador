@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 2;
+	public const int VersionEsquemaActual = 3;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -129,8 +129,10 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 
 		// De 0 a 1: primera versión publicada.
 		// De 1 a 2: sesión persistida y sello de origen de las incidencias (JTT-1383).
-		// Ambos cambios son aditivos y CreateTableAsync ya los aplicó arriba, así que solo
-		// queda sellar la versión.
+		// De 2 a 3: permiso con el que se autorizó la captura (JTT-1385 CA 7).
+		// Los tres cambios son aditivos y CreateTableAsync ya los aplicó arriba, así que solo
+		// queda sellar la versión. Una base de la versión anterior conserva sus incidencias con
+		// el permiso vacío: no se puede reconstruir con qué se capturaron.
 		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
 	}
 

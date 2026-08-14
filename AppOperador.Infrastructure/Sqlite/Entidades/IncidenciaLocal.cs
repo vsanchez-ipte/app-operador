@@ -109,4 +109,21 @@ internal sealed class IncidenciaLocal
 	/// Vacío en los recorridos simulados, que no crean sesión en Jacob.
 	/// </remarks>
 	public string SesionOrigen { get; set; } = string.Empty;
+
+	/// <summary>
+	/// Permiso con el que se autorizó la captura (JTT-1385 CA 7).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Se guarda en el momento de crear el registro, no al sincronizarlo. Una incidencia creada
+	/// sin conexión puede tardar horas en salir, y para entonces al operador pueden haberle
+	/// revocado el permiso: al enviarla, Jacob necesita saber con qué autorización se capturó
+	/// para decidir si sigue valiendo (CA 8), y eso ya no se puede reconstruir después.
+	/// </para>
+	/// <para>
+	/// Hoy Jacob emite un solo permiso, así que aquí quedará <c>APP_OPERADOR_MOVIL</c> en todas.
+	/// Vacío en los recorridos simulados, que no abren sesión en el servidor.
+	/// </para>
+	/// </remarks>
+	public string PermisoOrigen { get; set; } = string.Empty;
 }

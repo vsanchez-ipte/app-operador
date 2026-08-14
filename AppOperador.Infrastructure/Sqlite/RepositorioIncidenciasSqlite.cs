@@ -87,10 +87,30 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			// se podría ordenar lo capturado si alguien lo movió a media jornada.
 			MonotonicoTicks = _monotonico?.Transcurrido.Ticks ?? 0,
 			SesionOrigen = _sesion.Actual?.SessionId ?? string.Empty,
+
+			// Con qué permiso se autorizó (JTT-1385 CA 7). Se sella al crear porque una
+			// incidencia offline puede enviarse horas después, cuando el permiso ya cambió.
+			PermisoOrigen = PermisoDeLaSesion(),
 		};
 
 		await conexion.InsertAsync(fila);
 		return fila.ClaveLocal;
+	}
+
+	/// <summary>
+	/// Permiso con el que la sesión autoriza capturar, para sellarlo en el registro.
+	/// </summary>
+	/// <remarks>
+	/// Se toma el permiso funcional de la App Operador, que es el único que Jacob emite hoy. Si
+	/// mañana concede capacidades finas, aquí es donde hay que decidir cuál se sella.
+	/// </remarks>
+	private string PermisoDeLaSesion()
+	{
+		var permisos = _sesion.Actual?.Permisos;
+
+		return permisos is not null && permisos.Contiene(ReglaCapacidades.PermisoAppOperadorMovil)
+			? ReglaCapacidades.PermisoAppOperadorMovil
+			: string.Empty;
 	}
 
 	/// <inheritdoc />

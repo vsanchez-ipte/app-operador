@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.ValueObjects;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -28,6 +29,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 	private readonly IIncidentRepository _incidencias;
 	private readonly ILocationService _ubicacion;
+	private readonly CapacidadesDeLaSesion _capacidades;
 
 	[ObservableProperty]
 	public partial TipoIncidencia? TipoSeleccionado { get; set; }
@@ -57,10 +59,12 @@ public sealed partial class CapturaViewModel : ObservableObject
 	public CapturaViewModel(
 		IIncidentRepository incidencias,
 		ILocationService ubicacion,
+		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace)
 	{
 		_incidencias = incidencias;
 		_ubicacion = ubicacion;
+		_capacidades = capacidades;
 		Enlace = enlace;
 
 		Kilometro = string.Empty;
@@ -107,6 +111,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 			TipoSeleccionado = Tipos.FirstOrDefault();
 		}
 
+		// Lo que la sesión autoriza se reevalúa al entrar: pudo cerrarse o revocarse mientras la
+		// pantalla no estaba a la vista (JTT-1385 CA 3).
+		NotificarAutorizacion();
+
 		await IntentarUbicarAsync();
 		await RecargarBorradoresAsync();
 	}
@@ -133,9 +141,33 @@ public sealed partial class CapturaViewModel : ObservableObject
 		FuenteKilometro = KilometerSource.GPS;
 	}
 
-	[RelayCommand]
+	/// <summary>Indica si la sesión autoriza registrar incidencias (JTT-1385 CA 3 y 4).</summary>
+	public bool PuedeRegistrar => _capacidades.Puede(CapacidadOperador.RegistrarIncidencia);
+
+	/// <summary>Reevalúa lo que la sesión autoriza. La llaman la pantalla y el guardado.</summary>
+	public void NotificarAutorizacion()
+	{
+		OnPropertyChanged(nameof(PuedeRegistrar));
+		GuardarIncidenciaCommand.NotifyCanExecuteChanged();
+		GuardarBorradorCommand.NotifyCanExecuteChanged();
+	}
+
+	/// <summary>
+	/// Registra la incidencia en la cola local.
+	/// </summary>
+	/// <remarks>
+	/// La comprobación se repite aunque el botón esté deshabilitado: deshabilitarlo es
+	/// presentación, y la sesión puede cerrarse entre que la pantalla se pintó y alguien pulsa.
+	/// La autorización se decide al ejecutar, no al dibujar (CA 4).
+	/// </remarks>
+	[RelayCommand(CanExecute = nameof(PuedeRegistrar))]
 	private async Task GuardarIncidenciaAsync()
 	{
+		if (!_capacidades.Puede(CapacidadOperador.RegistrarIncidencia))
+		{
+			return;
+		}
+
 		if (TipoSeleccionado is null)
 		{
 			return;
@@ -161,9 +193,15 @@ public sealed partial class CapturaViewModel : ObservableObject
 		await RecargarBorradoresAsync();
 	}
 
-	[RelayCommand]
+	[RelayCommand(CanExecute = nameof(PuedeRegistrar))]
 	private async Task GuardarBorradorAsync()
 	{
+		// Un borrador es captura a medias, así que necesita la misma autorización que registrar.
+		if (!_capacidades.Puede(CapacidadOperador.RegistrarIncidencia))
+		{
+			return;
+		}
+
 		// Un borrador se guarda tal cual esté: no se valida, porque su razón de ser es
 		// permitir dejar la captura a medias sin perderla.
 		MensajeError = null;
