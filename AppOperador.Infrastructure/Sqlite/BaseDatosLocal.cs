@@ -38,12 +38,23 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		SQLiteOpenFlags.FullMutex;
 
 	private readonly SemaphoreSlim _cerrojoInicializacion = new(1, 1);
+	private readonly IDatabaseKeyProvider? _claves;
 	private SQLiteAsyncConnection? _conexion;
+	private string? _clave;
 	private bool _inicializada;
 
-	public BaseDatosLocal(string? rutaArchivo = null)
+	/// <param name="rutaArchivo">
+	/// Archivo de la base. Las pruebas pasan uno temporal para no tocar el del dispositivo.
+	/// </param>
+	/// <param name="claves">
+	/// De dónde sale la clave de cifrado (JTT-1388 CA 2). Sin ella la base se abre en claro,
+	/// que es como corren las pruebas que no verifican el cifrado y el destino de escritorio,
+	/// donde <c>SecureStorage</c> no existe.
+	/// </param>
+	public BaseDatosLocal(string? rutaArchivo = null, IDatabaseKeyProvider? claves = null)
 	{
 		RutaArchivo = rutaArchivo ?? Path.Combine(FileSystem.AppDataDirectory, NombreArchivo);
+		_claves = claves;
 	}
 
 	/// <inheritdoc />
@@ -65,6 +76,11 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 			{
 				return;
 			}
+
+			// La clave se resuelve antes de abrir nada: el cifrado se aplica al abrir, no
+			// después. Y antes de eso hay que llevarse los datos de una base en claro, si la hay.
+			_clave = _claves is null ? null : await _claves.ObtenerAsync(cancelacion);
+			CifrarBaseEnClaroSiHace();
 
 			var conexion = AbrirConexion();
 
@@ -107,8 +123,118 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		return AbrirConexion();
 	}
 
+	/// <summary>
+	/// Cifra en el sitio una base que quedó en claro de una versión anterior (JTT-1388).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Una base sin cifrar no se abre con clave</b>, así que al actualizar la app habría dos
+	/// salidas: migrarla o descartarla. Descartarla se llevaría por delante las incidencias
+	/// pendientes de quien tuviera la app instalada, y conservarlas es justo lo que exigen los
+	/// criterios 8 y 11 de esta misma historia. Por eso se migra.
+	/// </para>
+	/// <para>
+	/// El traslado lo hace <c>sqlcipher_export</c>, que copia esquema y datos a una base
+	/// adjunta con su propia clave. Es la vía que documenta SQLCipher para esto; recorrer las
+	/// tablas a mano habría que actualizarlo cada vez que se agregue una.
+	/// </para>
+	/// <para>
+	/// El archivo original se sustituye solo cuando la copia terminó bien. Si algo falla a
+	/// medias, queda la base en claro intacta y el temporal se borra: es preferible arrancar
+	/// otra vez sin cifrar que quedarse sin los pendientes.
+	/// </para>
+	/// <para>
+	/// Queda una rendija que el <c>try</c> no cubre: entre borrar el original y mover el cifrado
+	/// a su sitio son dos llamadas, y si la app muere justo ahí no hay archivo en la ruta de la
+	/// base. El arranque siguiente lo repara adoptando el temporal, que para entonces es la base
+	/// buena. Sin eso se crearía una base nueva y vacía y los pendientes quedarían en un archivo
+	/// huérfano que nadie vuelve a mirar.
+	/// </para>
+	/// </remarks>
+	private void CifrarBaseEnClaroSiHace()
+	{
+		if (_clave is null)
+		{
+			return;
+		}
+
+		var temporal = RutaArchivo + ".cifrando";
+
+		if (!File.Exists(RutaArchivo))
+		{
+			// Solo puede haber temporal sin base si la migración anterior se cortó después de
+			// exportar; es la copia cifrada completa, así que ocupa el lugar del original.
+			if (File.Exists(temporal))
+			{
+				File.Move(temporal, RutaArchivo);
+			}
+
+			return;
+		}
+
+		if (EstaCifrada())
+		{
+			return;
+		}
+
+		File.Delete(temporal);
+
+		try
+		{
+			using (var enClaro = new SQLiteConnection(RutaArchivo, Banderas))
+			{
+				// El literal va entre comillas simples y con las internas duplicadas: la clave
+				// es Base64 y no las lleva, pero no se deja abierta la puerta.
+				var claveSql = _clave.Replace("'", "''");
+				enClaro.Execute($"ATTACH DATABASE '{temporal.Replace("'", "''")}' AS cifrada KEY '{claveSql}';");
+				enClaro.ExecuteScalar<string>("SELECT sqlcipher_export('cifrada');");
+				enClaro.Execute("DETACH DATABASE cifrada;");
+			}
+
+			File.Delete(RutaArchivo);
+			File.Move(temporal, RutaArchivo);
+		}
+		catch
+		{
+			// Sin cifrar y con los datos es mejor que cifrada y a medias.
+			File.Delete(temporal);
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// Indica si el archivo ya está cifrado.
+	/// </summary>
+	/// <remarks>
+	/// Se comprueba abriéndolo en claro y pidiéndole algo: una base cifrada no se deja leer sin
+	/// clave y responde «file is not a database». No hay una forma más directa, porque SQLCipher
+	/// cifra también la cabecera del archivo, que es lo que permitiría reconocerlo de un vistazo.
+	/// </remarks>
+	private bool EstaCifrada()
+	{
+		try
+		{
+			using var enClaro = new SQLiteConnection(RutaArchivo, SQLiteOpenFlags.ReadOnly);
+			enClaro.ExecuteScalar<int>("PRAGMA user_version;");
+			return false;
+		}
+		catch (SQLiteException)
+		{
+			return true;
+		}
+	}
+
+	/// <summary>
+	/// Abre la conexión, cifrada si hay clave.
+	/// </summary>
+	/// <remarks>
+	/// La clave viaja en la cadena de conexión y SQLCipher la aplica como <c>PRAGMA key</c> al
+	/// abrir. <c>storeDateTimeAsTicks</c> se declara explícito para no depender del valor por
+	/// omisión del paquete, que cambió entre versiones.
+	/// </remarks>
 	private SQLiteAsyncConnection AbrirConexion() =>
-		_conexion ??= new SQLiteAsyncConnection(RutaArchivo, Banderas);
+		_conexion ??= new SQLiteAsyncConnection(
+			new SQLiteConnectionString(RutaArchivo, Banderas, storeDateTimeAsTicks: true, key: _clave));
 
 	/// <summary>
 	/// Lleva el archivo desde la versión que tenga hasta <see cref="VersionEsquemaActual"/>.

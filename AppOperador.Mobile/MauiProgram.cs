@@ -108,7 +108,9 @@ public static class MauiProgram
 		// contrato ILocalDatabase no expone a propósito.
 		// Fábrica explícita: el constructor recibe una ruta opcional y el contenedor no
 		// debe intentar resolverla como si fuera un servicio.
-		servicios.AddSingleton(_ => new BaseDatosLocal());
+		servicios.AddSingleton(sp => new BaseDatosLocal(
+			rutaArchivo: null,
+			claves: sp.GetService<IDatabaseKeyProvider>()));
 		servicios.AddSingleton<ILocalDatabase>(sp => sp.GetRequiredService<BaseDatosLocal>());
 		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
@@ -153,6 +155,11 @@ public static class MauiProgram
 	{
 #if ANDROID || IOS || MACCATALYST
 		servicios.AddSingleton<ITokenProvider, AlmacenTokenSeguro>();
+
+		// La clave de la base local va al mismo almacén que el token (JTT-1388 CA 2). Solo se
+		// registra donde SecureStorage existe: sin proveedor, la base se abre en claro, que es
+		// lo que necesita el destino de escritorio de la demostración.
+		servicios.AddSingleton<IDatabaseKeyProvider, ClaveBaseDatosSegura>();
 #else
 		servicios.AddSingleton<ITokenProvider, AlmacenTokenEnMemoria>();
 #endif

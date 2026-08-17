@@ -149,13 +149,30 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	}
 
 	/// <inheritdoc />
+	/// <remarks>
+	/// <para>
+	/// <b>Solo los del operador de la sesión</b> (JTT-1388 CA 9). Un borrador es trabajo a medio
+	/// capturar y sigue siendo de quien lo escribió: al entrar otro operador no debe encontrarse
+	/// con lo que dejó el anterior, ni verlo ni poder retomarlo como suyo.
+	/// </para>
+	/// <para>
+	/// Sin sesión abierta no se devuelve nada, igual que en la cola: no es que se hayan borrado,
+	/// es que todavía nadie tiene derecho a verlos.
+	/// </para>
+	/// </remarks>
 	public async Task<IReadOnlyList<RegistroCola>> ObtenerBorradoresAsync(CancellationToken cancelacion = default)
 	{
+		var operador = _sesion.Actual?.Operador;
+		if (operador is null)
+		{
+			return [];
+		}
+
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var borrador = (int)EstadoSincronizacion.Borrador;
 
 		var filas = await conexion.Table<IncidenciaLocal>()
-			.Where(i => i.Estado == borrador)
+			.Where(i => i.Estado == borrador && i.Operador == operador)
 			.OrderByDescending(i => i.CreadoUtcTicks)
 			.ToListAsync();
 

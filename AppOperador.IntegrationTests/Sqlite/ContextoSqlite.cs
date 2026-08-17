@@ -55,6 +55,12 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		new(BaseDatos, Reloj, Conectividad, Bitacora, sesion);
 
 	/// <summary>
+	/// Repositorio visto por otra sesión, para los borradores ajenos (JTT-1388 CA 9).
+	/// </summary>
+	public RepositorioIncidenciasSqlite CrearRepositorioDe(ISessionStore sesion) =>
+		new(BaseDatos, Reloj, sesion);
+
+	/// <summary>
 	/// Abre una instancia nueva sobre el mismo archivo, como si la app se hubiera reiniciado.
 	/// </summary>
 	public BaseDatosLocal ReabrirBaseDatos() => new(_ruta);
