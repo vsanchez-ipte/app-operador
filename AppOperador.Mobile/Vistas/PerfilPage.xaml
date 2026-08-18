@@ -130,6 +130,31 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!--
+                Exportacion de diagnostico. Solo aparece en paquetes compilados con
+                -p:HabilitarExportacionBaseDatos=true; en un paquete normal la propiedad es
+                falsa y la tarjeta entera no se pinta. El enlace se compila siempre porque el
+                XAML no se preprocesa, por eso PuedeExportarBaseDatos existe en ambos casos.
+
+                La advertencia va en pantalla y no solo en el dialogo de confirmacion: quien
+                revisa el telefono tiene que poder ver que este paquete puede sacar la base
+                sin cifrar.
+            -->
+            <Border IsVisible="{Binding PuedeExportarBaseDatos}" Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Diagnostico" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Style="{StaticResource TextoSecundario}"
+                           Text="Guarda una copia de la base local en formato SQLite para revisarla en el equipo. La copia queda SIN CIFRAR e incluye incidencias, operador, unidad y bitacora." />
+
+                    <Button Text="Exportar base de datos"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding ExportarBaseDatosCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
         </VerticalStackLayout>
     </ScrollView>
 

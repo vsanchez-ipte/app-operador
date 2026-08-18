@@ -31,6 +31,34 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!--
+		Exportación de la base a SQLite legible. El interruptor y su porqué están explicados
+		en AppOperador.Mobile.csproj; aquí se repite porque el símbolo tiene que existir
+		también donde vive la implementación, o el APK de Release la seguiría cargando dentro
+		aunque nadie la registrara.
+
+		Al compilar la app, la propiedad se pasa a este proyecto sola: MSBuild propaga las
+		propiedades globales a los proyectos referenciados.
+	-->
+	<PropertyGroup>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == '' AND '$(Configuration)' == 'Debug'">true</HabilitarExportacionBaseDatos>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == ''">false</HabilitarExportacionBaseDatos>
+		<DefineConstants Condition="'$(HabilitarExportacionBaseDatos)' == 'true'">$(DefineConstants);EXPORTAR_BASE_DATOS</DefineConstants>
+
+		<!--
+			En net10.0 va siempre, pase lo que pase con el interruptor. Ese destino no se
+			distribuye: existe solo para que AppOperador.IntegrationTests pueda probar los
+			adaptadores SQLite en el escritorio. Sin esta linea, un "dotnet test -c Release"
+			dejaria al proyecto de pruebas sin la clase que prueba y no compilaria.
+		-->
+		<DefineConstants Condition="'$(TargetFramework)' == 'net10.0' AND '$(HabilitarExportacionBaseDatos)' != 'true'">$(DefineConstants);EXPORTAR_BASE_DATOS</DefineConstants>
+	</PropertyGroup>
+
+	<Target Name="ValidarExportacionBaseDatosInfraestructura" BeforeTargets="BeforeBuild">
+		<Error Condition="'$(HabilitarExportacionBaseDatos)' != 'true' AND '$(HabilitarExportacionBaseDatos)' != 'false'"
+		       Text="HabilitarExportacionBaseDatos '$(HabilitarExportacionBaseDatos)' no es valido. Use true o false." />
+	</Target>
+
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 		<PackageReference Include="sqlite-net-sqlcipher" Version="1.9.172" />

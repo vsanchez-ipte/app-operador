@@ -116,6 +116,17 @@ public static class MauiProgram
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
+#if EXPORTAR_BASE_DATOS
+		// Copia legible de la base para revisarla en el escritorio. Solo existe en paquetes
+		// compilados con -p:HabilitarExportacionBaseDatos=true; en cualquier otro, ni esta
+		// línea ni la clase que resuelve llegan al paquete.
+		// Fábrica explícita: el constructor admite un directorio temporal opcional que solo
+		// usan las pruebas, y el contenedor no debe intentar resolverlo como servicio.
+		servicios.AddSingleton<IExportadorBaseDatos>(sp => new ExportadorBaseDatosSqlite(
+			sp.GetRequiredService<BaseDatosLocal>(),
+			sp.GetRequiredService<IClock>()));
+#endif
+
 		// Sesión persistida y lectura de los claims del token (JTT-1383). El token sigue
 		// aparte, en el almacenamiento seguro: aquí solo van los metadatos.
 		servicios.AddSingleton<IOfflineSessionStore, AlmacenSesionOfflineSqlite>();
