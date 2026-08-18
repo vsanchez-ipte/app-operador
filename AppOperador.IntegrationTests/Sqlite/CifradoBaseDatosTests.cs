@@ -151,4 +151,51 @@ public sealed class CifradoBaseDatosTests
 			File.Delete(temporal);
 		}
 	}
+
+	/// <summary>
+	/// Al cifrar, la versión de esquema del archivo tiene que viajar con los datos.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <c>sqlcipher_export</c> traslada esquema y filas, pero no los pragmas del archivo. Si
+	/// <c>user_version</c> se perdiera, la base cifrada nacería en 0.
+	/// </para>
+	/// <para>
+	/// <b>Por qué la versión de la prueba es 99 y no la actual.</b> Con la actual el defecto no
+	/// se ve: <c>MigrarAsync</c> corre justo después, encuentra un 0, lo trata como base
+	/// anterior a la primera versión y vuelve a sellar el número correcto. El resultado final
+	/// es el mismo y la prueba pasaría igual con el defecto dentro. Con una versión por encima
+	/// de la actual —una base escrita por un APK más nuevo— la migración se detiene sin tocar
+	/// nada, así que lo que quede en el archivo es exactamente lo que dejó la exportación.
+	/// </para>
+	/// </remarks>
+	[Fact]
+	public async Task Al_cifrar_una_base_en_claro_se_conserva_su_version_de_esquema()
+	{
+		var ruta = RutaTemporal();
+		const int VersionDeUnApkMasNuevo = 99;
+
+		try
+		{
+			await using (var enClaro = new BaseDatosLocal(ruta))
+			{
+				await enClaro.InicializarAsync();
+			}
+
+			using (var directa = new SQLiteConnection(ruta))
+			{
+				directa.Execute($"PRAGMA user_version = {VersionDeUnApkMasNuevo};");
+			}
+
+			await using (var cifrada = new BaseDatosLocal(ruta, new ClaveFija()))
+			{
+				Assert.Equal(VersionDeUnApkMasNuevo, await cifrada.ObtenerVersionEsquemaAsync());
+			}
+		}
+		finally
+		{
+			File.Delete(ruta);
+			File.Delete(ruta + ".cifrando");
+		}
+	}
 }

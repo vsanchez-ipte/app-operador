@@ -183,11 +183,17 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		{
 			using (var enClaro = new SQLiteConnection(RutaArchivo, Banderas))
 			{
+				// sqlcipher_export traslada esquema y datos, pero no los pragmas del archivo:
+				// la base cifrada nacería en la versión 0 y MigrarAsync la trataría como si
+				// viniera de antes de la primera versión publicada.
+				var version = enClaro.ExecuteScalar<int>("PRAGMA user_version;");
+
 				// El literal va entre comillas simples y con las internas duplicadas: la clave
 				// es Base64 y no las lleva, pero no se deja abierta la puerta.
 				var claveSql = _clave.Replace("'", "''");
 				enClaro.Execute($"ATTACH DATABASE '{temporal.Replace("'", "''")}' AS cifrada KEY '{claveSql}';");
 				enClaro.ExecuteScalar<string>("SELECT sqlcipher_export('cifrada');");
+				enClaro.Execute($"PRAGMA cifrada.user_version = {version};");
 				enClaro.Execute("DETACH DATABASE cifrada;");
 			}
 
