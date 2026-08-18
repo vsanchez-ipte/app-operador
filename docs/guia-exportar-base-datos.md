@@ -15,6 +15,9 @@ estándar sin cifrar** que abre cualquier visor.
 
 ## 1. Armar el paquete que puede exportar
 
+> **Este punto es para quien compila los paquetes.** Si el paquete ya está entregado, se
+> puede saltar directo al punto 2.
+
 Un paquete normal **no trae** esta capacidad. Hay que pedirla al compilar, agregando
 `-p:HabilitarExportacionBaseDatos=true` al comando de siempre:
 
@@ -57,8 +60,12 @@ otro. La compilación con exportación imprime además un aviso al terminar.
 2. Ir a la pestaña **Perfil** y bajar hasta la tarjeta **Diagnostico**.
 3. Tocar **Exportar base de datos**.
 4. Leer el aviso y confirmar con **Exportar**.
-5. El sistema abre su selector de documentos. Elegir dónde guardar —**Descargas** es lo más
-   cómodo para sacarlo después— y aceptar.
+5. El sistema abre su selector de documentos. Elegir dónde guardar y aceptar.
+
+   **En LDPlayer, guardar en `Pictures`.** Es la carpeta que el emulador comparte con
+   Windows, así que el archivo aparece en la computadora sin ningún paso extra. Si se
+   guarda en Descargas hay que sacarlo a mano después.
+
 6. La app confirma con el nombre del archivo, la versión de esquema, cuántas tablas trae y
    el tamaño.
 
@@ -73,36 +80,37 @@ nombre del archivo se ve en carpetas compartidas.
 
 ## 3. Traer el archivo al equipo
 
-Cualquiera de las tres sirve; la primera es la más rápida si el teléfono está conectado:
-
-```powershell
-# Si se guardó en Descargas
-adb pull /sdcard/Download/AppOperador-QA-20260818-130500-esquema3.db3 D:\revision\
-```
-
-- **Cable, sin adb:** el teléfono montado como almacenamiento, y copiar desde `Download`.
-- **Sin cable:** compartir el archivo desde la app de Archivos del teléfono.
-
 ### En el emulador LDPlayer 9
 
-LDPlayer trae su propio `adb`, aunque no quede en el `PATH`. Desde **PowerShell**:
+LDPlayer comparte una carpeta entre Windows y Android. Lo que se guarde en ella desde el
+emulador aparece en la computadora, y al revés. **No hace falta ningún comando.**
 
-```powershell
-# Ver qué hay exportado
-& "D:\LDPlayer\LDPlayer9\adb.exe" shell ls -l /sdcard/Download/
+1. En la barra lateral derecha de LDPlayer, abrir **Carpeta compartida**.
+2. Pulsar **Abrir Carpeta (PC)**. Se abre en Windows la carpeta compartida, y ahí está el
+   archivo exportado.
 
-# Traerlo
-& "D:\LDPlayer\LDPlayer9\adb.exe" pull /sdcard/Download/<archivo>.db3 "D:\revision\"
+En ese mismo diálogo, desplegando **Características avanzadas**, se ven las dos rutas que
+están enlazadas:
 
-# Y borrarlo del emulador al terminar
-& "D:\LDPlayer\LDPlayer9\adb.exe" shell rm /sdcard/Download/<archivo>.db3
-```
+| | Valor por omisión |
+|---|---|
+| Carpeta compartida (PC) | la carpeta de imágenes del usuario de Windows |
+| Carpeta compartida (Android) | `/sdcard/Pictures` |
 
-> **En Git Bash estos comandos fallan**: convierte `/sdcard/Download/` a una ruta de Windows
-> antes de pasarla. Usar PowerShell.
+Por eso conviene guardar la exportación en `Pictures`: es el lado Android de esa carpeta.
+Si el diálogo muestra otras rutas, valen esas; lo que importa es que sean las dos que
+aparecen ahí.
 
-Sin comandos, la barra lateral de LDPlayer tiene un botón de compartir archivos que abre una
-carpeta visible desde Windows y desde el emulador.
+> Si la carpeta compartida no aparece o está desactivada, la documentación oficial de
+> LDPlayer explica cómo activarla:
+> https://es.ldplayer.net/blog/how-to-transfer-files-to-ldplayer.html
+
+### En un teléfono real
+
+- **Con cable:** conectar el teléfono a la computadora y copiar el archivo desde la carpeta
+  donde se guardó.
+- **Sin cable:** compartirlo desde la aplicación de Archivos del teléfono, por el medio que
+  se use normalmente.
 
 ---
 
@@ -132,11 +140,25 @@ Las fechas operativas se guardan como *ticks* UTC, no como texto. Para leerlas:
 
 ```sql
 SELECT clave_local,
-       datetime((marca_utc / 10000000) - 62135596800, 'unixepoch') AS capturada_utc,
-       estado, gravedad, operador
+       datetime((creado_utc_ticks / 10000000) - 62135596800, 'unixepoch') AS capturada_utc,
+       operador, unidad_vehicular, estado, gravedad
 FROM incidencia_local
-ORDER BY marca_utc DESC;
+ORDER BY creado_utc_ticks DESC;
 ```
+
+Columnas útiles de `incidencia_local` para las pruebas:
+
+| Columna | Qué dice |
+|---|---|
+| `clave_local` | La clave visible, tipo `LOC-######` |
+| `operador` | De quién es el registro |
+| `unidad_vehicular` | Unidad de origen |
+| `estado` | 1=Borrador 2=Pendiente 3=Enviando 4=Sincronizado 5=Fallido |
+| `SesionOrigen` | En qué sesión se capturó |
+| `PermisoOrigen` | Con qué permiso se capturó |
+
+> Las dos últimas van en mayúsculas iniciales y el resto en minúsculas con guion bajo. No es
+> un error: son columnas agregadas después y conservan el nombre con que se declararon.
 
 ---
 
@@ -145,9 +167,11 @@ ORDER BY marca_utc DESC;
 **La copia no está cifrada.** Trae incidencias, operador, unidad y bitácora en claro, y desde
 que se guarda queda fuera del resguardo de la app: cualquiera que tenga el archivo lo lee.
 
-- Borrarla del teléfono en cuanto se haya copiado al equipo.
-- Borrarla del equipo al terminar la revisión.
-- No adjuntarla a un ticket ni dejarla en una carpeta compartida.
+- Borrarla en cuanto termine la revisión. **En LDPlayer basta con borrarla desde Windows, en
+  la carpeta compartida**: como es la misma carpeta para los dos lados, desaparece también
+  del emulador.
+- No adjuntarla a un ticket ni dejarla en una carpeta compartida del equipo. Si hace falta
+  sustentar un defecto, tomar captura de la consulta o copiar solo las filas que importan.
 - **No dejar instalado en un teléfono de operación un paquete que pueda exportar.** Para eso
   están los paquetes normales, que no traen la capacidad dentro.
 
