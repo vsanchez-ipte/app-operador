@@ -50,7 +50,8 @@
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
 
                         <VerticalStackLayout Grid.Column="0">
-                            <Label Text="KM (GPS O MANUAL)" Style="{StaticResource EtiquetaCampo}" />
+                            <!-- La etiqueta dice de dónde salió el kilómetro, no las opciones (JTT-1393 CA 6) -->
+                            <Label Text="{Binding EtiquetaKilometro}" Style="{StaticResource EtiquetaCampo}" />
                             <Border Style="{StaticResource MarcoCampo}">
                                 <Entry Style="{StaticResource CampoTexto}"
                                        Placeholder="Ej. 130+400"
@@ -77,8 +78,10 @@
                     <VerticalStackLayout>
                         <Label Text="NOTA DEL OPERADOR" Style="{StaticResource EtiquetaCampo}" />
                         <Border Style="{StaticResource MarcoCampo}">
+                            <!-- El tope lo pone el ViewModel, que es de donde sale el contador (JTT-1393 CA 7) -->
                             <Editor Style="{StaticResource CampoNota}"
                                     Placeholder="Descripcion de la incidencia..."
+                                    MaxLength="{Binding LongitudMaximaNota}"
                                     Text="{Binding Nota}" />
                         </Border>
                         <Label Text="{Binding ContadorNota}"

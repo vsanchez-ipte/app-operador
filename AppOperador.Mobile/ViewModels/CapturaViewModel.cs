@@ -31,6 +31,16 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private readonly ILocationService _ubicacion;
 	private readonly CapacidadesDeLaSesion _capacidades;
 
+	/// <summary>
+	/// Marca que el kilómetro lo está escribiendo la lectura del GPS, no el operador.
+	/// </summary>
+	/// <remarks>
+	/// Sin esto no se distingue quién escribió: <see cref="OnKilometroChanged(string)"/> se dispara
+	/// igual cuando <see cref="IntentarUbicarAsync"/> asigna la lectura que cuando el operador
+	/// teclea, y la fuente acabaría siempre en <see cref="KilometerSource.Manual"/>.
+	/// </remarks>
+	private bool _asignandoDesdeGps;
+
 	[ObservableProperty]
 	public partial TipoIncidencia? TipoSeleccionado { get; set; }
 
@@ -95,8 +105,33 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 	public bool HayBorradores => Borradores.Count > 0;
 
-	/// <summary>Contador de caracteres de la nota, como en la maqueta.</summary>
-	public string ContadorNota => $"{Nota.Length} car.";
+	/// <summary>
+	/// Tope de caracteres de la nota (JTT-1393 CA 7).
+	/// </summary>
+	/// <remarks>
+	/// Se expone como propiedad, y no como literal en la vista, para que el tope y el contador
+	/// que lo anuncia salgan del mismo sitio y no puedan discrepar.
+	/// </remarks>
+	public int LongitudMaximaNota => 1000;
+
+	/// <summary>
+	/// Contador de caracteres de la nota, como en la maqueta.
+	/// </summary>
+	/// <remarks>
+	/// Muestra también el tope: un contador que solo sube no le dice al operador —ni a quien
+	/// verifica— cuál es el límite (JTT-1393 CA 7).
+	/// </remarks>
+	public string ContadorNota => $"{Nota.Length}/{LongitudMaximaNota} car.";
+
+	/// <summary>
+	/// Etiqueta del campo de kilómetro, con la fuente de la que salió (JTT-1393 CA 6).
+	/// </summary>
+	/// <remarks>
+	/// Antes era el texto fijo «KM (GPS O MANUAL)», que enuncia las dos posibilidades pero no
+	/// dice cuál ocurrió. El criterio pide justamente lo segundo.
+	/// </remarks>
+	public string EtiquetaKilometro =>
+		FuenteKilometro == KilometerSource.GPS ? "KM (GPS)" : "KM (MANUAL)";
 
 	/// <summary>Carga catálogos e intenta situar al operador por GPS.</summary>
 	public async Task InicializarAsync()
@@ -137,7 +172,12 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		AvisoGps = null;
+
+		// La bandera evita que el propio GPS marque el kilómetro como capturado a mano.
+		_asignandoDesdeGps = true;
 		Kilometro = lectura.Valor;
+		_asignandoDesdeGps = false;
+
 		FuenteKilometro = KilometerSource.GPS;
 	}
 
@@ -233,12 +273,25 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 	partial void OnNotaChanged(string value) => OnPropertyChanged(nameof(ContadorNota));
 
-	// Escribir el kilómetro a mano cambia su origen: deja de ser una lectura del GPS.
+	partial void OnFuenteKilometroChanged(KilometerSource value) =>
+		OnPropertyChanged(nameof(EtiquetaKilometro));
+
+	/// <summary>
+	/// Escribir el kilómetro a mano cambia su origen: deja de ser una lectura del GPS.
+	/// </summary>
+	/// <remarks>
+	/// La condición anterior —cambiar a manual solo si además había aviso de GPS— nunca se
+	/// cumplía en el caso que importa: con lectura válida no hay aviso, así que corregir a mano
+	/// un kilómetro obtenido por GPS lo dejaba marcado como GPS. No se notaba porque la fuente
+	/// no se mostraba en ninguna parte; al presentarla (CA 6) queda a la vista.
+	/// </remarks>
 	partial void OnKilometroChanged(string value)
 	{
-		if (FuenteKilometro == KilometerSource.GPS && !string.IsNullOrEmpty(AvisoGps))
+		if (_asignandoDesdeGps)
 		{
-			FuenteKilometro = KilometerSource.Manual;
+			return;
 		}
+
+		FuenteKilometro = KilometerSource.Manual;
 	}
 }
