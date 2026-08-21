@@ -114,6 +114,11 @@ public static class MauiProgram
 		servicios.AddSingleton<ILocalDatabase>(sp => sp.GetRequiredService<BaseDatosLocal>());
 		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
+
+		// Copia local del catálogo de Jacob (JTT-1394). Va aparte del repositorio de
+		// incidencias: uno es caché reemplazable del servidor y el otro son datos que solo
+		// existen en el dispositivo hasta que se sincronizan.
+		servicios.AddSingleton<ICatalogoRepository, RepositorioCatalogoSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
 #if EXPORTAR_BASE_DATOS
@@ -235,6 +240,12 @@ public static class MauiProgram
 			// Sin canal no hay a quién sondear: el estado de enlace se simula, como el resto
 			// del recorrido.
 			servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
+
+			// El catálogo también se simula (JTT-1394). Sin esto el recorrido simulado se
+			// quedaría sin tipos ni severidades —la base dejó de sembrarlos— y no habría con
+			// qué capturar. El simulador hace de Jacob, igual que con los permisos.
+			servicios.AddSingleton<ICatalogosJacobClient, CatalogoSimulado>();
+			servicios.AddSingleton<ActualizarCatalogoLocal>();
 			return;
 		}
 
@@ -244,6 +255,18 @@ public static class MauiProgram
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
 			return new ClienteAccesoJacob(http, opciones, sp.GetRequiredService<ITokenClaims>());
 		});
+
+		// Catálogos reales de Jacob (JTT-1394). Cliente propio y no una ruta más en
+		// ClienteAccesoJacob: aquel no registra nada a propósito porque por él pasan
+		// contraseñas y desafíos, y una consulta de catálogo no necesita esa disciplina.
+		servicios.AddSingleton<ICatalogosJacobClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
+			return new ClienteCatalogosJacob(http, opciones);
+		});
+
+		servicios.AddSingleton<ActualizarCatalogoLocal>();
 
 		// Estado de enlace real: red del dispositivo más una sonda autenticada a Jacob. Va
 		// aquí porque necesita el cliente que se acaba de registrar (JTT-1391).

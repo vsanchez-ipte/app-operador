@@ -123,4 +123,18 @@ public sealed class ConfiguracionApi
 	/// operador ni de la unidad. Es la sonda del indicador de enlace (JTT-1391).
 	/// </remarks>
 	public const string RutaEstado = "/ITS/AppLogin/Estado";
+
+	/// <summary>
+	/// Ruta de los catálogos vigentes. Exige el token y sesión activa (JTT-1394).
+	/// </summary>
+	/// <remarks>
+	/// Devuelve tipos, severidades, afectaciones y cuerpos en <b>una sola llamada</b>, porque lo
+	/// que se sella en una incidencia capturada sin conexión es una sola versión de catálogo, no
+	/// cuatro.
+	/// <para>
+	/// Exige el permiso <b>general</b> de la app, no el de captura: consultar el catálogo no es
+	/// capturar.
+	/// </para>
+	/// </remarks>
+	public const string RutaCatalogos = "/ITS/AppCatalogos/Vigentes";
 }

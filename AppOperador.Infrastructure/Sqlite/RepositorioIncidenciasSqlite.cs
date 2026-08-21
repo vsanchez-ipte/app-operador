@@ -1,3 +1,4 @@
+using System.Globalization;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
@@ -38,43 +39,40 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	}
 
 	/// <inheritdoc />
-	public async Task<IReadOnlyList<TipoIncidencia>> ObtenerTiposAsync(CancellationToken cancelacion = default)
-	{
-		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
-
-		var filas = await conexion.Table<TipoIncidenciaLocal>()
-			.Where(t => t.Activo)
-			.OrderBy(t => t.Orden)
-			.ToListAsync();
-
-		return filas
-			.Select(t => new TipoIncidencia(t.Clave, t.Nombre, t.ExigeDescripcion))
-			.ToList();
-	}
-
-	/// <inheritdoc />
 	public async Task<string> GuardarAsync(
 		TipoIncidencia tipo,
 		Kilometer kilometro,
 		KilometerSource fuenteKilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia severidad,
 		string nota,
 		CancellationToken cancelacion = default)
 	{
+		ArgumentNullException.ThrowIfNull(severidad);
+
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var ahora = _reloj.UtcAhora.Ticks;
+		var versionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 
 		var fila = new IncidenciaLocal
 		{
 			Uuid = Guid.NewGuid().ToString(),
 			ClaveLocal = await SiguienteClaveLocalAsync(cancelacion),
-			TipoClave = tipo.Clave,
+			TipoClave = tipo.Id.ToString(CultureInfo.InvariantCulture),
 			TipoNombre = tipo.Nombre,
 			Kilometro = kilometro.Valor,
 			FuenteKilometro = (int)fuenteKilometro,
-			Gravedad = (int)gravedad,
-			// La prioridad no se decide aquí: la fija la regla de dominio.
-			Prioridad = (int)ReglaPrioridadSincronizacion.Para(gravedad),
+
+			// Del nivel se guardan las tres cosas: el identificador para enviarlo, y el nombre
+			// y el orden del momento para que el histórico no cambie si el catálogo se edita.
+			SeveridadId = severidad.Id.ToString(),
+			SeveridadNombre = severidad.Nivel,
+			SeveridadOrden = severidad.Orden,
+
+			// La prioridad no se decide aquí: la fija la regla de dominio, a partir del orden.
+			Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden),
+
+			// Versión del catálogo con la que se capturó (JTT-1394 CA 5).
+			VersionCatalogo = versionCatalogo,
 			Nota = nota,
 			Estado = (int)EstadoSincronizacion.Pendiente,
 			Operador = _sesion.Actual?.Operador ?? string.Empty,
@@ -98,6 +96,23 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	}
 
 	/// <summary>
+	/// Versión del catálogo guardado, para sellarla en la incidencia (JTT-1394 CA 5).
+	/// </summary>
+	/// <remarks>
+	/// Se lee de la tabla de catálogo y no de la sesión a propósito. La sesión trae la versión
+	/// de <b>su</b> descarga, y una incidencia capturada sin conexión puede enviarse días
+	/// después, cuando ya se bajó otra: sellarla desde la sesión declararía una versión que el
+	/// operador no usó. Vacío si nunca se ha descargado el catálogo.
+	/// </remarks>
+	private async Task<string> LeerVersionCatalogoAsync(CancellationToken cancelacion)
+	{
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var meta = await conexion.FindAsync<CatalogoMetaLocal>(CatalogoMetaLocal.ClaveUnica);
+
+		return meta?.Version ?? string.Empty;
+	}
+
+	/// <summary>
 	/// Permiso con el que la sesión autoriza capturar, para sellarlo en el registro.
 	/// </summary>
 	/// <remarks>
@@ -117,25 +132,32 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	public async Task<string> GuardarBorradorAsync(
 		TipoIncidencia? tipo,
 		string? kilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia? severidad,
 		string nota,
 		CancellationToken cancelacion = default)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var ahora = _reloj.UtcAhora.Ticks;
+		var versionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 
 		var fila = new IncidenciaLocal
 		{
 			Uuid = Guid.NewGuid().ToString(),
 			ClaveLocal = await SiguienteClaveLocalAsync(cancelacion),
-			TipoClave = tipo?.Clave,
+			TipoClave = tipo?.Id.ToString(CultureInfo.InvariantCulture),
 			TipoNombre = tipo?.Nombre,
 			// Un borrador admite un kilómetro a medio escribir: por eso se guarda el
 			// texto crudo y no un Kilometer, que rechazaría cualquier valor incompleto.
 			Kilometro = kilometro,
 			FuenteKilometro = (int)KilometerSource.Manual,
-			Gravedad = (int)gravedad,
-			Prioridad = (int)ReglaPrioridadSincronizacion.Para(gravedad),
+
+			// Un borrador puede no tener severidad elegida todavía; se sella lo que haya.
+			SeveridadId = severidad?.Id.ToString() ?? string.Empty,
+			SeveridadNombre = severidad?.Nivel ?? string.Empty,
+			SeveridadOrden = severidad?.Orden ?? 0,
+			Prioridad = (int)ReglaPrioridadSincronizacion.Para(
+				severidad?.Orden ?? int.MaxValue),
+			VersionCatalogo = versionCatalogo,
 			Nota = nota,
 			Estado = (int)EstadoSincronizacion.Borrador,
 			Operador = _sesion.Actual?.Operador ?? string.Empty,

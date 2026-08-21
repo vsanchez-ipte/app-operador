@@ -1,3 +1,4 @@
+using AppOperador.Aplicacion.Modelos;
 using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
@@ -23,14 +24,12 @@ public sealed class BaseDatosLocalTests
 	{
 		await using var contexto = new ContextoSqlite();
 
-		// Las cuatro pestañas la invocan sin coordinarse: repetir no debe romper nada
-		// ni volver a sembrar el catálogo.
+		// Las cuatro pestañas la invocan sin coordinarse: repetir no debe romper nada.
 		await contexto.BaseDatos.InicializarAsync();
 		await contexto.BaseDatos.InicializarAsync();
 		await contexto.BaseDatos.InicializarAsync();
 
-		var tipos = await contexto.CrearRepositorio().ObtenerTiposAsync();
-		Assert.Equal(6, tipos.Count);
+		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, await contexto.BaseDatos.ObtenerVersionEsquemaAsync());
 	}
 
 	[Fact]
@@ -41,12 +40,32 @@ public sealed class BaseDatosLocalTests
 		// Reproduce el arranque real: varias pantallas cargando a la vez.
 		await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => contexto.BaseDatos.InicializarAsync()));
 
-		var tipos = await contexto.CrearRepositorio().ObtenerTiposAsync();
-		Assert.Equal(6, tipos.Count);
+		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, await contexto.BaseDatos.ObtenerVersionEsquemaAsync());
+	}
+
+	/// <summary>
+	/// JTT-1394: la base ya no siembra catálogo. Nace vacía y la llena la primera descarga.
+	/// </summary>
+	/// <remarks>
+	/// Hasta JTT-1394 se sembraban seis tipos de la maqueta —OBJETO, VEHICULO…— que no existen
+	/// en ningún servidor. Ofrecerlos dejaba capturar incidencias que Jacob iba a rechazar, y
+	/// además hacía creer que el catálogo estaba resuelto.
+	/// </remarks>
+	[Fact]
+	public async Task BaseNueva_naceSinCatalogo()
+	{
+		await using var contexto = new ContextoSqlite();
+		await contexto.BaseDatos.InicializarAsync();
+
+		var catalogo = await new RepositorioCatalogoSqlite(contexto.BaseDatos).ObtenerAsync();
+
+		Assert.Empty(catalogo.Tipos);
+		Assert.Empty(catalogo.Severidades);
+		Assert.False(catalogo.EsUtilizable);
 	}
 
 	[Fact]
-	public async Task ReabrirBaseExistente_conservaLaVersionYNoDuplicaElCatalogo()
+	public async Task ReabrirBaseExistente_conservaLaVersion()
 	{
 		await using var contexto = new ContextoSqlite();
 		await contexto.BaseDatos.InicializarAsync();
@@ -57,22 +76,38 @@ public sealed class BaseDatosLocalTests
 
 		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, await segunda.ObtenerVersionEsquemaAsync());
 
-		var tipos = await new RepositorioIncidenciasSqlite(segunda, contexto.Reloj, contexto.Sesion)
-			.ObtenerTiposAsync();
-		Assert.Equal(6, tipos.Count);
-
 		await segunda.DisposeAsync();
 	}
 
+	/// <summary>
+	/// El catálogo descargado sobrevive a cerrar y reabrir la app (JTT-1394 CA 2).
+	/// </summary>
 	[Fact]
-	public async Task CatalogoSembrado_marcaOtroComoTipoQueExigeDescripcion()
+	public async Task CatalogoGuardado_sobreviveAReabrirLaBase()
 	{
 		await using var contexto = new ContextoSqlite();
+		await contexto.BaseDatos.InicializarAsync();
 
-		var tipos = await contexto.CrearRepositorio().ObtenerTiposAsync();
+		await new RepositorioCatalogoSqlite(contexto.BaseDatos).ReemplazarAsync(
+			new CatalogosOperacion(
+				new DateOnly(2026, 8, 20),
+				[new TipoIncidencia(107, "Otro", ExigeDescripcion: true)],
+				[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
+				[new AfectacionIncidencia(1, "Total")],
+				[new CuerpoVia("A", "Cuerpo A")]));
 
-		// JTT-333: el tipo se reconoce por su bandera, no comparando el nombre por texto.
-		var otro = Assert.Single(tipos, t => t.ExigeDescripcion);
-		Assert.Equal("OTRO", otro.Clave);
+		var segunda = contexto.ReabrirBaseDatos();
+		await segunda.InicializarAsync();
+
+		var catalogo = await new RepositorioCatalogoSqlite(segunda).ObtenerAsync();
+
+		Assert.Equal(new DateOnly(2026, 8, 20), catalogo.Version);
+
+		// La nota obligatoria se reconoce por la bandera, nunca por el nombre ni por el id:
+		// el de «Otro» ni siquiera es el mismo en todos los ambientes (JTT-1397).
+		var otro = Assert.Single(catalogo.Tipos, t => t.ExigeDescripcion);
+		Assert.Equal(107, otro.Id);
+
+		await segunda.DisposeAsync();
 	}
 }

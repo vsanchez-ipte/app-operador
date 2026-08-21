@@ -34,7 +34,23 @@ internal sealed class IncidenciaLocal
 	[Column("clave_local")]
 	public string ClaveLocal { get; set; } = string.Empty;
 
-	/// <summary>Clave del tipo en el catálogo. Nula mientras es borrador.</summary>
+	/// <summary>
+	/// Identificador del tipo en el catálogo, como texto. Nulo mientras es borrador.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Sigue siendo texto aunque desde JTT-1394 el catálogo identifique por entero, y es
+	/// deliberado: esta columna es un <b>sello histórico de lo que se capturó</b>, no una llave
+	/// foránea. Convertirla a entero habría dejado ilegibles las incidencias capturadas antes,
+	/// que traen las claves de la maqueta —<c>OBJETO</c>, <c>VEHICULO</c>…—, y JTT-1388 CA 8
+	/// exige que una actualización conserve borradores y pendientes.
+	/// </para>
+	/// <para>
+	/// Las capturadas desde JTT-1394 guardan aquí el entero en forma invariante. Las anteriores
+	/// conservan su clave de texto y <b>no son enviables</b>: apuntan a tipos que no existen en
+	/// ningún servidor, y tampoco lo eran antes, porque el endpoint de creación no existía.
+	/// </para>
+	/// </remarks>
 	[Column("tipo_clave")]
 	public string? TipoClave { get; set; }
 
@@ -51,13 +67,45 @@ internal sealed class IncidenciaLocal
 	[Column("fuente_kilometro")]
 	public int FuenteKilometro { get; set; }
 
-	/// <summary>Gravedad declarada. Ver <c>Gravedad</c>.</summary>
+	/// <summary>
+	/// Gravedad del enum que la app tenía antes de JTT-1394. <b>Ya no se escribe.</b>
+	/// </summary>
+	/// <remarks>
+	/// Se conserva la columna en vez de borrarla porque quitarla en SQLite obliga a reconstruir
+	/// la tabla, y con ella se irían los borradores y pendientes que JTT-1388 CA 8 manda
+	/// preservar. En las filas nuevas queda en cero; en las viejas dice con qué nivel inventado
+	/// se capturaron, que es lo único que se puede saber de ellas.
+	/// </remarks>
 	[Column("gravedad")]
 	public int Gravedad { get; set; }
 
-	/// <summary>Prioridad derivada de la gravedad por la regla de dominio. Ver <c>SyncPriority</c>.</summary>
+	/// <summary>Identificador del nivel de severidad de Jacob. Vacío en las filas anteriores a JTT-1394.</summary>
+	[Column("severidad_id")]
+	public string SeveridadId { get; set; } = string.Empty;
+
+	/// <summary>Nombre del nivel al momento de capturar, para que el histórico no cambie si lo renombran.</summary>
+	[Column("severidad_nombre")]
+	public string SeveridadNombre { get; set; } = string.Empty;
+
+	/// <summary>Posición del nivel en la escala del catálogo, donde menor es más grave.</summary>
+	[Column("severidad_orden")]
+	public int SeveridadOrden { get; set; }
+
+	/// <summary>Prioridad derivada de la severidad por la regla de dominio. Ver <c>SyncPriority</c>.</summary>
 	[Column("prioridad")]
 	public int Prioridad { get; set; }
+
+	/// <summary>
+	/// Versión del catálogo con la que se capturó, en formato <c>yyyy-MM-dd</c> (JTT-1394 CA 5).
+	/// </summary>
+	/// <remarks>
+	/// <b>Se sella aquí y no solo en la sesión.</b> Una incidencia capturada sin conexión puede
+	/// sincronizarse días después, cuando la sesión ya bajó un catálogo distinto: si la versión
+	/// viviera solo en la sesión, al enviarla se declararía una que no es la que el operador
+	/// usó. Vacío en las filas anteriores a JTT-1394, que no la registraron.
+	/// </remarks>
+	[Column("version_catalogo")]
+	public string VersionCatalogo { get; set; } = string.Empty;
 
 	/// <summary>Nota del operador. Obligatoria cuando el tipo exige descripción.</summary>
 	[Column("nota")]

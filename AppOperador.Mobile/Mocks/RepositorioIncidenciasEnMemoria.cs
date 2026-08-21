@@ -31,33 +31,16 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 	/// </summary>
 	private string OperadorActual => _sesiones.Actual?.Operador ?? "-";
 
-	public Task<IReadOnlyList<TipoIncidencia>> ObtenerTiposAsync(CancellationToken cancelacion = default)
-	{
-		// Catálogo provisional: el definitivo lo entrega Jacob. Lo único fijado es que
-		// existe "Otro" y que obliga a describir la incidencia (JTT-333).
-		IReadOnlyList<TipoIncidencia> tipos =
-		[
-			new("OBJ", "Objeto en camino"),
-			new("VEH", "Vehículo detenido"),
-			new("ACC", "Accidente"),
-			new("ANI", "Animal en la vía"),
-			new("PAV", "Daño en pavimento"),
-			new("OTR", "Otro", ExigeDescripcion: true),
-		];
-
-		return Task.FromResult(tipos);
-	}
-
 	public Task<string> GuardarAsync(
 		TipoIncidencia tipo,
 		Kilometer kilometro,
 		KilometerSource fuenteKilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia severidad,
 		string nota,
 		CancellationToken cancelacion = default)
 	{
 		// La prioridad de cola la decide la regla de dominio, no esta clase.
-		var prioridad = ReglaPrioridadSincronizacion.Para(gravedad);
+		var prioridad = ReglaPrioridadSincronizacion.Para(severidad.Orden);
 
 
 		var registro = new RegistroCola(
@@ -75,7 +58,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 	public Task<string> GuardarBorradorAsync(
 		TipoIncidencia? tipo,
 		string? kilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia? severidad,
 		string nota,
 		CancellationToken cancelacion = default)
 	{
@@ -83,7 +66,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 		var registro = new RegistroCola(
 			ClaveLocal: _almacen.SiguienteClaveLocal(),
 			Clase: ClaseRegistro.Incidencia,
-			Prioridad: ReglaPrioridadSincronizacion.Para(gravedad),
+			Prioridad: ReglaPrioridadSincronizacion.Para(severidad?.Orden ?? int.MaxValue),
 			Descripcion: tipo?.Nombre ?? "Sin tipo",
 			Kilometro: kilometro ?? "-",
 			Estado: EstadoSincronizacion.Borrador);

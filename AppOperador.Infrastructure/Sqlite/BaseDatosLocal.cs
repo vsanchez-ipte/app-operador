@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 3;
+	public const int VersionEsquemaActual = 4;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -84,15 +84,22 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 
 			var conexion = AbrirConexion();
 
+			// Va ANTES de crear las tablas, no después: hay cambios que CreateTableAsync no
+			// sabe hacer y que dejarían la tabla mal formada si se aplicaran encima.
+			await PrepararEsquemaAsync(conexion);
+
 			await conexion.CreateTableAsync<IncidenciaLocal>();
 			await conexion.CreateTableAsync<EvidenciaLocal>();
 			await conexion.CreateTableAsync<IntentoSincronizacion>();
 			await conexion.CreateTableAsync<EventoAuditoriaLocal>();
 			await conexion.CreateTableAsync<TipoIncidenciaLocal>();
+			await conexion.CreateTableAsync<SeveridadLocal>();
+			await conexion.CreateTableAsync<AfectacionLocal>();
+			await conexion.CreateTableAsync<CuerpoLocal>();
+			await conexion.CreateTableAsync<CatalogoMetaLocal>();
 			await conexion.CreateTableAsync<SesionLocal>();
 
 			await MigrarAsync(conexion);
-			await SembrarCatalogoAsync(conexion);
 
 			_inicializada = true;
 		}
@@ -262,37 +269,52 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		// De 0 a 1: primera versión publicada.
 		// De 1 a 2: sesión persistida y sello de origen de las incidencias (JTT-1383).
 		// De 2 a 3: permiso con el que se autorizó la captura (JTT-1385 CA 7).
-		// Los tres cambios son aditivos y CreateTableAsync ya los aplicó arriba, así que solo
-		// queda sellar la versión. Una base de la versión anterior conserva sus incidencias con
-		// el permiso vacío: no se puede reconstruir con qué se capturaron.
+		// De 3 a 4: catálogo real de Jacob (JTT-1394). Su parte destructiva la hace
+		//           PrepararEsquemaAsync antes de crear las tablas; lo que queda —las columnas
+		//           de severidad y la versión de catálogo en incidencia_local, y las tablas de
+		//           severidades, afectaciones, cuerpos y meta— es aditivo y CreateTableAsync ya
+		//           lo aplicó arriba.
+		//
+		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
+		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
+		// capturaron, igual que pasó con el permiso al pasar de 2 a 3.
 		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
 	}
 
 	/// <summary>
-	/// Siembra el catálogo de tipos si la tabla está vacía.
+	/// Aplica los cambios de esquema que <c>CreateTableAsync</c> no sabe hacer.
 	/// </summary>
 	/// <remarks>
-	/// Provisional: el catálogo autorizado lo entregará Jacob (JTT-1347). Mientras tanto
-	/// se usan los tipos de la maqueta para que la captura funcione sin conexión.
-	/// Solo siembra cuando la tabla está vacía, así una sincronización futura de
-	/// catálogos no se pisa con estos valores.
+	/// <para>
+	/// <c>CreateTableAsync</c> solo <b>agrega</b> columnas que falten. No cambia una llave
+	/// primaria ni quita columnas, así que aplicarlo sobre una tabla cuya forma cambió deja un
+	/// híbrido de las dos versiones. Este método corre <b>antes</b> para dejar el archivo en un
+	/// estado sobre el que crear sea seguro.
+	/// </para>
+	/// <para>
+	/// Solo toca tablas que son <b>caché reconstruible</b>. Nada de lo que el operador capturó
+	/// se borra aquí: eso lo prohíbe JTT-1388 CA 8.
+	/// </para>
 	/// </remarks>
-	private static async Task SembrarCatalogoAsync(SQLiteAsyncConnection conexion)
+	private static async Task PrepararEsquemaAsync(SQLiteAsyncConnection conexion)
 	{
-		if (await conexion.Table<TipoIncidenciaLocal>().CountAsync() > 0)
+		var version = await conexion.ExecuteScalarAsync<int>("PRAGMA user_version;");
+
+		if (version >= VersionEsquemaActual)
 		{
 			return;
 		}
 
-		await conexion.InsertAllAsync(new[]
-		{
-			new TipoIncidenciaLocal { Clave = "OBJETO", Nombre = "Objeto en camino", Orden = 1 },
-			new TipoIncidenciaLocal { Clave = "VEHICULO", Nombre = "Vehiculo detenido", Orden = 2 },
-			new TipoIncidenciaLocal { Clave = "ACCIDENTE", Nombre = "Accidente", Orden = 3 },
-			new TipoIncidenciaLocal { Clave = "ANIMAL", Nombre = "Animal en camino", Orden = 4 },
-			new TipoIncidenciaLocal { Clave = "SENALAMIENTO", Nombre = "Senalamiento danado", Orden = 5 },
-			new TipoIncidenciaLocal { Clave = "OTRO", Nombre = "Otro", ExigeDescripcion = true, Orden = 6 },
-		});
+		// De 3 a 4 (JTT-1394): el catálogo de tipos cambió de llave, de una clave de texto
+		// inventada en la maqueta al entero de Jacob. No se puede migrar fila por fila porque
+		// no hay correspondencia: los seis tipos sembrados —OBJETO, VEHICULO, ACCIDENTE,
+		// ANIMAL, SENALAMIENTO, OTRO— no existen en ningún servidor. Se tira la tabla y se
+		// vuelve a crear vacía; la llena la primera descarga del catálogo real.
+		//
+		// Que quede vacía hasta esa descarga es a propósito: un formulario sin tipos avisa de
+		// que falta bajar el catálogo, mientras que uno con seis tipos falsos deja capturar
+		// incidencias que Jacob va a rechazar.
+		await conexion.ExecuteAsync("DROP TABLE IF EXISTS catalogo_tipo_incidencia;");
 	}
 
 	public async ValueTask DisposeAsync()

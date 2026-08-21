@@ -28,6 +28,7 @@ public sealed class RevalidarSesionMovil
 	private readonly IMonotonicClock _monotonico;
 	private readonly ISyncQueueService _cola;
 	private readonly IAuditLog _bitacora;
+	private readonly ActualizarCatalogoLocal? _catalogos;
 
 	public RevalidarSesionMovil(
 		IAccesoJacobClient jacob,
@@ -36,7 +37,8 @@ public sealed class RevalidarSesionMovil
 		ITokenClaims claims,
 		IMonotonicClock monotonico,
 		ISyncQueueService cola,
-		IAuditLog bitacora)
+		IAuditLog bitacora,
+		ActualizarCatalogoLocal? catalogos = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
@@ -45,6 +47,7 @@ public sealed class RevalidarSesionMovil
 		_monotonico = monotonico;
 		_cola = cola;
 		_bitacora = bitacora;
+		_catalogos = catalogos;
 	}
 
 	/// <summary>Intenta revalidar la sesión guardada.</summary>
@@ -113,6 +116,14 @@ public sealed class RevalidarSesionMovil
 		// Sin token nuevo: la revalidación no emite uno y sobrescribirlo dejaría la sesión
 		// sin credencial.
 		await _custodia.AbrirAsync(renovada, accessToken: null, cancelacion);
+
+		// El catálogo se refresca aquí, que es la otra mitad del CA 4 de JTT-1394: la
+		// revalidación es la validación en línea que ocurre sin que el operador vuelva a
+		// entrar. Su fallo no se propaga: la sesión ya quedó renovada.
+		if (_catalogos is not null)
+		{
+			await _catalogos.EjecutarAsync(token, cancelacion);
+		}
 
 		await _bitacora.RegistrarAsync(
 			NivelAuditoria.Info,

@@ -9,13 +9,24 @@ namespace AppOperador.IntegrationTests.Sqlite;
 /// </summary>
 public sealed class ColaSincronizacionSqliteTests
 {
-	private static readonly TipoIncidencia Objeto = new("OBJETO", "Objeto en camino");
+	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
+
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3
+	// (JTT-1394). Sustituyen al enum Gravedad, que la app se inventaba.
+	private static readonly SeveridadIncidencia Critica =
+		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
+
+	private static readonly SeveridadIncidencia Advertencia =
+		new(Guid.Parse("22222222-2222-2222-2222-222222222222"), "Advertencia", 2, "#EDD611");
+
+	private static readonly SeveridadIncidencia Informacion =
+		new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Información", 3, "#120AF2");
 
 	[Fact]
 	public async Task Sincronizar_pasaLosPendientesASincronizadoYAsignaFolio()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
+		await GuardarAsync(contexto, Advertencia);
 		var cola = contexto.CrearCola();
 
 		var confirmados = await cola.SincronizarAsync();
@@ -30,8 +41,8 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task Sincronizar_dejaElContadorDePendientesEnCero()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
-		await GuardarAsync(contexto, Gravedad.Alta);
+		await GuardarAsync(contexto, Advertencia);
+		await GuardarAsync(contexto, Advertencia);
 		var cola = contexto.CrearCola();
 
 		Assert.Equal(2, await cola.ContarPendientesAsync());
@@ -47,9 +58,9 @@ public sealed class ColaSincronizacionSqliteTests
 		await using var contexto = new ContextoSqlite();
 
 		// La normal se captura antes; la crítica, una hora después.
-		await GuardarAsync(contexto, Gravedad.Baja);
+		await GuardarAsync(contexto, Informacion);
 		contexto.Reloj.Avanzar(TimeSpan.FromHours(1));
-		var critica = await GuardarAsync(contexto, Gravedad.Critica);
+		var critica = await GuardarAsync(contexto, Critica);
 
 		await contexto.CrearCola().SincronizarAsync();
 
@@ -64,7 +75,7 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task Sincronizar_sinConexion_noCambiaNingunEstado()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
+		await GuardarAsync(contexto, Advertencia);
 		contexto.Conectividad.HayEnlace = false;
 
 		var confirmados = await contexto.CrearCola().SincronizarAsync();
@@ -79,7 +90,7 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task Sincronizar_sinConexion_dejaConstanciaEnLaBitacora()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
+		await GuardarAsync(contexto, Advertencia);
 		contexto.Conectividad.HayEnlace = false;
 
 		await contexto.CrearCola().SincronizarAsync();
@@ -92,7 +103,7 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task Sincronizar_noReenviaLoQueYaEstaSincronizado()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
+		await GuardarAsync(contexto, Advertencia);
 		var cola = contexto.CrearCola();
 
 		await cola.SincronizarAsync();
@@ -109,7 +120,7 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task Sincronizar_ignoraLosBorradores()
 	{
 		await using var contexto = new ContextoSqlite();
-		await contexto.CrearRepositorio().GuardarBorradorAsync(Objeto, "130+", Gravedad.Critica, "");
+		await contexto.CrearRepositorio().GuardarBorradorAsync(Objeto, "130+", Critica, "");
 
 		var confirmados = await contexto.CrearCola().SincronizarAsync();
 
@@ -122,7 +133,7 @@ public sealed class ColaSincronizacionSqliteTests
 	public async Task LaColaSincronizada_sobreviveAlReinicioDeLaAplicacion()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Gravedad.Media);
+		await GuardarAsync(contexto, Advertencia);
 		await contexto.CrearCola().SincronizarAsync();
 
 		var reabierta = contexto.ReabrirBaseDatos();
@@ -135,12 +146,12 @@ public sealed class ColaSincronizacionSqliteTests
 		await reabierta.DisposeAsync();
 	}
 
-	private static Task<string> GuardarAsync(ContextoSqlite contexto, Gravedad gravedad) =>
+	private static Task<string> GuardarAsync(ContextoSqlite contexto, SeveridadIncidencia severidad) =>
 		contexto.CrearRepositorio().GuardarAsync(
 			Objeto,
 			Kilometer.Crear("130+200"),
 			KilometerSource.GPS,
-			gravedad,
+			severidad,
 			"nota de prueba");
 }
 

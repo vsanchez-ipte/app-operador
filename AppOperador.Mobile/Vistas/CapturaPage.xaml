@@ -63,8 +63,8 @@
                             <Label Text="SEVERIDAD" Style="{StaticResource EtiquetaCampo}" />
                             <Border Style="{StaticResource MarcoCampo}">
                                 <Picker Style="{StaticResource CampoLista}"
-                                        ItemsSource="{Binding Gravedades}"
-                                        SelectedItem="{Binding GravedadSeleccionada}" />
+                                        ItemsSource="{Binding Severidades}"
+                                        SelectedItem="{Binding SeveridadSeleccionada}" />
                             </Border>
                         </VerticalStackLayout>
 
@@ -94,6 +94,12 @@
                     <Label Text="{Binding MensajeError}"
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayError}" />
+
+                    <!-- Falta descargar el catálogo (JTT-1394 CA 2). Sin él no hay tipos ni
+                         severidades que ofrecer, y en blanco pareceria que la app fallo. -->
+                    <Label Text="{Binding AvisoSinCatalogo}"
+                           Style="{StaticResource MensajeError}"
+                           IsVisible="{Binding HayAvisoSinCatalogo}" />
 
                     <!-- Por qué los botones están apagados (JTT-1404 CA 5). Va JUNTO a
                          ellos y no arriba del formulario: el operador mira el botón que no

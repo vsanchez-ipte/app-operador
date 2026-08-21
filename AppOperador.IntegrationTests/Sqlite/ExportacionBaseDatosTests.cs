@@ -17,7 +17,17 @@ namespace AppOperador.IntegrationTests.Sqlite;
 /// </remarks>
 public sealed class ExportacionBaseDatosTests
 {
-	private static readonly TipoIncidencia Objeto = new("OBJETO", "Objeto en camino");
+
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3 (JTT-1394).
+	private static readonly SeveridadIncidencia Critica =
+		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
+
+	private static readonly SeveridadIncidencia Advertencia =
+		new(Guid.Parse("22222222-2222-2222-2222-222222222222"), "Advertencia", 2, "#EDD611");
+
+	private static readonly SeveridadIncidencia Informacion =
+		new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Información", 3, "#120AF2");
+	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
 	/// <summary>Clave fija para las pruebas. En el dispositivo sale del almacén seguro.</summary>
 	private sealed class ClaveFija : IDatabaseKeyProvider
@@ -64,7 +74,7 @@ public sealed class ExportacionBaseDatosTests
 				Objeto,
 				Kilometer.Crear("130+200"),
 				KilometerSource.GPS,
-				Gravedad.Media,
+				Advertencia,
 				"nota de prueba");
 
 		public async ValueTask DisposeAsync()
@@ -103,7 +113,8 @@ public sealed class ExportacionBaseDatosTests
 
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
-		Assert.Equal(6, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
+		// Desde JTT-1394 la base no siembra catálogo: nace vacío y lo llena la primera descarga.
+		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
 		Assert.Equal(1, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM incidencia_local;"));
 		Assert.Equal(clave, copia.ExecuteScalar<string>("SELECT clave_local FROM incidencia_local;"));
 	}
@@ -137,7 +148,8 @@ public sealed class ExportacionBaseDatosTests
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
 		Assert.Equal(LeerEstructura(origen), LeerEstructura(copia));
-		Assert.Equal(6, exportacion.Tablas.Count);
+		// Diez desde JTT-1394: las seis de antes más severidad, afectación, cuerpo y meta.
+		Assert.Equal(10, exportacion.Tablas.Count);
 		Assert.Contains("incidencia_local", exportacion.Tablas);
 	}
 
@@ -194,7 +206,8 @@ public sealed class ExportacionBaseDatosTests
 
 		// Sin incidencias, pero con las seis tablas y el catálogo sembrado.
 		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM incidencia_local;"));
-		Assert.Equal(6, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
+		// Desde JTT-1394 la base no siembra catálogo: nace vacío y lo llena la primera descarga.
+		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
 	}
 
 	/// <summary>
@@ -237,7 +250,7 @@ public sealed class ExportacionBaseDatosTests
 
 		await using var exportacion = await escenario.Exportador.ExportarAsync("QA");
 
-		Assert.Matches(@"\AAppOperador-QA-\d{8}-\d{6}-esquema3\.db3\z", exportacion.NombreSugerido);
+		Assert.Matches($@"\AAppOperador-QA-\d{{8}}-\d{{6}}-esquema{BaseDatosLocal.VersionEsquemaActual}\.db3\z", exportacion.NombreSugerido);
 
 		// El nombre se ve en carpetas compartidas y en el título de las herramientas.
 		Assert.DoesNotContain(escenario.Sesion.Actual!.Operador, exportacion.NombreSugerido);

@@ -26,6 +26,7 @@ public sealed class AbrirSesionMovil
 {
 	private readonly IAccesoJacobClient _jacob;
 	private readonly CustodiaSesionLocal _custodia;
+	private readonly ActualizarCatalogoLocal? _catalogos;
 	private readonly DatosDeInstalacion _instalacion;
 	private readonly IMonotonicClock _monotonico;
 
@@ -38,16 +39,22 @@ public sealed class AbrirSesionMovil
 	/// Contador que se guarda junto con la sesión para poder medir después cuánto tiempo
 	/// pasó de verdad, aunque muevan el reloj (JTT-1383).
 	/// </param>
+	/// <param name="catalogos">
+	/// Refresco del catálogo local (JTT-1394 CA 4). Opcional para no obligar a las pruebas de
+	/// acceso, que no lo ejercitan, a proporcionarlo.
+	/// </param>
 	public AbrirSesionMovil(
 		IAccesoJacobClient jacob,
 		CustodiaSesionLocal custodia,
 		DatosDeInstalacion instalacion,
-		IMonotonicClock monotonico)
+		IMonotonicClock monotonico,
+		ActualizarCatalogoLocal? catalogos = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
 		_instalacion = instalacion;
 		_monotonico = monotonico;
+		_catalogos = catalogos;
 	}
 
 	/// <summary>
@@ -158,7 +165,7 @@ public sealed class AbrirSesionMovil
 	/// El token va primero: si fallara al guardarse, es preferible no haber anunciado una
 	/// sesión que después no podría autenticar ninguna petición.
 	/// </remarks>
-	private Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
+	private async Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
 	{
 		// El contador monotónico se lee aquí, lo más cerca posible de la validación: es la
 		// referencia contra la que se medirá la ventana offline (JTT-1383).
@@ -172,6 +179,15 @@ public sealed class AbrirSesionMovil
 			MonotonicoAlValidar: _monotonico.Transcurrido,
 			Instalacion: _instalacion);
 
-		return _custodia.AbrirAsync(persistida, sesion.AccessToken, cancelacion);
+		await _custodia.AbrirAsync(persistida, sesion.AccessToken, cancelacion);
+
+		// El catálogo se refresca aquí, que es la «validación en línea» del CA 4: en el momento
+		// que ya existe, sin temporizador propio. Va DESPUÉS de abrir la sesión y su fallo no se
+		// propaga: si no hay red para el catálogo, el operador entra igual y captura con la
+		// copia que ya tenía, que es justo lo que el CA 2 promete.
+		if (_catalogos is not null)
+		{
+			await _catalogos.EjecutarAsync(sesion.AccessToken, cancelacion);
+		}
 	}
 }

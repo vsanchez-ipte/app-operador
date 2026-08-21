@@ -13,9 +13,6 @@ namespace AppOperador.Aplicacion.Interfaces;
 /// </remarks>
 public interface IIncidentRepository
 {
-	/// <summary>Catálogo de tipos de incidencia disponibles para capturar.</summary>
-	Task<IReadOnlyList<TipoIncidencia>> ObtenerTiposAsync(CancellationToken cancelacion = default);
-
 	/// <summary>
 	/// Guarda una incidencia y la deja lista para enviarse.
 	/// </summary>
@@ -24,7 +21,7 @@ public interface IIncidentRepository
 		TipoIncidencia tipo,
 		Kilometer kilometro,
 		KilometerSource fuenteKilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia severidad,
 		string nota,
 		CancellationToken cancelacion = default);
 
@@ -36,7 +33,7 @@ public interface IIncidentRepository
 	Task<string> GuardarBorradorAsync(
 		TipoIncidencia? tipo,
 		string? kilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia? severidad,
 		string nota,
 		CancellationToken cancelacion = default);
 

@@ -22,6 +22,21 @@ public sealed partial class CapturaViewModel : ObservableObject
 	// Textos fijados por JTT-280.
 	private const string MensajeKilometroInvalido = "Capture un KM válido";
 	private const string MensajeDescripcionRequerida = "Describa la incidencia de tipo Otro";
+
+	/// <summary>
+	/// Se muestra cuando todavía no se ha descargado el catálogo (JTT-1394 CA 2).
+	/// </summary>
+	/// <remarks>
+	/// Hasta JTT-1394 la app sembraba seis tipos de la maqueta y esta situación no existía. Al
+	/// dejar de inventarlos, un dispositivo recién actualizado que no se haya conectado nunca
+	/// no tiene con qué llenar el formulario, y hay que decirlo: en blanco parecería que la app
+	/// está descompuesta.
+	/// <para>
+	/// Texto provisional: Producto no ha fijado el literal de este caso.
+	/// </para>
+	/// </remarks>
+	private const string MensajeSinCatalogo =
+		"Aún no se ha descargado el catálogo. Conéctese una vez para poder registrar incidencias.";
 	private const string MensajeGpsNoDisponible = "No se pudo obtener el GPS. Capture el KM manualmente.";
 
 	/// <summary>
@@ -44,6 +59,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private const int MinimoCaracteresOtro = 8;
 
 	private readonly IIncidentRepository _incidencias;
+	private readonly ICatalogoRepository _catalogo;
 	private readonly ILocationService _ubicacion;
 	private readonly CapacidadesDeLaSesion _capacidades;
 
@@ -64,7 +80,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	public partial string Kilometro { get; set; }
 
 	[ObservableProperty]
-	public partial Gravedad GravedadSeleccionada { get; set; }
+	public partial SeveridadIncidencia? SeveridadSeleccionada { get; set; }
 
 	[ObservableProperty]
 	public partial string Nota { get; set; }
@@ -84,18 +100,19 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 	public CapturaViewModel(
 		IIncidentRepository incidencias,
+		ICatalogoRepository catalogo,
 		ILocationService ubicacion,
 		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace)
 	{
 		_incidencias = incidencias;
+		_catalogo = catalogo;
 		_ubicacion = ubicacion;
 		_capacidades = capacidades;
 		Enlace = enlace;
 
 		Kilometro = string.Empty;
 		Nota = string.Empty;
-		GravedadSeleccionada = Gravedad.Media;
 		FuenteKilometro = KilometerSource.Manual;
 	}
 
@@ -108,9 +125,14 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// <remarks>Observable por la misma razón que las unidades: se carga tras el enlace.</remarks>
 	public ObservableCollection<TipoIncidencia> Tipos { get; } = [];
 
-	/// <summary>Niveles de gravedad disponibles.</summary>
-	public IReadOnlyList<Gravedad> Gravedades { get; } =
-		[Gravedad.Baja, Gravedad.Media, Gravedad.Alta, Gravedad.Critica];
+	/// <summary>
+	/// Niveles de severidad del catálogo de Jacob (JTT-1394).
+	/// </summary>
+	/// <remarks>
+	/// Observable y no fija: hasta JTT-1394 era una lista de cuatro valores inventados en la
+	/// app. Ahora la llena el catálogo descargado, que trae tres.
+	/// </remarks>
+	public ObservableCollection<SeveridadIncidencia> Severidades { get; } = [];
 
 	/// <summary>Borradores guardados, listados bajo el formulario.</summary>
 	public ObservableCollection<RegistroColaVista> Borradores { get; } = [];
@@ -152,15 +174,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// <summary>Carga catálogos e intenta situar al operador por GPS.</summary>
 	public async Task InicializarAsync()
 	{
-		if (Tipos.Count == 0)
-		{
-			foreach (var tipo in await _incidencias.ObtenerTiposAsync())
-			{
-				Tipos.Add(tipo);
-			}
-
-			TipoSeleccionado = Tipos.FirstOrDefault();
-		}
+		await CargarCatalogoAsync();
 
 		// Lo que la sesión autoriza se reevalúa al entrar: pudo cerrarse o revocarse mientras la
 		// pantalla no estaba a la vista (JTT-1385 CA 3).
@@ -169,6 +183,60 @@ public sealed partial class CapturaViewModel : ObservableObject
 		await IntentarUbicarAsync();
 		await RecargarBorradoresAsync();
 	}
+
+	/// <summary>
+	/// Vuelca en la pantalla el catálogo guardado (JTT-1394 CA 2).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Lee la <b>copia local</b>, no la red: es lo que permite capturar sin conexión. Quien
+	/// refresca esa copia es la validación en línea o la sincronización, que es el CA 4.
+	/// </para>
+	/// <para>
+	/// Se recarga en cada entrada a la pantalla, y no solo la primera vez, porque entre dos
+	/// aperturas pudo haberse descargado un catálogo nuevo. Se conserva lo que el operador
+	/// tenía elegido si sigue existiendo; si lo retiraron del catálogo, se cae al primero.
+	/// </para>
+	/// </remarks>
+	private async Task CargarCatalogoAsync()
+	{
+		var catalogos = await _catalogo.ObtenerAsync();
+
+		var tipoElegido = TipoSeleccionado?.Id;
+		var severidadElegida = SeveridadSeleccionada?.Id;
+
+		Tipos.Clear();
+		foreach (var tipo in catalogos.Tipos)
+		{
+			Tipos.Add(tipo);
+		}
+
+		Severidades.Clear();
+		foreach (var severidad in catalogos.Severidades)
+		{
+			Severidades.Add(severidad);
+		}
+
+		TipoSeleccionado = Tipos.FirstOrDefault(t => t.Id == tipoElegido) ?? Tipos.FirstOrDefault();
+		SeveridadSeleccionada = Severidades.FirstOrDefault(s => s.Id == severidadElegida)
+			?? Severidades.FirstOrDefault();
+
+		OnPropertyChanged(nameof(HayCatalogo));
+		OnPropertyChanged(nameof(AvisoSinCatalogo));
+		OnPropertyChanged(nameof(HayAvisoSinCatalogo));
+
+		// PuedeRegistrar depende también del catálogo, así que los botones se reevalúan aquí.
+		NotificarAutorizacion();
+	}
+
+	/// <summary>Indica si hay catálogo descargado con el que capturar.</summary>
+	public bool HayCatalogo => Tipos.Count > 0 && Severidades.Count > 0;
+
+	/// <summary>Explicación de que falta descargar el catálogo, o <see langword="null"/>.</summary>
+	public string? AvisoSinCatalogo => HayCatalogo ? null : MensajeSinCatalogo;
+
+	/// <inheritdoc cref="AvisoSinCatalogo" />
+	public bool HayAvisoSinCatalogo => !HayCatalogo;
 
 	/// <summary>
 	/// Intenta completar el kilómetro con la lectura del GPS.
@@ -198,7 +266,19 @@ public sealed partial class CapturaViewModel : ObservableObject
 	}
 
 	/// <summary>Indica si la sesión autoriza registrar incidencias (JTT-1385 CA 3 y 4).</summary>
-	public bool PuedeRegistrar => _capacidades.Puede(CapacidadOperador.RegistrarIncidencia);
+	public bool PuedeRegistrar => TienePermisoDeCaptura && HayCatalogo;
+
+	/// <summary>
+	/// Si la sesión autoriza capturar, al margen de que haya catálogo con qué hacerlo.
+	/// </summary>
+	/// <remarks>
+	/// <b>Se separa de <see cref="PuedeRegistrar"/> a propósito.</b> Los botones se apagan por
+	/// dos motivos distintos —falta el permiso o falta el catálogo— y cada uno tiene su aviso.
+	/// Si el aviso de permiso colgara de <see cref="PuedeRegistrar"/>, un operador que sí tiene
+	/// permiso pero todavía no ha bajado el catálogo leería que su cuenta no está autorizada, y
+	/// acabaría pidiendo al CCO algo que ya tiene.
+	/// </remarks>
+	public bool TienePermisoDeCaptura => _capacidades.Puede(CapacidadOperador.RegistrarIncidencia);
 
 	/// <summary>
 	/// Explicación visible de por qué la captura está bloqueada, o <see langword="null"/> si
@@ -209,10 +289,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// aparece y desaparece con la autorización, sin que nadie tenga que acordarse de
 	/// limpiarlo. Es la misma capacidad que gobierna los botones, preguntada una vez.
 	/// </remarks>
-	public string? AvisoSinPermiso => PuedeRegistrar ? null : MensajeSinPermisoCaptura;
+	public string? AvisoSinPermiso => TienePermisoDeCaptura ? null : MensajeSinPermisoCaptura;
 
 	/// <summary>Indica si hay que mostrar el aviso de falta de permiso.</summary>
-	public bool HayAvisoSinPermiso => !PuedeRegistrar;
+	public bool HayAvisoSinPermiso => !TienePermisoDeCaptura;
 
 	/// <summary>Reevalúa lo que la sesión autoriza. La llaman la pantalla y el guardado.</summary>
 	/// <remarks>
@@ -222,6 +302,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// </remarks>
 	public void NotificarAutorizacion()
 	{
+		OnPropertyChanged(nameof(TienePermisoDeCaptura));
 		OnPropertyChanged(nameof(PuedeRegistrar));
 		OnPropertyChanged(nameof(AvisoSinPermiso));
 		OnPropertyChanged(nameof(HayAvisoSinPermiso));
@@ -249,6 +330,13 @@ public sealed partial class CapturaViewModel : ObservableObject
 			return;
 		}
 
+		if (SeveridadSeleccionada is null)
+		{
+			// No debería llegar aquí: sin severidades no hay catálogo y el botón está apagado.
+			MensajeError = MensajeSinCatalogo;
+			return;
+		}
+
 		if (TipoSeleccionado is null)
 		{
 			return;
@@ -269,7 +357,8 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		MensajeError = null;
-		await _incidencias.GuardarAsync(TipoSeleccionado, kilometro, FuenteKilometro, GravedadSeleccionada, nota);
+		await _incidencias.GuardarAsync(
+			TipoSeleccionado, kilometro, FuenteKilometro, SeveridadSeleccionada, nota);
 		LimpiarFormulario();
 		await RecargarBorradoresAsync();
 	}
@@ -288,7 +377,8 @@ public sealed partial class CapturaViewModel : ObservableObject
 		// Un borrador se guarda tal cual esté: no se valida, porque su razón de ser es
 		// permitir dejar la captura a medias sin perderla.
 		MensajeError = null;
-		await _incidencias.GuardarBorradorAsync(TipoSeleccionado, Kilometro, GravedadSeleccionada, Nota.Trim());
+		await _incidencias.GuardarBorradorAsync(
+			TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
 		LimpiarFormulario();
 		await RecargarBorradoresAsync();
 	}
@@ -307,7 +397,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private void LimpiarFormulario()
 	{
 		Nota = string.Empty;
-		GravedadSeleccionada = Gravedad.Media;
+		SeveridadSeleccionada = Severidades.FirstOrDefault();
 	}
 
 	partial void OnMensajeErrorChanged(string? value) => OnPropertyChanged(nameof(HayError));

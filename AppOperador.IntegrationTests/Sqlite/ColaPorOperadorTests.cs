@@ -15,7 +15,17 @@ namespace AppOperador.IntegrationTests.Sqlite;
 /// </remarks>
 public sealed class ColaPorOperadorTests
 {
-	private static readonly TipoIncidencia Objeto = new("OBJETO", "Objeto en camino");
+
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3 (JTT-1394).
+	private static readonly SeveridadIncidencia Critica =
+		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
+
+	private static readonly SeveridadIncidencia Advertencia =
+		new(Guid.Parse("22222222-2222-2222-2222-222222222222"), "Advertencia", 2, "#EDD611");
+
+	private static readonly SeveridadIncidencia Informacion =
+		new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Información", 3, "#120AF2");
+	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
 	[Fact]
 	public async Task El_operador_siguiente_no_ve_la_cola_del_anterior()
@@ -104,6 +114,6 @@ public sealed class ColaPorOperadorTests
 			Objeto,
 			Kilometer.Crear("130+200"),
 			KilometerSource.GPS,
-			Gravedad.Media,
+			Advertencia,
 			"nota de prueba");
 }
