@@ -28,6 +28,41 @@ public class ReglaCapacidadesTests
 	}
 
 	/// <summary>
+	/// Las dos que cubre el permiso de captura: registrar y adjuntar evidencia.
+	/// </summary>
+	private static readonly CapacidadOperador[] ConPermisoPropio =
+	[
+		CapacidadOperador.RegistrarIncidencia,
+		CapacidadOperador.AdjuntarEvidencia,
+	];
+
+	/// <summary>
+	/// Las que siguen bajo el permiso general, porque Jacob no las emite por separado.
+	/// </summary>
+	public static TheoryData<CapacidadOperador> CapacidadesSinPermisoPropio()
+	{
+		var datos = new TheoryData<CapacidadOperador>();
+		foreach (var capacidad in Todas.Where(c => !ConPermisoPropio.Contains(c)))
+		{
+			datos.Add(capacidad);
+		}
+
+		return datos;
+	}
+
+	/// <summary>Las que exigen el permiso de captura.</summary>
+	public static TheoryData<CapacidadOperador> CapacidadesConPermisoPropio()
+	{
+		var datos = new TheoryData<CapacidadOperador>();
+		foreach (var capacidad in ConPermisoPropio)
+		{
+			datos.Add(capacidad);
+		}
+
+		return datos;
+	}
+
+	/// <summary>
 	/// CA 4: sin sesión válida no se registra, no se adjunta, no se consulta y no se sincroniza.
 	/// </summary>
 	[Theory]
@@ -45,16 +80,75 @@ public class ReglaCapacidadesTests
 	}
 
 	/// <summary>
-	/// Hoy Jacob emite un solo permiso y autoriza la app entera. Es lo único que el servidor
-	/// sabe decir: no existe un catálogo de capacidades finas.
+	/// El permiso general sigue autorizando lo que Jacob no emite por separado: consultar la
+	/// cola y sincronizar.
 	/// </summary>
 	[Theory]
-	[MemberData(nameof(Capacidades))]
-	public void El_permiso_de_la_app_concede_todas(CapacidadOperador capacidad)
+	[MemberData(nameof(CapacidadesSinPermisoPropio))]
+	public void El_permiso_de_la_app_concede_las_que_no_tienen_permiso_propio(
+		CapacidadOperador capacidad)
 	{
 		var permisos = PermisosOperador.DelServidor([ReglaCapacidades.PermisoAppOperadorMovil]);
 
 		Assert.True(ReglaCapacidades.Concede(permisos, capacidad));
+	}
+
+	/// <summary>
+	/// La prueba que da sentido al permiso nuevo (decisión del 20-ago).
+	/// </summary>
+	/// <remarks>
+	/// Antes el permiso general concedía las cuatro capacidades. Si siguiera haciéndolo, un
+	/// operador con solo <c>APP_OPERADOR_MOVIL</c> capturaría igual y el permiso de captura no
+	/// serviría de nada.
+	/// </remarks>
+	[Theory]
+	[MemberData(nameof(CapacidadesConPermisoPropio))]
+	public void El_permiso_de_la_app_ya_no_concede_las_de_captura(CapacidadOperador capacidad)
+	{
+		var permisos = PermisosOperador.DelServidor([ReglaCapacidades.PermisoAppOperadorMovil]);
+
+		Assert.False(ReglaCapacidades.Concede(permisos, capacidad));
+	}
+
+	/// <summary>
+	/// El permiso de captura concede registrar <b>y</b> adjuntar evidencia: cubre las dos,
+	/// porque la evidencia no existe sin la incidencia a la que se adjunta.
+	/// </summary>
+	[Theory]
+	[MemberData(nameof(CapacidadesConPermisoPropio))]
+	public void El_permiso_de_captura_concede_las_dos(CapacidadOperador capacidad)
+	{
+		var permisos = PermisosOperador.DelServidor([ReglaCapacidades.PermisoCapturaIncidencias]);
+
+		Assert.True(ReglaCapacidades.Concede(permisos, capacidad));
+	}
+
+	/// <summary>
+	/// El caso real que va a devolver Jacob: los dos permisos juntos autorizan todo.
+	/// </summary>
+	[Theory]
+	[MemberData(nameof(Capacidades))]
+	public void Los_dos_permisos_juntos_conceden_todas(CapacidadOperador capacidad)
+	{
+		var permisos = PermisosOperador.DelServidor(
+		[
+			ReglaCapacidades.PermisoAppOperadorMovil,
+			ReglaCapacidades.PermisoCapturaIncidencias,
+		]);
+
+		Assert.True(ReglaCapacidades.Concede(permisos, capacidad));
+	}
+
+	/// <summary>
+	/// El permiso de captura no abre las demás: autoriza lo suyo y nada más.
+	/// </summary>
+	[Fact]
+	public void El_permiso_de_captura_no_concede_las_demas()
+	{
+		var permisos = PermisosOperador.DelServidor([ReglaCapacidades.PermisoCapturaIncidencias]);
+
+		Assert.False(ReglaCapacidades.Concede(permisos, CapacidadOperador.ConsultarCola));
+		Assert.False(ReglaCapacidades.Concede(permisos, CapacidadOperador.Sincronizar));
 	}
 
 	/// <summary>
@@ -69,6 +163,7 @@ public class ReglaCapacidadesTests
 		Assert.True(ReglaCapacidades.Concede(permisos, CapacidadOperador.ConsultarCola));
 		Assert.False(ReglaCapacidades.Concede(permisos, CapacidadOperador.Sincronizar));
 		Assert.False(ReglaCapacidades.Concede(permisos, CapacidadOperador.RegistrarIncidencia));
+		Assert.False(ReglaCapacidades.Concede(permisos, CapacidadOperador.AdjuntarEvidencia));
 	}
 
 	/// <summary>
