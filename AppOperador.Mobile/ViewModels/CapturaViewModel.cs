@@ -24,6 +24,22 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private const string MensajeDescripcionRequerida = "Describa la incidencia de tipo Otro";
 	private const string MensajeGpsNoDisponible = "No se pudo obtener el GPS. Capture el KM manualmente.";
 
+	/// <summary>
+	/// Se muestra cuando la sesión no autoriza capturar (JTT-1404 CA 5).
+	/// </summary>
+	/// <remarks>
+	/// Antes los botones simplemente salían deshabilitados y <b>nadie explicaba por qué</b>:
+	/// desde la carretera eso es indistinguible de que la app esté descompuesta. El literal
+	/// dice las tres cosas que el operador necesita —que no es una falla, qué le falta y qué
+	/// hacer— sin nombrar el código del permiso, que a él no le dice nada.
+	/// <para>
+	/// Texto provisional: Producto no ha fijado el literal de este caso. Va con los demás
+	/// pendientes de literales de esta pantalla.
+	/// </para>
+	/// </remarks>
+	private const string MensajeSinPermisoCaptura =
+		"Su cuenta no tiene autorizado registrar incidencias. Solicite el acceso al CCO y vuelva a ingresar.";
+
 	/// <summary>Mínimo de caracteres de la nota cuando el tipo es "Otro".</summary>
 	private const int MinimoCaracteresOtro = 8;
 
@@ -184,10 +200,31 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// <summary>Indica si la sesión autoriza registrar incidencias (JTT-1385 CA 3 y 4).</summary>
 	public bool PuedeRegistrar => _capacidades.Puede(CapacidadOperador.RegistrarIncidencia);
 
+	/// <summary>
+	/// Explicación visible de por qué la captura está bloqueada, o <see langword="null"/> si
+	/// no lo está (JTT-1404 CA 5).
+	/// </summary>
+	/// <remarks>
+	/// Se deriva de <see cref="PuedeRegistrar"/> en vez de fijarse a mano: así el aviso
+	/// aparece y desaparece con la autorización, sin que nadie tenga que acordarse de
+	/// limpiarlo. Es la misma capacidad que gobierna los botones, preguntada una vez.
+	/// </remarks>
+	public string? AvisoSinPermiso => PuedeRegistrar ? null : MensajeSinPermisoCaptura;
+
+	/// <summary>Indica si hay que mostrar el aviso de falta de permiso.</summary>
+	public bool HayAvisoSinPermiso => !PuedeRegistrar;
+
 	/// <summary>Reevalúa lo que la sesión autoriza. La llaman la pantalla y el guardado.</summary>
+	/// <remarks>
+	/// Notifica también el aviso: si solo se refrescaran los botones, un permiso revocado a
+	/// media sesión los apagaría <b>sin decir por qué</b>, que es justo lo que este aviso
+	/// existe para evitar.
+	/// </remarks>
 	public void NotificarAutorizacion()
 	{
 		OnPropertyChanged(nameof(PuedeRegistrar));
+		OnPropertyChanged(nameof(AvisoSinPermiso));
+		OnPropertyChanged(nameof(HayAvisoSinPermiso));
 		GuardarIncidenciaCommand.NotifyCanExecuteChanged();
 		GuardarBorradorCommand.NotifyCanExecuteChanged();
 	}
@@ -205,6 +242,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 	{
 		if (!_capacidades.Puede(CapacidadOperador.RegistrarIncidencia))
 		{
+			// El permiso se revocó entre que se pintó la pantalla y este toque. Se refresca
+			// la vista para que el botón se apague Y aparezca el aviso: salir en silencio
+			// dejaría al operador tocando un botón que no responde (JTT-1404 CA 5).
+			NotificarAutorizacion();
 			return;
 		}
 
@@ -239,6 +280,8 @@ public sealed partial class CapturaViewModel : ObservableObject
 		// Un borrador es captura a medias, así que necesita la misma autorización que registrar.
 		if (!_capacidades.Puede(CapacidadOperador.RegistrarIncidencia))
 		{
+			// Mismo caso que en el guardado: se refresca para que el aviso explique el bloqueo.
+			NotificarAutorizacion();
 			return;
 		}
 

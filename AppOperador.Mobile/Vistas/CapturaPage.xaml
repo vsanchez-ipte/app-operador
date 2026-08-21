@@ -95,6 +95,13 @@
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayError}" />
 
+                    <!-- Por qué los botones están apagados (JTT-1404 CA 5). Va JUNTO a
+                         ellos y no arriba del formulario: el operador mira el botón que no
+                         responde, y ahí es donde tiene que encontrar la explicación. -->
+                    <Label Text="{Binding AvisoSinPermiso}"
+                           Style="{StaticResource MensajeError}"
+                           IsVisible="{Binding HayAvisoSinPermiso}" />
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <Button Grid.Column="0"
                                 Text="Guardar incidencia"
