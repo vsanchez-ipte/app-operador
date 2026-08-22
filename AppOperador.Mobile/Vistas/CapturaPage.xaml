@@ -108,16 +108,41 @@
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayAvisoSinPermiso}" />
 
+                    <!-- Qué borrador se está editando (JTT-1399 CA 8). Sin esto, el
+                         formulario relleno es indistinguible de una captura nueva y el
+                         operador no entiende por qué los botones dicen otra cosa. -->
+                    <Border Style="{StaticResource TarjetaInterna}"
+                            IsVisible="{Binding EstaEditandoBorrador}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Grid.Column="0"
+                                   Text="{Binding BorradorEnEdicion, StringFormat='Editando el borrador {0}'}"
+                                   Style="{StaticResource TextoDato}"
+                                   VerticalOptions="Center" />
+                            <Button Grid.Column="1"
+                                    Text="Cancelar"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding CancelarEdicionBorradorCommand}" />
+                        </Grid>
+                    </Border>
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <!-- Los textos cambian al editar: con un borrador abierto no se crea
+                             nada, se actúa sobre él. Un botón que dice "Guardar incidencia"
+                             haría creer que quedan dos registros del mismo hecho. -->
                         <Button Grid.Column="0"
-                                Text="Guardar incidencia"
+                                Text="{Binding TextoBotonPrimario}"
                                 Style="{StaticResource BotonPrimario}"
                                 Command="{Binding GuardarIncidenciaCommand}" />
                         <Button Grid.Column="1"
-                                Text="Guardar borrador"
+                                Text="{Binding TextoBotonSecundario}"
                                 Style="{StaticResource BotonSecundario}"
                                 Command="{Binding GuardarBorradorCommand}" />
                     </Grid>
+
+                    <Button Text="Eliminar borrador"
+                            Style="{StaticResource BotonSecundario}"
+                            IsVisible="{Binding EstaEditandoBorrador}"
+                            Command="{Binding EliminarBorradorCommand}" />
 
                 </VerticalStackLayout>
             </Border>
@@ -134,12 +159,31 @@
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Borradores}" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:RegistroColaVista">
+                                <!-- Tocar un borrador lo abre en el formulario de arriba
+                                     (JTT-1399 CA 8). Se reutiliza esa pantalla en vez de
+                                     abrir otra: editar un borrador es exactamente capturar,
+                                     y duplicarla obligaría a mantener dos veces las mismas
+                                     validaciones. -->
                                 <Border Style="{StaticResource TarjetaInterna}">
-                                    <VerticalStackLayout Spacing="2">
-                                        <Label Text="{Binding ClaveLocal}" FontAttributes="Bold" FontSize="13"
-                                               TextColor="{StaticResource TextoTitulo}" />
-                                        <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
-                                    </VerticalStackLayout>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CapturaViewModel}}, Path=AbrirBorradorCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                            <Label Text="{Binding ClaveLocal}" FontAttributes="Bold" FontSize="13"
+                                                   TextColor="{StaticResource TextoTitulo}" />
+                                            <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
+                                        </VerticalStackLayout>
+                                        <!-- Que se puede tocar tiene que verse: sin esta pista,
+                                             la lista parece de solo lectura. -->
+                                        <Label Grid.Column="1"
+                                               Text="Abrir"
+                                               Style="{StaticResource TextoSecundario}"
+                                               FontAttributes="Bold"
+                                               VerticalOptions="Center" />
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Aplicacion.Servicios;
@@ -56,8 +57,24 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private const string MensajeSinPermisoCaptura =
 		"Su cuenta no tiene autorizado registrar incidencias. Solicite el acceso al CCO y vuelva a ingresar.";
 
+	/// <summary>
+	/// Se muestra cuando la conversión de un borrador no pasa las validaciones (JTT-1399 CA 9).
+	/// </summary>
+	/// <remarks>
+	/// Cada motivo tiene su propio texto porque el operador tiene que saber <b>qué campo</b> le
+	/// falta: un «no se pudo» frente a un formulario de seis campos obliga a adivinar, y se
+	/// captura en carretera.
+	/// <para>
+	/// Textos provisionales: Producto no ha fijado los literales de esta pantalla.
+	/// </para>
+	/// </remarks>
+	private const string MensajeBorradorSinTipo = "Elija el tipo de incidencia para poder registrarla";
+	private const string MensajeBorradorSinSeveridad = "Elija la severidad para poder registrarla";
+	private const string MensajeBorradorNoEncontrado = "El borrador ya no está disponible";
+
 	private readonly IIncidentRepository _incidencias;
 	private readonly ICatalogoRepository _catalogo;
+	private readonly ConvertirBorradorEnIncidencia _convertirBorrador;
 	private readonly ILocationService _ubicacion;
 	private readonly CapacidadesDeLaSesion _capacidades;
 
@@ -96,15 +113,28 @@ public sealed partial class CapturaViewModel : ObservableObject
 	[ObservableProperty]
 	public partial KilometerSource FuenteKilometro { get; set; }
 
+	/// <summary>
+	/// Clave del borrador que se está editando, o <see langword="null"/> si se captura uno nuevo.
+	/// </summary>
+	/// <remarks>
+	/// <b>Es el interruptor de toda la pantalla.</b> Con un borrador abierto, los dos botones
+	/// dejan de crear y pasan a actuar sobre él: guardar actualiza en vez de duplicar, y
+	/// registrar convierte en vez de crear una segunda incidencia con los mismos datos.
+	/// </remarks>
+	[ObservableProperty]
+	public partial string? BorradorEnEdicion { get; set; }
+
 	public CapturaViewModel(
 		IIncidentRepository incidencias,
 		ICatalogoRepository catalogo,
 		ILocationService ubicacion,
 		CapacidadesDeLaSesion capacidades,
-		EstadoEnlaceViewModel enlace)
+		EstadoEnlaceViewModel enlace,
+		ConvertirBorradorEnIncidencia convertirBorrador)
 	{
 		_incidencias = incidencias;
 		_catalogo = catalogo;
+		_convertirBorrador = convertirBorrador;
 		_ubicacion = ubicacion;
 		_capacidades = capacidades;
 		Enlace = enlace;
@@ -329,6 +359,15 @@ public sealed partial class CapturaViewModel : ObservableObject
 			return;
 		}
 
+		// Con un borrador abierto, registrar es convertir ESE borrador y no crear otra
+		// incidencia: si no, quedarían dos registros del mismo hecho, uno en la cola y el
+		// borrador original intacto (JTT-1399 CA 8 y 9).
+		if (BorradorEnEdicion is { } claveEnEdicion)
+		{
+			await ConvertirBorradorAbiertoAsync(claveEnEdicion);
+			return;
+		}
+
 		if (SeveridadSeleccionada is null)
 		{
 			// No debería llegar aquí: sin severidades no hay catálogo y el botón está apagado.
@@ -376,11 +415,161 @@ public sealed partial class CapturaViewModel : ObservableObject
 		// Un borrador se guarda tal cual esté: no se valida, porque su razón de ser es
 		// permitir dejar la captura a medias sin perderla.
 		MensajeError = null;
-		await _incidencias.GuardarBorradorAsync(
-			TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
-		LimpiarFormulario();
+
+		if (BorradorEnEdicion is { } claveEnEdicion)
+		{
+			// Editar actualiza el que ya existe. Crear uno nuevo dejaría al operador con dos
+			// borradores del mismo hecho cada vez que guardara su avance (CA 8, «editarlo»).
+			await _incidencias.ActualizarBorradorAsync(
+				claveEnEdicion, TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
+			CancelarEdicionBorrador();
+		}
+		else
+		{
+			await _incidencias.GuardarBorradorAsync(
+				TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
+			LimpiarFormulario();
+		}
+
 		await RecargarBorradoresAsync();
 	}
+
+	/// <summary>
+	/// Convierte el borrador abierto, delegando el CA 9 en el caso de uso.
+	/// </summary>
+	/// <remarks>
+	/// <b>La pantalla no revalida por su cuenta.</b> El caso de uso es el único dueño de las
+	/// validaciones de envío; aquí solo se traduce su respuesta a un aviso. Repetir las
+	/// comprobaciones daría dos redacciones del mismo criterio, que es como se separan.
+	/// </remarks>
+	private async Task ConvertirBorradorAbiertoAsync(string clave)
+	{
+		var resultado = await _convertirBorrador.EjecutarAsync(
+			clave, TipoSeleccionado, Kilometro, FuenteKilometro, SeveridadSeleccionada, Nota);
+
+		if (resultado != ResultadoConversionBorrador.Convertido)
+		{
+			MensajeError = MensajeDe(resultado);
+
+			// Si ya no existe, el formulario tiene que soltarlo: seguir editando un borrador
+			// que desapareció deja al operador escribiendo sobre nada.
+			if (resultado == ResultadoConversionBorrador.NoEncontrado)
+			{
+				BorradorEnEdicion = null;
+				await RecargarBorradoresAsync();
+			}
+
+			return;
+		}
+
+		MensajeError = null;
+		CancelarEdicionBorrador();
+		await RecargarBorradoresAsync();
+	}
+
+	// ── Ciclo de vida del borrador en pantalla (JTT-1399 CA 8) ────────────────────────
+
+	/// <summary>Indica si el formulario está editando un borrador ya guardado.</summary>
+	public bool EstaEditandoBorrador => BorradorEnEdicion is not null;
+
+	/// <summary>Texto del botón principal, que cambia de significado al editar.</summary>
+	/// <remarks>
+	/// <b>El botón tiene que decir lo que va a hacer.</b> Con un borrador abierto, «Guardar
+	/// incidencia» haría creer que se crea una nueva y quedarían dos registros del mismo hecho;
+	/// lo que ocurre es que ese mismo borrador pasa a la cola.
+	/// </remarks>
+	public string TextoBotonPrimario =>
+		EstaEditandoBorrador ? "Convertir en incidencia" : "Guardar incidencia";
+
+	/// <inheritdoc cref="TextoBotonPrimario" />
+	public string TextoBotonSecundario =>
+		EstaEditandoBorrador ? "Actualizar borrador" : "Guardar borrador";
+
+	/// <summary>
+	/// Carga un borrador en el formulario para seguir capturándolo (JTT-1399 CA 8, «abrirlo»).
+	/// </summary>
+	/// <remarks>
+	/// <b>Se reutiliza el mismo formulario en vez de abrir otra pantalla.</b> Editar un borrador
+	/// es exactamente capturar, y una segunda pantalla obligaría a mantener dos veces las mismas
+	/// validaciones y el mismo diseño.
+	/// </remarks>
+	[RelayCommand]
+	private async Task AbrirBorradorAsync(RegistroColaVista? vista)
+	{
+		if (vista is null)
+		{
+			return;
+		}
+
+		var borrador = await _incidencias.ObtenerBorradorAsync(vista.ClaveLocal);
+		if (borrador is null)
+		{
+			// Pudo eliminarse desde otro punto, o pertenecer a otra sesión.
+			MensajeError = MensajeBorradorNoEncontrado;
+			await RecargarBorradoresAsync();
+			return;
+		}
+
+		MensajeError = null;
+		BorradorEnEdicion = borrador.ClaveLocal;
+
+		TipoSeleccionado = Tipos.FirstOrDefault(t => t.Id == borrador.TipoId);
+		SeveridadSeleccionada = Severidades.FirstOrDefault(s => s.Id == borrador.SeveridadId);
+		Nota = borrador.Nota;
+
+		// El kilómetro se repone tal cual se guardó, aunque esté a medio escribir, y como
+		// manual: reponerlo no es una lectura del GPS por mucho que lo fuera al capturarlo.
+		Kilometro = borrador.Kilometro ?? string.Empty;
+		FuenteKilometro = KilometerSource.Manual;
+	}
+
+	/// <summary>
+	/// Abandona la edición sin tocar el borrador (JTT-1399 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// Sin esta salida, quien abriera un borrador por error quedaría atrapado: los dos botones
+	/// actuarían sobre él y no habría forma de volver a capturar uno nuevo.
+	/// </remarks>
+	[RelayCommand]
+	private void CancelarEdicionBorrador()
+	{
+		BorradorEnEdicion = null;
+		MensajeError = null;
+		LimpiarFormulario();
+		Kilometro = string.Empty;
+	}
+
+	/// <summary>
+	/// Elimina el borrador que se está editando (JTT-1399 CA 8, «eliminarlo»).
+	/// </summary>
+	[RelayCommand]
+	private async Task EliminarBorradorAsync()
+	{
+		if (BorradorEnEdicion is not { } clave)
+		{
+			return;
+		}
+
+		await _incidencias.EliminarBorradorAsync(clave);
+		CancelarEdicionBorrador();
+		await RecargarBorradoresAsync();
+	}
+
+	/// <summary>
+	/// Traduce el motivo de una conversión fallida al aviso que lee el operador.
+	/// </summary>
+	/// <remarks>
+	/// El kilómetro y la nota reutilizan los literales del guardado normal: es el mismo defecto
+	/// y el operador no tiene por qué leer dos redacciones distintas del mismo problema.
+	/// </remarks>
+	private static string MensajeDe(ResultadoConversionBorrador motivo) => motivo switch
+	{
+		ResultadoConversionBorrador.FaltaTipo => MensajeBorradorSinTipo,
+		ResultadoConversionBorrador.FaltaSeveridad => MensajeBorradorSinSeveridad,
+		ResultadoConversionBorrador.KilometroInvalido => MensajeKilometroInvalido,
+		ResultadoConversionBorrador.NotaInsuficiente => MensajeDescripcionRequerida,
+		_ => MensajeBorradorNoEncontrado,
+	};
 
 	private async Task RecargarBorradoresAsync()
 	{
@@ -400,6 +589,14 @@ public sealed partial class CapturaViewModel : ObservableObject
 	}
 
 	partial void OnMensajeErrorChanged(string? value) => OnPropertyChanged(nameof(HayError));
+
+	/// <summary>Abrir o soltar un borrador cambia lo que los dos botones significan.</summary>
+	partial void OnBorradorEnEdicionChanged(string? value)
+	{
+		OnPropertyChanged(nameof(EstaEditandoBorrador));
+		OnPropertyChanged(nameof(TextoBotonPrimario));
+		OnPropertyChanged(nameof(TextoBotonSecundario));
+	}
 
 	partial void OnAvisoGpsChanged(string? value) => OnPropertyChanged(nameof(HayAvisoGps));
 

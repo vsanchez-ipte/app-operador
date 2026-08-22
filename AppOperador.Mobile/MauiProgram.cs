@@ -246,6 +246,7 @@ public static class MauiProgram
 			// qué capturar. El simulador hace de Jacob, igual que con los permisos.
 			servicios.AddSingleton<ICatalogosJacobClient, CatalogoSimulado>();
 			servicios.AddSingleton<ActualizarCatalogoLocal>();
+			servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
 			return;
 		}
 
@@ -267,6 +268,7 @@ public static class MauiProgram
 		});
 
 		servicios.AddSingleton<ActualizarCatalogoLocal>();
+		servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
 
 		// Estado de enlace real: red del dispositivo más una sonda autenticada a Jacob. Va
 		// aquí porque necesita el cliente que se acaba de registrar (JTT-1391).
