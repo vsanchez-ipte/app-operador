@@ -134,6 +134,52 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.DoesNotContain("Normal", registro.Descripcion);
 	}
 
+	// ── Persistencia de la cola local (JTT-1400 CA 4, 5 y 6) ──────────────────────────
+
+	[Fact]
+	public async Task CerrarSesion_noEliminaLoPendienteNiLosBorradores()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clavePendiente = await GuardarAsync(contexto, Advertencia);
+		var claveBorrador = await contexto.CrearRepositorio()
+			.GuardarBorradorAsync(Objeto, "130+", Advertencia, "a medias");
+
+		// Cerrar sesión limpia la sesión, no la base: lo capturado en campo pertenece al
+		// operador y a la unidad, y se sigue enviando cuando alguien vuelva a entrar.
+		contexto.Sesion.Limpiar();
+
+		// Se comprueba con la base reabierta y con otra sesión del mismo operador, que es lo
+		// que ocurre de verdad: la app se reinicia y el operador vuelve a entrar.
+		var reabierta = contexto.ReabrirBaseDatos();
+		var sesionNueva = new SesionFija();
+		var cola = new ColaSincronizacionSqlite(
+			reabierta, contexto.Reloj, contexto.Conectividad,
+			new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj), sesionNueva);
+		var repositorio = new RepositorioIncidenciasSqlite(reabierta, contexto.Reloj, sesionNueva);
+
+		Assert.Contains(await cola.ObtenerRegistrosAsync(), r => r.ClaveLocal == clavePendiente);
+		Assert.Contains(await repositorio.ObtenerBorradoresAsync(), r => r.ClaveLocal == claveBorrador);
+
+		await reabierta.DisposeAsync();
+	}
+
+	[Fact]
+	public async Task SinSesion_laColaNoDevuelveNadaPeroNoSeHaBorradoNada()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+
+		contexto.Sesion.Limpiar();
+
+		// Sin sesión no se ve la cola (CA 7): no es que se hayan borrado, es que todavía
+		// nadie tiene derecho a verla. La distinción importa, porque una cola vacía por
+		// falta de permiso es indistinguible de una cola vaciada si no se comprueba.
+		Assert.Empty(await contexto.CrearCola().ObtenerRegistrosAsync());
+
+		var conSesion = contexto.CrearColaDe(new SesionFija());
+		Assert.Contains(await conSesion.ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);
+	}
+
 	// ── Ciclo de vida del borrador (JTT-1399 CA 8 y 9) ────────────────────────────────
 
 	[Fact]
