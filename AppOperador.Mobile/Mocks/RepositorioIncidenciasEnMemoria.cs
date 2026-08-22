@@ -77,4 +77,41 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerBorradoresAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(_almacen.PorEstado(EstadoSincronizacion.Borrador, OperadorActual));
+
+	// ── Ciclo de vida del borrador (JTT-1399 CA 8 y 9) ────────────────────────────────
+	//
+	// Sin implementar a propósito. El recorrido simulado se elimina completo en rama propia
+	// —decisión del 21-ago—: nadie lo prueba, ni QA ni nadie, y basta con que compile. Lo que
+	// vale para estos criterios es RepositorioIncidenciasSqlite, que sí los implementa y sí
+	// tiene pruebas. Devolver "no encontrado" es la respuesta honesta de un almacén que no los
+	// soporta; fingir que convirtió daría por buena una funcionalidad que aquí no existe.
+
+	public Task<BorradorIncidencia?> ObtenerBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<BorradorIncidencia?>(null);
+
+	public Task<bool> ActualizarBorradorAsync(
+		string claveLocal,
+		TipoIncidencia? tipo,
+		string? kilometro,
+		SeveridadIncidencia? severidad,
+		string nota,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
+
+	public Task<bool> EliminarBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
+
+	public Task<bool> ConvertirBorradorAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
 }

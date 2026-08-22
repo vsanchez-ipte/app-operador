@@ -201,6 +201,150 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return filas.Select(MapeoIncidencia.ARegistroCola).ToList();
 	}
 
+	/// <inheritdoc />
+	public async Task<BorradorIncidencia?> ObtenerBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default)
+	{
+		var fila = await BuscarBorradorPropioAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return null;
+		}
+
+		return new BorradorIncidencia(
+			fila.ClaveLocal,
+			// El tipo se guardó como texto invariante; si la fila es anterior a JTT-1394 trae
+			// una clave de maqueta —OBJETO, VEHICULO…— que no es un entero. En ese caso se
+			// devuelve sin tipo: es más honesto que reabrir el formulario con uno inventado.
+			int.TryParse(fila.TipoClave, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tipoId)
+				? tipoId
+				: null,
+			fila.Kilometro,
+			Guid.TryParse(fila.SeveridadId, out var severidadId) ? severidadId : null,
+			fila.Nota);
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> ActualizarBorradorAsync(
+		string claveLocal,
+		TipoIncidencia? tipo,
+		string? kilometro,
+		SeveridadIncidencia? severidad,
+		string nota,
+		CancellationToken cancelacion = default)
+	{
+		var fila = await BuscarBorradorPropioAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return false;
+		}
+
+		fila.TipoClave = tipo?.Id.ToString(CultureInfo.InvariantCulture);
+		fila.TipoNombre = tipo?.Nombre;
+		fila.Kilometro = kilometro;
+		fila.SeveridadId = severidad?.Id.ToString() ?? string.Empty;
+		fila.SeveridadNombre = severidad?.Nivel ?? string.Empty;
+		fila.SeveridadOrden = severidad?.Orden ?? 0;
+		fila.Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad?.Orden ?? int.MaxValue);
+		fila.Nota = nota;
+		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		await conexion.UpdateAsync(fila);
+		return true;
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> EliminarBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default)
+	{
+		var fila = await BuscarBorradorPropioAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return false;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		await conexion.DeleteAsync(fila);
+		return true;
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> ConvertirBorradorAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		CancellationToken cancelacion = default)
+	{
+		ArgumentNullException.ThrowIfNull(tipo);
+		ArgumentNullException.ThrowIfNull(severidad);
+
+		var fila = await BuscarBorradorPropioAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return false;
+		}
+
+		fila.TipoClave = tipo.Id.ToString(CultureInfo.InvariantCulture);
+		fila.TipoNombre = tipo.Nombre;
+		fila.Kilometro = kilometro.Valor;
+		fila.FuenteKilometro = (int)fuenteKilometro;
+		fila.SeveridadId = severidad.Id.ToString();
+		fila.SeveridadNombre = severidad.Nivel;
+		fila.SeveridadOrden = severidad.Orden;
+		fila.Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden);
+		fila.Nota = nota;
+		fila.Estado = (int)EstadoSincronizacion.Pendiente;
+		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
+
+		// La versión del catálogo se vuelve a sellar aquí, y no se conserva la del borrador.
+		// La que cuenta para JTT-1394 CA 5 es la que estaba vigente cuando se eligieron el tipo
+		// y la severidad definitivos, que es ahora: un borrador todavía no es una incidencia.
+		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
+
+		// El permiso también: un borrador puede llevar días guardado y el permiso con el que
+		// hoy se confirma no tiene por qué ser el de entonces (JTT-1385 CA 7).
+		fila.PermisoOrigen = PermisoDeLaSesion();
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		await conexion.UpdateAsync(fila);
+		return true;
+	}
+
+	/// <summary>
+	/// Busca un borrador por su clave, exigiendo que sea del operador de la sesión.
+	/// </summary>
+	/// <remarks>
+	/// <b>El filtro por operador no es una comodidad, es la regla</b> (JTT-1388 CA 9). Sin él,
+	/// quien entre después podría abrir, editar, convertir o borrar el trabajo a medio capturar
+	/// del turno anterior — y al convertirlo quedaría a nombre de quien no lo escribió.
+	/// Sin sesión no se devuelve nada.
+	/// </remarks>
+	private async Task<IncidenciaLocal?> BuscarBorradorPropioAsync(
+		string claveLocal,
+		CancellationToken cancelacion)
+	{
+		var operador = _sesion.Actual?.Operador;
+		if (operador is null || string.IsNullOrWhiteSpace(claveLocal))
+		{
+			return null;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var borrador = (int)EstadoSincronizacion.Borrador;
+
+		return await conexion.Table<IncidenciaLocal>()
+			.Where(i => i.ClaveLocal == claveLocal
+				&& i.Estado == borrador
+				&& i.Operador == operador)
+			.FirstOrDefaultAsync();
+	}
+
 	/// <summary>
 	/// Calcula la siguiente clave <c>LOC-######</c> a partir de la última guardada.
 	/// </summary>

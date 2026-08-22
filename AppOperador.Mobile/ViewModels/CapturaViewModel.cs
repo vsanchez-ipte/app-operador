@@ -3,6 +3,7 @@ using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -54,9 +55,6 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// </remarks>
 	private const string MensajeSinPermisoCaptura =
 		"Su cuenta no tiene autorizado registrar incidencias. Solicite el acceso al CCO y vuelva a ingresar.";
-
-	/// <summary>Mínimo de caracteres de la nota cuando el tipo es "Otro".</summary>
-	private const int MinimoCaracteresOtro = 8;
 
 	private readonly IIncidentRepository _incidencias;
 	private readonly ICatalogoRepository _catalogo;
@@ -148,9 +146,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// </summary>
 	/// <remarks>
 	/// Se expone como propiedad, y no como literal en la vista, para que el tope y el contador
-	/// que lo anuncia salgan del mismo sitio y no puedan discrepar.
+	/// que lo anuncia salgan del mismo sitio y no puedan discrepar. El número lo pone el
+	/// dominio: la pantalla lo muestra, no lo decide.
 	/// </remarks>
-	public int LongitudMaximaNota => 1000;
+	public int LongitudMaximaNota => ReglaNotaIncidencia.MaximoCaracteres;
 
 	/// <summary>
 	/// Contador de caracteres de la nota, como en la maqueta.
@@ -350,7 +349,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		var nota = Nota.Trim();
-		if (TipoSeleccionado.ExigeDescripcion && nota.Length < MinimoCaracteresOtro)
+		if (!ReglaNotaIncidencia.EsSuficiente(TipoSeleccionado.ExigeDescripcion, nota))
 		{
 			MensajeError = MensajeDescripcionRequerida;
 			return;

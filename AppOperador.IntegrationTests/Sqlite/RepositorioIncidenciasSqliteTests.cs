@@ -134,6 +134,126 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.DoesNotContain("Normal", registro.Descripcion);
 	}
 
+	// ── Ciclo de vida del borrador (JTT-1399 CA 8 y 9) ────────────────────────────────
+
+	[Fact]
+	public async Task Borrador_seReabreConLoQueSeHabiaCapturado()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await repositorio.GuardarBorradorAsync(Objeto, "130+", Advertencia, "a medias");
+
+		var borrador = await repositorio.ObtenerBorradorAsync(clave);
+
+		Assert.NotNull(borrador);
+		Assert.Equal(Objeto.Id, borrador.TipoId);
+		// El kilómetro vuelve tal cual se escribió, incompleto incluido: es lo que hace que el
+		// operador pueda seguir donde se quedó en vez de volver a teclearlo.
+		Assert.Equal("130+", borrador.Kilometro);
+		Assert.Equal(Advertencia.Id, borrador.SeveridadId);
+		Assert.Equal("a medias", borrador.Nota);
+	}
+
+	[Fact]
+	public async Task Borrador_seEditaSinExigirQueEsteCompleto()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await repositorio.GuardarBorradorAsync(null, null, null, "");
+
+		var actualizado = await repositorio.ActualizarBorradorAsync(clave, Objeto, "131+", null, "avanzando");
+
+		Assert.True(actualizado);
+		var borrador = await repositorio.ObtenerBorradorAsync(clave);
+		Assert.Equal(Objeto.Id, borrador!.TipoId);
+		Assert.Null(borrador.SeveridadId);
+		Assert.Equal("avanzando", borrador.Nota);
+	}
+
+	[Fact]
+	public async Task Borrador_eliminadoDejaDeExistir()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await repositorio.GuardarBorradorAsync(Objeto, "130+200", Advertencia, "nota");
+
+		Assert.True(await repositorio.EliminarBorradorAsync(clave));
+
+		Assert.Null(await repositorio.ObtenerBorradorAsync(clave));
+		Assert.Empty(await repositorio.ObtenerBorradoresAsync());
+	}
+
+	[Fact]
+	public async Task Convertir_dejaElBorradorComoPendienteYConservaSuClaveLocal()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await repositorio.GuardarBorradorAsync(Objeto, "130+", Advertencia, "nota");
+
+		var convertido = await repositorio.ConvertirBorradorAsync(
+			clave, Objeto, Kilometer.Crear("130+200"), KilometerSource.Manual, Critica, "nota final");
+
+		Assert.True(convertido);
+
+		// La misma clave que tenía como borrador: convertir es cambiar de estado, no crear otro
+		// registro. Si cambiara, el operador vería desaparecer un LOC- y aparecer otro.
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		Assert.Equal(clave, registro.ClaveLocal);
+		Assert.Equal(EstadoSincronizacion.Pendiente, registro.Estado);
+
+		// Y deja de ser borrador: no puede estar en las dos listas a la vez.
+		Assert.Empty(await repositorio.ObtenerBorradoresAsync());
+	}
+
+	[Fact]
+	public async Task Convertir_recalculaLaPrioridadConLaSeveridadDefinitiva()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+
+		// Nace con severidad no crítica y se confirma como crítica: la prioridad tiene que
+		// seguir a la severidad con la que se confirmó, no a la que tenía a medio capturar.
+		var clave = await repositorio.GuardarBorradorAsync(Objeto, "130+", Informacion, "nota");
+
+		await repositorio.ConvertirBorradorAsync(
+			clave, Objeto, Kilometer.Crear("130+200"), KilometerSource.Manual, Critica, "nota final");
+
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		Assert.Equal(SyncPriority.Critica, registro.Prioridad);
+	}
+
+	[Fact]
+	public async Task Borrador_deOtroOperadorNoSePuedeAbrirNiEditarNiBorrarNiConvertir()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clave = await contexto.CrearRepositorioDe(new SesionFija("otro"))
+			.GuardarBorradorAsync(Objeto, "130+200", Advertencia, "trabajo ajeno");
+
+		// El repositorio del contexto usa un operador distinto (JTT-1388 CA 9).
+		var mio = contexto.CrearRepositorio();
+
+		Assert.Null(await mio.ObtenerBorradorAsync(clave));
+		Assert.False(await mio.ActualizarBorradorAsync(clave, Objeto, "131+000", Advertencia, "mío"));
+		Assert.False(await mio.EliminarBorradorAsync(clave));
+		Assert.False(await mio.ConvertirBorradorAsync(
+			clave, Objeto, Kilometer.Crear("130+200"), KilometerSource.Manual, Critica, "mío"));
+	}
+
+	[Fact]
+	public async Task Convertir_noAlcanzaAUnaIncidenciaQueYaEstaEnLaCola()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await GuardarAsync(contexto, Advertencia);
+
+		// Ya es Pendiente, no borrador: convertirla otra vez la regresaría al principio de su
+		// ciclo y podría reabrir para edición algo que quizá ya viajó a Jacob.
+		var convertido = await repositorio.ConvertirBorradorAsync(
+			clave, Objeto, Kilometer.Crear("131+000"), KilometerSource.Manual, Critica, "otra");
+
+		Assert.False(convertido);
+	}
+
 	private static Task<string> GuardarAsync(ContextoSqlite contexto, SeveridadIncidencia severidad) =>
 		contexto.CrearRepositorio().GuardarAsync(
 			Objeto,
