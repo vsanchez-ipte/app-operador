@@ -137,4 +137,13 @@ public sealed class ConfiguracionApi
 	/// </para>
 	/// </remarks>
 	public const string RutaCatalogos = "/ITS/AppCatalogos/Vigentes";
+
+	/// <summary>
+	/// Ruta de creación de incidencias del canal móvil (JTT-1401).
+	/// </summary>
+	/// <remarks>
+	/// Exige el permiso de <b>captura</b>, no el general. Es idempotente por el <c>uuid</c> del
+	/// cuerpo: reenviar el mismo devuelve el mismo folio en vez de crear una segunda incidencia.
+	/// </remarks>
+	public const string RutaIncidencias = "/ITS/AppIncidencias";
 }

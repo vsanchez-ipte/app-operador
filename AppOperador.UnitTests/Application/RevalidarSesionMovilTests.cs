@@ -24,7 +24,7 @@ public class RevalidarSesionMovilTests
 	private readonly ISessionStore _sesiones = Substitute.For<ISessionStore>();
 	private readonly ITokenProvider _tokens = Substitute.For<ITokenProvider>();
 	private readonly ITokenClaims _claims = Substitute.For<ITokenClaims>();
-	private readonly ISyncQueueService _cola = Substitute.For<ISyncQueueService>();
+	private readonly ISincronizadorIncidencias _sincronizador = Substitute.For<ISincronizadorIncidencias>();
 	private readonly IAuditLog _bitacora = Substitute.For<IAuditLog>();
 	private readonly MonotonicoFalso _monotonico = new() { Transcurrido = TimeSpan.FromHours(9) };
 
@@ -39,7 +39,7 @@ public class RevalidarSesionMovilTests
 
 	private RevalidarSesionMovil Crear() =>
 		new(_jacob, new CustodiaSesionLocal(_sesiones, _tokens, _persistida), _aviso,
-			_claims, _monotonico, _cola, _bitacora);
+			_claims, _monotonico, _sincronizador, _bitacora);
 
 	private static SesionOfflinePersistida Guardada() => new(
 		SessionId: "s-1",
@@ -118,15 +118,15 @@ public class RevalidarSesionMovilTests
 
 		await Crear().RevalidarAsync();
 
-		await _cola.Received(1).SincronizarAsync(Arg.Any<CancellationToken>());
+		await _sincronizador.Received(1).EjecutarAsync(Arg.Any<CancellationToken>());
 	}
 
 	[Fact]
 	public async Task Un_fallo_al_sincronizar_no_deshace_la_revalidacion()
 	{
 		JacobConfirma();
-		_cola.SincronizarAsync(Arg.Any<CancellationToken>())
-			.Returns<Task<int>>(_ => throw new InvalidOperationException("base ocupada"));
+		_sincronizador.EjecutarAsync(Arg.Any<CancellationToken>())
+			.Returns<Task<ResultadoSincronizacion>>(_ => throw new InvalidOperationException("base ocupada"));
 
 		var resultado = await Crear().RevalidarAsync();
 
@@ -172,7 +172,7 @@ public class RevalidarSesionMovilTests
 
 		await Crear().RevalidarAsync();
 
-		await _cola.DidNotReceive().SincronizarAsync(Arg.Any<CancellationToken>());
+		await _sincronizador.DidNotReceive().EjecutarAsync(Arg.Any<CancellationToken>());
 	}
 
 	[Fact]

@@ -141,6 +141,18 @@ internal sealed class IncidenciaLocal
 	public int Intentos { get; set; }
 
 	/// <summary>
+	/// Código con el que Jacob rechazó el último intento, o nulo si no ha fallado.
+	/// </summary>
+	/// <remarks>
+	/// <b>Se persiste porque de él depende que el CA 8 se siga cumpliendo tras reabrir la app.</b>
+	/// Es lo que distingue un fallo funcional —que no se reintenta solo hasta que alguien
+	/// corrija— de uno técnico. En memoria, cerrar la app convertiría todo rechazo funcional en
+	/// un reintento indefinido a la mañana siguiente.
+	/// </remarks>
+	[Column("ultimo_error_codigo")]
+	public string? UltimoErrorCodigo { get; set; }
+
+	/// <summary>
 	/// Contador monotónico del sistema en el momento de capturar (JTT-1383 CA 12).
 	/// </summary>
 	/// <remarks>

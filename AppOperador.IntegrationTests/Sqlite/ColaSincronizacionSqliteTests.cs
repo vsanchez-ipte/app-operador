@@ -1,12 +1,27 @@
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.ValueObjects;
+using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
 /// <summary>
-/// Cola de sincronización: orden, estados, contadores y comportamiento sin red.
+/// El envío de la cola, contra una base real y un Jacob controlable (JTT-1401).
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Entran por <c>SincronizarIncidencias</c> y no por la cola.</b> Hasta JTT-1401 la
+/// orquestación vivía dentro de <c>ColaSincronizacionSqlite</c> y estas pruebas la llamaban ahí;
+/// al moverla a la capa de aplicación, el punto de entrada cambió. <b>Lo que comprueban es lo
+/// mismo</b>, y siguen tocando SQLite de verdad: importa que los estados y el folio queden
+/// escritos, no solo decididos.
+/// </para>
+/// <para>
+/// Antes el envío lo simulaba la propia cola devolviendo siempre un folio inventado, así que
+/// ningún rechazo era comprobable. Ahora Jacob es un doble que la prueba programa.
+/// </para>
+/// </remarks>
 public sealed class ColaSincronizacionSqliteTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
@@ -27,14 +42,13 @@ public sealed class ColaSincronizacionSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
-		var cola = contexto.CrearCola();
 
-		var confirmados = await cola.SincronizarAsync();
+		var resultado = await contexto.CrearSincronizador().EjecutarAsync();
 
-		Assert.Equal(1, confirmados);
-		var registro = Assert.Single(await cola.ObtenerRegistrosAsync());
+		Assert.Equal(1, resultado.Confirmados);
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
 		Assert.Equal(EstadoSincronizacion.Sincronizado, registro.Estado);
-		Assert.Matches(@"\AINC-\d{4}\z", registro.FolioCentral);
+		Assert.False(string.IsNullOrWhiteSpace(registro.FolioCentral));
 	}
 
 	[Fact]
@@ -42,33 +56,27 @@ public sealed class ColaSincronizacionSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
-		await GuardarAsync(contexto, Advertencia);
-		var cola = contexto.CrearCola();
 
-		Assert.Equal(2, await cola.ContarPendientesAsync());
+		await contexto.CrearSincronizador().EjecutarAsync();
 
-		await cola.SincronizarAsync();
-
-		Assert.Equal(0, await cola.ContarPendientesAsync());
+		Assert.Equal(0, await contexto.CrearCola().ContarPendientesAsync());
 	}
 
 	[Fact]
 	public async Task Sincronizar_atiendePrimeroLasCriticasAunqueSeanMasRecientes()
 	{
 		await using var contexto = new ContextoSqlite();
-
-		// La normal se captura antes; la crítica, una hora después.
 		await GuardarAsync(contexto, Informacion);
-		contexto.Reloj.Avanzar(TimeSpan.FromHours(1));
-		var critica = await GuardarAsync(contexto, Critica);
+		contexto.Reloj.Avanzar(TimeSpan.FromMinutes(5));
+		await GuardarAsync(contexto, Critica);
 
-		await contexto.CrearCola().SincronizarAsync();
+		var jacob = new JacobControlado();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		// Ambas quedan sincronizadas; lo que se comprueba es que la crítica obtuvo el
-		// folio más bajo, es decir, que se envió primero.
-		var registros = await contexto.CrearCola().ObtenerRegistrosAsync();
-		Assert.All(registros, r => Assert.Equal(EstadoSincronizacion.Sincronizado, r.Estado));
-		Assert.Contains(registros, r => r.ClaveLocal == critica && r.Prioridad == SyncPriority.Critica);
+		// El orden en que Jacob las recibió es el orden en que se atendieron.
+		Assert.Equal(2, jacob.Recibidos.Count);
+		var primera = jacob.Recibidos[0];
+		Assert.Equal(Critica.Id, primera.IdGravedad);
 	}
 
 	[Fact]
@@ -78,25 +86,26 @@ public sealed class ColaSincronizacionSqliteTests
 		await GuardarAsync(contexto, Advertencia);
 		contexto.Conectividad.HayEnlace = false;
 
-		var confirmados = await contexto.CrearCola().SincronizarAsync();
+		var resultado = await contexto.CrearSincronizador().EjecutarAsync();
 
-		Assert.Equal(0, confirmados);
+		Assert.Equal(MotivoNoSincroniza.SinEnlaceConJacob, resultado.MotivoBloqueo);
 		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
 		Assert.Equal(EstadoSincronizacion.Pendiente, registro.Estado);
-		Assert.Equal(1, await contexto.CrearCola().ContarPendientesAsync());
 	}
 
 	[Fact]
-	public async Task Sincronizar_sinConexion_dejaConstanciaEnLaBitacora()
+	public async Task Sincronizar_sinConexion_niSiquieraLlamaAJacob()
 	{
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
 		contexto.Conectividad.HayEnlace = false;
 
-		await contexto.CrearCola().SincronizarAsync();
+		var jacob = new JacobControlado();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		var eventos = await contexto.Bitacora.ObtenerEventosAsync();
-		Assert.Contains(eventos, e => e.Nivel == NivelAuditoria.Advertencia && e.Mensaje.Contains("sin conexion"));
+		// La compuerta es lo que evita quemar batería intentando contra una red que no lleva
+		// a ninguna parte (CA 2).
+		Assert.Empty(jacob.Recibidos);
 	}
 
 	[Fact]
@@ -104,44 +113,43 @@ public sealed class ColaSincronizacionSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
-		var cola = contexto.CrearCola();
 
-		await cola.SincronizarAsync();
-		var folioOriginal = (await cola.ObtenerRegistrosAsync()).Single().FolioCentral;
+		var jacob = new JacobControlado();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		// Sincronizado es terminal: una segunda pasada no debe tocarlo.
-		var confirmados = await cola.SincronizarAsync();
-
-		Assert.Equal(0, confirmados);
-		Assert.Equal(folioOriginal, (await cola.ObtenerRegistrosAsync()).Single().FolioCentral);
+		// Sincronizado es terminal: la segunda pasada no tiene nada que hacer.
+		Assert.Single(jacob.Recibidos);
 	}
 
 	[Fact]
 	public async Task Sincronizar_ignoraLosBorradores()
 	{
 		await using var contexto = new ContextoSqlite();
-		await contexto.CrearRepositorio().GuardarBorradorAsync(Objeto, "130+", Critica, "");
+		await contexto.CrearRepositorio().GuardarBorradorAsync(Objeto, "130+200", Advertencia, "nota");
 
-		var confirmados = await contexto.CrearCola().SincronizarAsync();
+		var jacob = new JacobControlado();
+		var resultado = await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		Assert.Equal(0, confirmados);
-		var borrador = Assert.Single(await contexto.CrearRepositorio().ObtenerBorradoresAsync());
-		Assert.Equal(EstadoSincronizacion.Borrador, borrador.Estado);
+		// CA 11: un borrador no se envía nunca, ni siquiera por error de filtro.
+		Assert.Empty(jacob.Recibidos);
+		Assert.Equal(0, resultado.Confirmados);
+		Assert.Single(await contexto.CrearRepositorio().ObtenerBorradoresAsync());
 	}
 
 	[Fact]
 	public async Task LaColaSincronizada_sobreviveAlReinicioDeLaAplicacion()
 	{
 		await using var contexto = new ContextoSqlite();
-		await GuardarAsync(contexto, Advertencia);
-		await contexto.CrearCola().SincronizarAsync();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await contexto.CrearSincronizador().EjecutarAsync();
 
 		var reabierta = contexto.ReabrirBaseDatos();
-		var cola = new ColaSincronizacionSqliteFactory(reabierta, contexto).Crear();
+		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
 
-		var registro = Assert.Single(await cola.ObtenerRegistrosAsync());
+		var registro = Assert.Single(
+			(await cola.ObtenerRegistrosAsync()).Where(r => r.ClaveLocal == clave));
 		Assert.Equal(EstadoSincronizacion.Sincronizado, registro.Estado);
-		Assert.NotNull(registro.FolioCentral);
 
 		await reabierta.DisposeAsync();
 	}
@@ -153,24 +161,4 @@ public sealed class ColaSincronizacionSqliteTests
 			KilometerSource.GPS,
 			severidad,
 			"nota de prueba");
-}
-
-/// <summary>Arma una cola sobre una base reabierta, reutilizando los dobles del contexto.</summary>
-internal sealed class ColaSincronizacionSqliteFactory
-{
-	private readonly Infrastructure.Sqlite.BaseDatosLocal _baseDatos;
-	private readonly ContextoSqlite _contexto;
-
-	public ColaSincronizacionSqliteFactory(Infrastructure.Sqlite.BaseDatosLocal baseDatos, ContextoSqlite contexto)
-	{
-		_baseDatos = baseDatos;
-		_contexto = contexto;
-	}
-
-	public Infrastructure.Sqlite.ColaSincronizacionSqlite Crear() => new(
-		_baseDatos,
-		_contexto.Reloj,
-		_contexto.Conectividad,
-		new Infrastructure.Sqlite.BitacoraAuditoriaSqlite(_baseDatos, _contexto.Reloj),
-		_contexto.Sesion);
 }

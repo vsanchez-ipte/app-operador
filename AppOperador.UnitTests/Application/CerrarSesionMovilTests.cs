@@ -127,7 +127,9 @@ public class CerrarSesionMovilTests
 
 		await ConJacob().CerrarAsync();
 
-		await _cola.DidNotReceive().SincronizarAsync(Arg.Any<CancellationToken>());
+		// Cerrar sesión no sincroniza: la sincronización es una acción del operador o de la
+		// revalidación, no un efecto del cierre. Y sobre todo, no vacía la cola.
+		await _cola.DidNotReceiveWithAnyArgs().ActualizarEnvioAsync(default!, default);
 		await _cola.Received(1).ContarPendientesAsync(Arg.Any<CancellationToken>());
 	}
 

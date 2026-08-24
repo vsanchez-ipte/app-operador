@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 4;
+	public const int VersionEsquemaActual = 5;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -275,9 +275,18 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		//           severidades, afectaciones, cuerpos y meta— es aditivo y CreateTableAsync ya
 		//           lo aplicó arriba.
 		//
+		// De 4 a 5: el envío real a Jacob (JTT-1401). Agrega ultimo_error_codigo a
+		//           incidencia_local y codigo_texto a intento_sincronizacion, las dos para
+		//           guardar el código de error del canal móvil, que es cadena y no número.
+		//           Aditivo: CreateTableAsync ya las aplicó arriba.
+		//
 		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
 		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
 		// capturaron, igual que pasó con el permiso al pasar de 2 a 3.
+		//
+		// Las que ya habían fallado quedan sin último código de error, así que se tratan como
+		// técnicas y se reintentan una vez. Es lo correcto: no se sabe por qué fallaron, y un
+		// reintento las reclasifica con el código real en vez de dejarlas paradas para siempre.
 		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
 	}
 

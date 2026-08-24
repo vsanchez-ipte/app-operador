@@ -187,8 +187,6 @@ public sealed class ExportacionBaseDatosTests
 		var cola = new ColaSincronizacionSqlite(
 			escenario.BaseDatos,
 			escenario.Reloj,
-			new ConectividadControlada(),
-			new BitacoraAuditoriaSqlite(escenario.BaseDatos, escenario.Reloj),
 			escenario.Sesion);
 
 		Assert.Contains(await cola.ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);

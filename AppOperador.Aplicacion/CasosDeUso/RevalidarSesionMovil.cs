@@ -26,7 +26,7 @@ public sealed class RevalidarSesionMovil
 	private readonly AvisoDeSesionTerminada _aviso;
 	private readonly ITokenClaims _claims;
 	private readonly IMonotonicClock _monotonico;
-	private readonly ISyncQueueService _cola;
+	private readonly ISincronizadorIncidencias _sincronizador;
 	private readonly IAuditLog _bitacora;
 	private readonly ActualizarCatalogoLocal? _catalogos;
 
@@ -36,7 +36,7 @@ public sealed class RevalidarSesionMovil
 		AvisoDeSesionTerminada aviso,
 		ITokenClaims claims,
 		IMonotonicClock monotonico,
-		ISyncQueueService cola,
+		ISincronizadorIncidencias sincronizador,
 		IAuditLog bitacora,
 		ActualizarCatalogoLocal? catalogos = null)
 	{
@@ -45,7 +45,7 @@ public sealed class RevalidarSesionMovil
 		_aviso = aviso;
 		_claims = claims;
 		_monotonico = monotonico;
-		_cola = cola;
+		_sincronizador = sincronizador;
 		_bitacora = bitacora;
 		_catalogos = catalogos;
 	}
@@ -173,7 +173,7 @@ public sealed class RevalidarSesionMovil
 	{
 		try
 		{
-			await _cola.SincronizarAsync(cancelacion);
+			await _sincronizador.EjecutarAsync(cancelacion);
 		}
 		catch (OperationCanceledException)
 		{

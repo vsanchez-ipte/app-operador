@@ -87,10 +87,13 @@ public sealed class ColaPorOperadorTests
 		// No hay con qué autenticarse ante Jacob, y los pendientes deben esperar intactos.
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto);
-		var cola = contexto.CrearCola();
 		contexto.Sesion.Limpiar();
 
-		Assert.Equal(0, await cola.SincronizarAsync());
+		// Sin sesión no hay capacidades concedidas, así que la compuerta del CA 1 lo detiene
+		// antes de llegar a la red.
+		var resultado = await contexto.CrearSincronizador().EjecutarAsync();
+		Assert.Equal(0, resultado.Confirmados);
+		Assert.NotNull(resultado.MotivoBloqueo);
 
 		var recuperada = contexto.CrearColaDe(new SesionFija());
 		var registro = Assert.Single(await recuperada.ObtenerRegistrosAsync());
@@ -104,9 +107,14 @@ public sealed class ColaPorOperadorTests
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto);
 
-		var confirmados = await contexto.CrearColaDe(new SesionFija("otro.operador")).SincronizarAsync();
+		var jacob = new JacobControlado();
+		var resultado = await contexto
+			.CrearSincronizador(jacob, new SesionFija("otro.operador"))
+			.EjecutarAsync();
 
-		Assert.Equal(0, confirmados);
+		Assert.Equal(0, resultado.Confirmados);
+		// Y ni siquiera se intentó: la cola de otro operador no se lee.
+		Assert.Empty(jacob.Recibidos);
 	}
 
 	private static Task<string> GuardarAsync(ContextoSqlite contexto) =>

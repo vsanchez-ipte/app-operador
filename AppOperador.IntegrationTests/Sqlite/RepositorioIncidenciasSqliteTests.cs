@@ -54,9 +54,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 		// Instancia nueva sobre el mismo archivo: es la prueba de que persiste de verdad
 		// y no solo mientras el proceso vive.
 		var reabierta = contexto.ReabrirBaseDatos();
-		var cola = new ColaSincronizacionSqlite(
-			reabierta, contexto.Reloj, contexto.Conectividad,
-			new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj), contexto.Sesion);
+		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
 
 		var registros = await cola.ObtenerRegistrosAsync();
 
@@ -152,9 +150,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 		// que ocurre de verdad: la app se reinicia y el operador vuelve a entrar.
 		var reabierta = contexto.ReabrirBaseDatos();
 		var sesionNueva = new SesionFija();
-		var cola = new ColaSincronizacionSqlite(
-			reabierta, contexto.Reloj, contexto.Conectividad,
-			new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj), sesionNueva);
+		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, sesionNueva);
 		var repositorio = new RepositorioIncidenciasSqlite(reabierta, contexto.Reloj, sesionNueva);
 
 		Assert.Contains(await cola.ObtenerRegistrosAsync(), r => r.ClaveLocal == clavePendiente);
