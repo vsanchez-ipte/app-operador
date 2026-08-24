@@ -78,6 +78,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 		var confirmados = 0;
 		var intentados = 0;
+		var enEspera = 0;
+		var porCorregir = 0;
 		ResultadoEnvio? ultimoRechazo = null;
 
 		foreach (var incidencia in enviables)
@@ -86,6 +88,17 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			if (!TocaIntentar(incidencia))
 			{
+				// Se cuenta por qué se salta, no solo que se saltó: «espera sola» y «necesita
+				// corrección» son cosas distintas para quien está mirando la cola.
+				if (CodigosErrorJacob.EsFuncional(incidencia.UltimoErrorCodigo))
+				{
+					porCorregir++;
+				}
+				else
+				{
+					enEspera++;
+				}
+
 				continue;
 			}
 
@@ -111,7 +124,9 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			cancelacion);
 
 		return new ResultadoSincronizacion(
-			confirmados, intentados, null, ultimoRechazo?.Familia, ultimoRechazo?.Mensaje);
+			confirmados, intentados, null,
+			ultimoRechazo?.Familia, ultimoRechazo?.Mensaje,
+			enEspera, porCorregir);
 	}
 
 	/// <inheritdoc />

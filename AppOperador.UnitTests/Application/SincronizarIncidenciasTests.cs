@@ -321,6 +321,37 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Null(resultado.MensajeUltimoError);
 	}
 
+	// ── Saltarse un registro se cuenta, y se dice por que ─────────────────────────────
+
+	[Fact]
+	public async Task LoQueEsperaSuReintentoSeCuentaAparteDeLoQueNecesitaCorreccion()
+	{
+		// Es el defecto que Victor vio el 21-ago: la cola decia "3 incidencias pendientes"
+		// arriba y "No hay incidencias pendientes de enviar" abajo. Las dos no pueden ser
+		// ciertas, y el operador se queda sin saber si el boton funciono.
+		_cola.Encolar(
+			Fallida(intentos: 1, ultimoIntento: Ahora, codigo: "appincidencias.error.tecnico") with { Uuid = "u1", ClaveLocal = "LOC-1" },
+			Fallida(intentos: 1, ultimoIntento: Ahora, codigo: "appincidencias.nota.requerida") with { Uuid = "u2", ClaveLocal = "LOC-2" });
+
+		_reloj.UtcAhora = Ahora.AddSeconds(10);
+
+		var resultado = await Crear().EjecutarAsync();
+
+		Assert.Equal(0, resultado.Intentados);
+		Assert.Equal(1, resultado.OmitidosEnEspera);
+		Assert.Equal(1, resultado.OmitidosPorCorregir);
+	}
+
+	[Fact]
+	public async Task UnaColaVaciaNoReportaOmitidos()
+	{
+		var resultado = await Crear().EjecutarAsync();
+
+		Assert.Equal(0, resultado.Intentados);
+		Assert.Equal(0, resultado.OmitidosEnEspera);
+		Assert.Equal(0, resultado.OmitidosPorCorregir);
+	}
+
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
 	private static ResultadoEnvio Aceptada(string folio) =>

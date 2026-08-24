@@ -21,12 +21,23 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <b>Se propaga en vez de reescribirse</b>: quien rechazó sabe por qué mejor que la pantalla, y
 /// un texto propio del tipo «no se aceptó» obliga al operador a adivinar qué corregir.
 /// </param>
+/// <param name="OmitidosEnEspera">
+/// Registros que no se intentaron porque su espera de reintento no había vencido (CA 7).
+/// <b>Van a salir solos.</b>
+/// </param>
+/// <param name="OmitidosPorCorregir">
+/// Registros que no se intentaron porque su último rechazo fue funcional (CA 8).
+/// <b>No van a salir hasta que alguien los corrija</b>, y esa diferencia con los anteriores es
+/// justo lo que el operador necesita saber para decidir si esperar o actuar.
+/// </param>
 public sealed record ResultadoSincronizacion(
 	int Confirmados,
 	int Intentados,
 	MotivoNoSincroniza? MotivoBloqueo,
 	FamiliaErrorSincronizacion? FamiliaUltimoError = null,
-	string? MensajeUltimoError = null);
+	string? MensajeUltimoError = null,
+	int OmitidosEnEspera = 0,
+	int OmitidosPorCorregir = 0);
 
 /// <summary>
 /// Por qué la sincronización no llegó a intentarse (JTT-1401 CA 1 y 2).

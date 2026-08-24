@@ -142,6 +142,16 @@ public sealed partial class ColaViewModel : ObservableObject
 			"Sin enlace con el CCO. Lo capturado se conserva y se enviará al recuperar la señal.",
 		MotivoNoSincroniza.SinSesion =>
 			"La sesión expiró. Vuelva a ingresar para sincronizar.",
+		// Nada se intentó, pero eso NO significa que no haya nada. Decir «no hay pendientes»
+		// con tres en la lista de arriba es contradecirse en la misma pantalla, y deja al
+		// operador sin saber si el botón funcionó.
+		_ when resultado.Intentados == 0 && resultado.OmitidosPorCorregir > 0 =>
+			$"{resultado.OmitidosPorCorregir} incidencias fueron rechazadas y no se reintentarán "
+			+ "solas. Revise su detalle en la lista.",
+
+		_ when resultado.Intentados == 0 && resultado.OmitidosEnEspera > 0 =>
+			$"{resultado.OmitidosEnEspera} incidencias esperan su reintento. Saldrán solas.",
+
 		_ when resultado.Intentados == 0 =>
 			"No hay incidencias pendientes de enviar.",
 		_ when resultado.Confirmados == resultado.Intentados =>
