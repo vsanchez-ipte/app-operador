@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
@@ -75,6 +76,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private readonly IIncidentRepository _incidencias;
 	private readonly ICatalogoRepository _catalogo;
 	private readonly ConvertirBorradorEnIncidencia _convertirBorrador;
+	private readonly ISincronizadorIncidencias _sincronizador;
 	private readonly ILocationService _ubicacion;
 	private readonly CapacidadesDeLaSesion _capacidades;
 
@@ -124,17 +126,31 @@ public sealed partial class CapturaViewModel : ObservableObject
 	[ObservableProperty]
 	public partial string? BorradorEnEdicion { get; set; }
 
+	/// <summary>
+	/// Qué pasó al enviar la incidencia recién guardada, o <see langword="null"/> si no se ha
+	/// guardado ninguna en esta pasada.
+	/// </summary>
+	/// <remarks>
+	/// Va aparte de <see cref="MensajeError"/> a propósito: <b>no es un error</b>. Que una
+	/// incidencia se quede en la cola por falta de señal es el funcionamiento normal en campo, y
+	/// pintarlo en rojo enseñaría al operador a ignorar los mensajes rojos.
+	/// </remarks>
+	[ObservableProperty]
+	public partial string? MensajeEnvio { get; set; }
+
 	public CapturaViewModel(
 		IIncidentRepository incidencias,
 		ICatalogoRepository catalogo,
 		ILocationService ubicacion,
 		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace,
-		ConvertirBorradorEnIncidencia convertirBorrador)
+		ConvertirBorradorEnIncidencia convertirBorrador,
+		ISincronizadorIncidencias sincronizador)
 	{
 		_incidencias = incidencias;
 		_catalogo = catalogo;
 		_convertirBorrador = convertirBorrador;
+		_sincronizador = sincronizador;
 		_ubicacion = ubicacion;
 		_capacidades = capacidades;
 		Enlace = enlace;
@@ -170,6 +186,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 	public bool HayAvisoGps => !string.IsNullOrEmpty(AvisoGps);
 
 	public bool HayBorradores => Borradores.Count > 0;
+
+	/// <summary>Indica si hay algo que decir sobre el último envío.</summary>
+	public bool HayMensajeEnvio => !string.IsNullOrEmpty(MensajeEnvio);
 
 	/// <summary>
 	/// Tope de caracteres de la nota (JTT-1393 CA 7).
@@ -395,10 +414,12 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		MensajeError = null;
-		await _incidencias.GuardarAsync(
+		var clave = await _incidencias.GuardarAsync(
 			TipoSeleccionado, kilometro, FuenteKilometro, SeveridadSeleccionada, nota);
+
 		LimpiarFormulario();
 		await RecargarBorradoresAsync();
+		await IntentarEnviarRecienGuardadaAsync(clave);
 	}
 
 	[RelayCommand(CanExecute = nameof(PuedeRegistrar))]
@@ -465,6 +486,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 		MensajeError = null;
 		CancelarEdicionBorrador();
 		await RecargarBorradoresAsync();
+
+		// Convertir también crea una incidencia, así que también intenta salir en el momento.
+		await IntentarEnviarRecienGuardadaAsync(clave);
 	}
 
 	// ── Ciclo de vida del borrador en pantalla (JTT-1399 CA 8) ────────────────────────
@@ -571,6 +595,68 @@ public sealed partial class CapturaViewModel : ObservableObject
 		_ => MensajeBorradorNoEncontrado,
 	};
 
+	/// <summary>
+	/// Intenta enviar a Jacob la incidencia que se acaba de guardar.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Guardar primero, enviar después, y siempre en ese orden.</b> La incidencia queda escrita
+	/// en el dispositivo antes de tocar la red: si el envío falla, se cae, o el operador sale de la
+	/// pantalla, lo capturado ya está a salvo y espera en la cola. Enviar antes de guardar
+	/// convertiría cualquier fallo en pérdida de lo que el operador acaba de escribir.
+	/// </para>
+	/// <para>
+	/// <b>Un fallo aquí no es un error de la captura.</b> Sin enlace, o con Jacob caído, la
+	/// incidencia se queda pendiente y sale sola por el camino normal de reintentos; el operador
+	/// solo necesita saber cuál de las dos cosas pasó.
+	/// </para>
+	/// </remarks>
+	private async Task IntentarEnviarRecienGuardadaAsync(string claveLocal)
+	{
+		try
+		{
+			var resultado = await _sincronizador.EnviarUnaAsync(claveLocal);
+			MensajeEnvio = TextoDelEnvio(claveLocal, resultado);
+		}
+		catch (Exception) when (!Debugger.IsAttached)
+		{
+			// Nada de lo que pueda fallar al enviar puede tumbar la captura: la incidencia ya
+			// está guardada, que es lo que importa.
+			MensajeEnvio = $"{claveLocal} quedó en la cola. Se enviará al recuperar la señal.";
+		}
+	}
+
+	/// <summary>
+	/// Qué se le dice al operador después de guardar (JTT-1401 CA 10).
+	/// </summary>
+	/// <remarks>
+	/// <b>Siempre se nombra la clave local.</b> Es lo único que el operador puede volver a buscar
+	/// en la cola, y con folio o sin él es su referencia hasta que Jacob conteste.
+	/// <para>
+	/// Textos provisionales: Producto no ha fijado los literales de esta pantalla.
+	/// </para>
+	/// </remarks>
+	private static string TextoDelEnvio(string claveLocal, ResultadoSincronizacion resultado)
+	{
+		if (resultado.Confirmados == 1)
+		{
+			return $"{claveLocal} enviada al CCO.";
+		}
+
+		return resultado.MotivoBloqueo switch
+		{
+			MotivoNoSincroniza.SinEnlaceConJacob =>
+				$"{claveLocal} guardada sin conexión. Se enviará al recuperar la señal.",
+			MotivoNoSincroniza.SinSesion =>
+				$"{claveLocal} guardada. La sesión expiró: vuelva a ingresar para enviarla.",
+			MotivoNoSincroniza.SinPermiso =>
+				$"{claveLocal} guardada. Su cuenta no tiene autorizado sincronizar.",
+			// Rechazo de Jacob: la incidencia está guardada y esperando en la cola, que es donde
+			// el operador puede ver el motivo con detalle.
+			_ => $"{claveLocal} guardada. El CCO no la aceptó todavía; revise la cola.",
+		};
+	}
+
 	private async Task RecargarBorradoresAsync()
 	{
 		Borradores.Clear();
@@ -589,6 +675,8 @@ public sealed partial class CapturaViewModel : ObservableObject
 	}
 
 	partial void OnMensajeErrorChanged(string? value) => OnPropertyChanged(nameof(HayError));
+
+	partial void OnMensajeEnvioChanged(string? value) => OnPropertyChanged(nameof(HayMensajeEnvio));
 
 	/// <summary>Abrir o soltar un borrador cambia lo que los dos botones significan.</summary>
 	partial void OnBorradorEnEdicionChanged(string? value)

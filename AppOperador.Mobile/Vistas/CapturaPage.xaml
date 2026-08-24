@@ -139,6 +139,14 @@
                                 Command="{Binding GuardarBorradorCommand}" />
                     </Grid>
 
+                    <!-- Qué pasó al enviar la incidencia recién guardada (JTT-1401). NO usa
+                         el estilo de error: quedarse en la cola por falta de señal es el
+                         funcionamiento normal en campo, y pintarlo en rojo enseñaría al
+                         operador a ignorar los mensajes rojos. -->
+                    <Label Text="{Binding MensajeEnvio}"
+                           Style="{StaticResource TextoSecundario}"
+                           IsVisible="{Binding HayMensajeEnvio}" />
+
                     <Button Text="Eliminar borrador"
                             Style="{StaticResource BotonSecundario}"
                             IsVisible="{Binding EstaEditandoBorrador}"

@@ -121,6 +121,32 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	}
 
 	/// <inheritdoc />
+	public async Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default)
+	{
+		var operador = OperadorActual;
+		if (operador is null || string.IsNullOrWhiteSpace(claveLocal))
+		{
+			return null;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var pendiente = (int)EstadoSincronizacion.Pendiente;
+		var fallido = (int)EstadoSincronizacion.Fallido;
+
+		// Mismos estados que la consulta de la cola: un borrador no se envía y lo sincronizado
+		// no se reenvía. El filtro por operador vale aquí igual que allá.
+		var fila = await conexion.Table<IncidenciaLocal>()
+			.Where(i => i.ClaveLocal == claveLocal
+				&& (i.Estado == pendiente || i.Estado == fallido)
+				&& i.Operador == operador)
+			.FirstOrDefaultAsync();
+
+		return fila is null ? null : AEnviable(fila);
+	}
+
+	/// <inheritdoc />
 	public async Task ActualizarEnvioAsync(
 		ActualizacionEnvio actualizacion,
 		CancellationToken cancelacion = default)

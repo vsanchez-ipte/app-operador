@@ -219,6 +219,61 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Equal(1, resultado.Confirmados);
 	}
 
+	// ── Envío inmediato al capturar ───────────────────────────────────────────────────
+
+	[Fact]
+	public async Task EnviarUna_soloMandaEsaYNoElRestoDeLaCola()
+	{
+		// El operador está parado en el incidente: hacerle esperar a que suban los registros
+		// viejos alarga la captura, y si uno de ellos falla el aviso sobre el suyo se enturbia.
+		_cola.Encolar(Pendiente("uuid-viejo"), Pendiente("uuid-nuevo"));
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		Assert.Equal(1, resultado.Intentados);
+		Assert.Single(_jacob.Recibidos);
+	}
+
+	[Fact]
+	public async Task EnviarUna_sinEnlaceNoEsUnErrorYLaDejaEnLaCola()
+	{
+		_cola.Encolar(Pendiente());
+		_conectividad.HayEnlace = false;
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		// Sin enlace no se intenta, y sobre todo no se toca el registro: sigue pendiente y
+		// saldrá por el camino normal de reintentos.
+		Assert.Equal(MotivoNoSincroniza.SinEnlaceConJacob, resultado.MotivoBloqueo);
+		Assert.Empty(_jacob.Recibidos);
+		Assert.Empty(_cola.Actualizaciones);
+	}
+
+	[Fact]
+	public async Task EnviarUna_aceptadaQuedaSincronizadaConSuFolio()
+	{
+		_cola.Encolar(Pendiente());
+		_jacob.Responde(Aceptada("INC-APK-2026-0034"));
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		Assert.Equal(1, resultado.Confirmados);
+		Assert.Contains(_cola.Actualizaciones, a =>
+			a.Estado == EstadoSincronizacion.Sincronizado && a.FolioCentral == "INC-APK-2026-0034");
+	}
+
+	[Fact]
+	public async Task EnviarUna_deUnaClaveQueNoExisteNoRompeNada()
+	{
+		// Pudo eliminarse, ser de otro operador o haber salido ya. Nada que hacer, y no es
+		// un error: lo guardado sigue su camino.
+		var resultado = await Crear().EnviarUnaAsync("LOC-999999");
+
+		Assert.Equal(0, resultado.Intentados);
+		Assert.Null(resultado.MotivoBloqueo);
+		Assert.Empty(_jacob.Recibidos);
+	}
+
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
 	private static ResultadoEnvio Aceptada(string folio) =>
@@ -242,6 +297,10 @@ public sealed class SincronizarIncidenciasTests
 
 		public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<IncidenciaEnviable>>(_enviables);
+
+		public Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
+			string claveLocal, CancellationToken c = default) =>
+			Task.FromResult(_enviables.FirstOrDefault(i => i.ClaveLocal == claveLocal));
 
 		public Task ActualizarEnvioAsync(ActualizacionEnvio actualizacion, CancellationToken c = default)
 		{

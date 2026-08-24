@@ -53,6 +53,11 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 		CancellationToken cancelacion = default) =>
 		Task.FromResult<IReadOnlyList<IncidenciaEnviable>>([]);
 
+	public Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<IncidenciaEnviable?>(null);
+
 	public Task ActualizarEnvioAsync(
 		ActualizacionEnvio actualizacion,
 		CancellationToken cancelacion = default) =>

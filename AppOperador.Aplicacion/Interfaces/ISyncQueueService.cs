@@ -42,6 +42,18 @@ public interface ISyncQueueService
 	/// </remarks>
 	Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(CancellationToken cancelacion = default);
 
+	/// <summary>
+	/// Un registro concreto, por su clave visible, si está en condiciones de enviarse.
+	/// </summary>
+	/// <remarks>
+	/// Existe para el envío inmediato al capturar: el operador acaba de guardar <b>una</b>
+	/// incidencia y es esa la que espera ver salir, no la cola entera. Devuelve
+	/// <see langword="null"/> si no existe, si es de otro operador o si ya está sincronizada.
+	/// </remarks>
+	Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default);
+
 	/// <summary>Escribe el resultado de un intento en el registro.</summary>
 	Task ActualizarEnvioAsync(ActualizacionEnvio actualizacion, CancellationToken cancelacion = default);
 

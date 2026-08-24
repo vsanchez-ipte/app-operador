@@ -106,6 +106,39 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return new ResultadoSincronizacion(confirmados, intentados, null);
 	}
 
+	/// <inheritdoc />
+	public async Task<ResultadoSincronizacion> EnviarUnaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default)
+	{
+		// Las mismas compuertas que el envío de la cola: capturar no autoriza más que
+		// sincronizar, y sin enlace tampoco hay a dónde mandar.
+		var bloqueo = await ComprobarCondicionesAsync(cancelacion);
+		if (bloqueo is not null)
+		{
+			return new ResultadoSincronizacion(0, 0, bloqueo);
+		}
+
+		var token = await _tokens.ObtenerAsync(cancelacion);
+		if (string.IsNullOrWhiteSpace(token))
+		{
+			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.SinSesion);
+		}
+
+		var incidencia = await _cola.ObtenerEnviablePorClaveAsync(claveLocal, cancelacion);
+		if (incidencia is null)
+		{
+			// No existe, es de otro operador o ya salió. Nada que hacer, y no es un error:
+			// lo guardado sigue en la cola y se atenderá por el camino normal.
+			return new ResultadoSincronizacion(0, 0, null);
+		}
+
+		var catalogos = await _catalogo.ObtenerAsync(cancelacion);
+		var confirmada = await IntentarUnaAsync(incidencia, catalogos, token, cancelacion);
+
+		return new ResultadoSincronizacion(confirmada ? 1 : 0, 1, null);
+	}
+
 	/// <summary>
 	/// Comprueba las tres condiciones del CA 1, o devuelve cuál falta.
 	/// </summary>

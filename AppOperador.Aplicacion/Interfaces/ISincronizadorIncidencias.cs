@@ -25,4 +25,23 @@ public interface ISincronizadorIncidencias
 {
 	/// <summary>Intenta enviar lo pendiente y devuelve qué pasó.</summary>
 	Task<ResultadoSincronizacion> EjecutarAsync(CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Intenta enviar <b>una sola</b> incidencia, recién capturada.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Es el envío inmediato al guardar: si Jacob la acepta, el operador la ve en la cola ya
+	/// <b>sincronizada</b> y con su folio; si no hay enlace o falla, cae a la cola como pendiente
+	/// y sigue el camino normal de reintentos.
+	/// </para>
+	/// <para>
+	/// <b>No arrastra el resto de la cola a propósito.</b> El operador está parado en el
+	/// incidente: hacerle esperar a que suban los registros viejos alarga la captura, y si uno
+	/// de ellos falla, el aviso sobre <i>el suyo</i> deja de ser claro.
+	/// </para>
+	/// </remarks>
+	Task<ResultadoSincronizacion> EnviarUnaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default);
 }
