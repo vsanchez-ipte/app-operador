@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.ValueObjects;
@@ -61,22 +62,77 @@ public static class RellenoCamposNoCapturados
 	}
 
 	/// <summary>
-	/// Afectación con la que se completa el envío.
+	/// Afectación con la que se completa el envío: <b>la de menor impacto</b>.
 	/// </summary>
 	/// <remarks>
-	/// Se toma la primera del catálogo. <b>No se elige por nombre</b> —«Sin afectación» podría
-	/// renombrarse o retirarse— y no se aleatoriza entre envíos: dos incidencias del mismo turno
-	/// con grados de cierre distintos y ninguno observado se leerían en el CCO como si alguien
-	/// hubiera valorado cada una.
+	/// <para>
+	/// ⚠️ <b>Esto se hizo mal una vez y hay que no repetirlo.</b> Se tomaba la primera del
+	/// catálogo, y la primera es <c>Total</c>: las incidencias de la app llegaron al CCO
+	/// declarando <b>la vía completamente cerrada</b> sin que nadie lo hubiera observado. Un
+	/// cierre total dispara una respuesta operativa real.
+	/// </para>
+	/// <para>
+	/// Como el valor no se captura, el único relleno defendible es el que <b>no afirma nada</b>:
+	/// «Sin afectación». Se busca por nombre normalizado y no por identificador, porque el id de
+	/// ese valor cambia entre ambientes.
+	/// </para>
+	/// <para>
+	/// Si no aparece, se toma <b>la última</b> del catálogo y no la primera: estos catálogos se
+	/// ordenan de mayor a menor gravedad, así que la última es la apuesta menos dañina. Es una
+	/// heurística, y por eso el arreglo de fondo sigue siendo quitar la obligación.
+	/// </para>
 	/// </remarks>
-	private static int ElegirAfectacion(CatalogosOperacion catalogos) =>
-		catalogos.Afectaciones.Count > 0 ? catalogos.Afectaciones[0].Id : 0;
+	private static int ElegirAfectacion(CatalogosOperacion catalogos)
+	{
+		if (catalogos.Afectaciones.Count == 0)
+		{
+			return 0;
+		}
+
+		var sinAfectacion = catalogos.Afectaciones
+			.FirstOrDefault(a => Normalizar(a.Nombre).Contains("sin afectacion", StringComparison.Ordinal));
+
+		return sinAfectacion?.Id ?? catalogos.Afectaciones[^1].Id;
+	}
 
 	/// <summary>
-	/// Cuerpo de la vía con el que se completa el envío. Mismo criterio que la afectación.
+	/// Cuerpo de la vía con el que se completa el envío: <b>«Ambos»</b> si existe.
 	/// </summary>
-	private static string ElegirCuerpo(CatalogosOperacion catalogos) =>
-		catalogos.Cuerpos.Count > 0 ? catalogos.Cuerpos[0].Clave : "A";
+	/// <remarks>
+	/// Mismo criterio que la afectación: el relleno no debe afirmar lo que nadie observó.
+	/// Declarar «Cuerpo A» manda a quien atienda <b>a un lado concreto</b> de una vía de dos
+	/// cuerpos, y si se equivoca cuesta un recorrido completo. «Ambos» no dirige mal a nadie.
+	/// <para>
+	/// La clave <c>C</c> es lista cerrada fijada en el servidor —<c>A</c>, <c>B</c>, <c>C</c>
+	/// = Ambos, <c>D</c> = Camellón—, así que buscarla por clave es estable.
+	/// </para>
+	/// </remarks>
+	private const string ClaveAmbosCuerpos = "C";
+
+	private static string ElegirCuerpo(CatalogosOperacion catalogos)
+	{
+		if (catalogos.Cuerpos.Count == 0)
+		{
+			return ClaveAmbosCuerpos;
+		}
+
+		var ambos = catalogos.Cuerpos
+			.FirstOrDefault(c => c.Clave.Equals(ClaveAmbosCuerpos, StringComparison.OrdinalIgnoreCase));
+
+		return ambos?.Clave ?? catalogos.Cuerpos[0].Clave;
+	}
+
+	/// <summary>
+	/// Quita acentos y baja a minúsculas, para comparar nombres de catálogo sin sorpresas.
+	/// </summary>
+	/// <remarks>
+	/// «Sin afectación» lleva tilde y el catálogo podría traerla o no. Comparar el literal con
+	/// tilde haría que el relleno cayera al peor valor por un detalle ortográfico.
+	/// </remarks>
+	private static string Normalizar(string texto) =>
+		string.Concat(texto.Normalize(NormalizationForm.FormD)
+				.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark))
+			.ToLowerInvariant();
 
 	/// <summary>
 	/// Convierte el kilómetro canónico <c>130+200</c> al decimal <c>130.200</c> que espera Jacob.
