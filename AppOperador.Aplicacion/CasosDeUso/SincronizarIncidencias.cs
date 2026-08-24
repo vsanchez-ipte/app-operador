@@ -78,6 +78,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 		var confirmados = 0;
 		var intentados = 0;
+		ResultadoEnvio? ultimoRechazo = null;
 
 		foreach (var incidencia in enviables)
 		{
@@ -92,9 +93,15 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			// Cada registro es su propia unidad: se marca, se envía y se resuelve antes de
 			// pasar al siguiente (CA 12). Así una falla no arrastra a las demás (CA 13).
-			if (await IntentarUnaAsync(incidencia, catalogos, token, cancelacion))
+			var envio = await IntentarUnaAsync(incidencia, catalogos, token, cancelacion);
+
+			if (envio is { Exito: true })
 			{
 				confirmados++;
+			}
+			else if (envio is not null)
+			{
+				ultimoRechazo = envio;
 			}
 		}
 
@@ -103,7 +110,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			$"Sync intentado: {confirmados}/{intentados} registros creados en Incidencias.",
 			cancelacion);
 
-		return new ResultadoSincronizacion(confirmados, intentados, null);
+		return new ResultadoSincronizacion(
+			confirmados, intentados, null, ultimoRechazo?.Familia, ultimoRechazo?.Mensaje);
 	}
 
 	/// <inheritdoc />
@@ -134,9 +142,14 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		}
 
 		var catalogos = await _catalogo.ObtenerAsync(cancelacion);
-		var confirmada = await IntentarUnaAsync(incidencia, catalogos, token, cancelacion);
+		var envio = await IntentarUnaAsync(incidencia, catalogos, token, cancelacion);
 
-		return new ResultadoSincronizacion(confirmada ? 1 : 0, 1, null);
+		return new ResultadoSincronizacion(
+			envio is { Exito: true } ? 1 : 0,
+			1,
+			null,
+			envio?.Exito == false ? envio.Familia : null,
+			envio?.Exito == false ? envio.Mensaje : null);
 	}
 
 	/// <summary>
@@ -200,8 +213,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return ReglaEsperaReintento.YaPuedeReintentarse(incidencia.Intentos, transcurrido);
 	}
 
-	/// <summary>Marca, envía y resuelve un registro.</summary>
-	private async Task<bool> IntentarUnaAsync(
+	/// <summary>Marca, envía y resuelve un registro. Devuelve lo que contestó Jacob.</summary>
+	private async Task<ResultadoEnvio?> IntentarUnaAsync(
 		IncidenciaEnviable incidencia,
 		CatalogosOperacion catalogos,
 		string token,
@@ -215,7 +228,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 		if (!ReglaTransicionSincronizacion.EsTransicionValida(estadoPrevio, EstadoSincronizacion.Enviando))
 		{
-			return false;
+			return null;
 		}
 
 		var intentos = incidencia.Intentos + 1;
@@ -242,6 +255,6 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		await _cola.RegistrarIntentoAsync(
 			incidencia.Uuid, resultado.Exito, resultado.Codigo, resultado.Mensaje, cancelacion);
 
-		return resultado.Exito;
+		return resultado;
 	}
 }

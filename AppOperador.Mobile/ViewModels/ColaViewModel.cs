@@ -3,6 +3,7 @@ using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Aplicacion.Servicios;
+using AppOperador.Domain.Enums;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -145,6 +146,16 @@ public sealed partial class ColaViewModel : ObservableObject
 			"No hay incidencias pendientes de enviar.",
 		_ when resultado.Confirmados == resultado.Intentados =>
 			$"{resultado.Confirmados} incidencias enviadas al CCO.",
+		// Ninguna salió y el fallo fue del camino: Jacob no llegó a evaluarlas. Decir que las
+		// rechazó mandaría al operador a revisar capturas que están bien.
+		_ when resultado.Confirmados == 0
+			&& resultado.FamiliaUltimoError == FamiliaErrorSincronizacion.Tecnico =>
+			"No se pudo contactar al CCO. Lo pendiente se conserva y se reintentará.",
+
+		// Ninguna salió y Jacob las rechazó: se muestra SU mensaje, que dice qué corregir.
+		_ when resultado.Confirmados == 0 && resultado.MensajeUltimoError is { } motivo =>
+			$"El CCO rechazó el envío: {motivo}",
+
 		// Que unas salgan y otras no es lo normal, no un fallo: el CA 13 pide justamente que
 		// una falla no detenga a las demás. Se dice el reparto en vez de un «error» a secas.
 		_ => $"{resultado.Confirmados} de {resultado.Intentados} enviadas. El resto sigue pendiente.",

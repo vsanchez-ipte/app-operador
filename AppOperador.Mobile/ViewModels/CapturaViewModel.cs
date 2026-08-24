@@ -643,17 +643,35 @@ public sealed partial class CapturaViewModel : ObservableObject
 			return $"{claveLocal} enviada al CCO.";
 		}
 
-		return resultado.MotivoBloqueo switch
+		if (resultado.MotivoBloqueo is { } motivo)
 		{
-			MotivoNoSincroniza.SinEnlaceConJacob =>
-				$"{claveLocal} guardada sin conexión. Se enviará al recuperar la señal.",
-			MotivoNoSincroniza.SinSesion =>
-				$"{claveLocal} guardada. La sesión expiró: vuelva a ingresar para enviarla.",
-			MotivoNoSincroniza.SinPermiso =>
-				$"{claveLocal} guardada. Su cuenta no tiene autorizado sincronizar.",
-			// Rechazo de Jacob: la incidencia está guardada y esperando en la cola, que es donde
-			// el operador puede ver el motivo con detalle.
-			_ => $"{claveLocal} guardada. El CCO no la aceptó todavía; revise la cola.",
+			return motivo switch
+			{
+				MotivoNoSincroniza.SinEnlaceConJacob =>
+					$"{claveLocal} guardada sin conexión. Se enviará al recuperar la señal.",
+				MotivoNoSincroniza.SinSesion =>
+					$"{claveLocal} guardada. La sesión expiró: vuelva a ingresar para enviarla.",
+				_ => $"{claveLocal} guardada. Su cuenta no tiene autorizado sincronizar.",
+			};
+		}
+
+		// Falló el envío, y las dos familias significan cosas muy distintas para el operador:
+		// una la puede corregir y la otra no depende de él.
+		return resultado.FamiliaUltimoError switch
+		{
+			// Técnico: Jacob NO llegó a evaluarla —servidor caído, red que se cortó a medias—.
+			// Decir «no la aceptó» sería mentir y mandaría al operador a revisar una captura
+			// que está bien.
+			FamiliaErrorSincronizacion.Tecnico =>
+				$"{claveLocal} guardada. No se pudo contactar al CCO; se reintentará sola.",
+
+			// Funcional: Jacob la evaluó y la rechazó. Se muestra SU mensaje, no uno propio:
+			// el servidor sabe qué está mal —«el kilómetro 119.999 está fuera del corredor»— y
+			// reescribirlo como «no se aceptó» obliga al operador a adivinar qué corregir.
+			FamiliaErrorSincronizacion.Funcional =>
+				$"{claveLocal}: {resultado.MensajeUltimoError ?? "el CCO la rechazó. Revise la cola."}",
+
+			_ => $"{claveLocal} quedó en la cola.",
 		};
 	}
 

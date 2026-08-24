@@ -274,6 +274,53 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Empty(_jacob.Recibidos);
 	}
 
+	// ── El motivo del rechazo llega hasta la pantalla · CA 10 ─────────────────────────
+
+	[Fact]
+	public async Task UnFalloTecnicoSeDistingueDeUnRechazoDeJacob()
+	{
+		// Es el defecto que Victor encontro en el emulador el 21-ago: con el API apagado, la
+		// pantalla decia «el CCO no la acepto todavia». Jacob nunca la recibio, y ese texto
+		// manda al operador a revisar una captura que esta bien.
+		_cola.Encolar(Pendiente());
+		_jacob.Responde(ResultadoEnvio.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico,
+			"app.envio.error.tecnico",
+			"No se pudo contactar al CCO. Se reintentará."));
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		Assert.Equal(FamiliaErrorSincronizacion.Tecnico, resultado.FamiliaUltimoError);
+	}
+
+	[Fact]
+	public async Task ElMensajeDeJacobLlegaTalCualEnUnRechazoFuncional()
+	{
+		// Jacob sabe que esta mal mejor que la pantalla: reescribirlo como «no se acepto»
+		// obliga al operador a adivinar que corregir.
+		_cola.Encolar(Pendiente());
+		_jacob.Responde(ResultadoEnvio.Rechazada(
+			FamiliaErrorSincronizacion.Funcional,
+			"appincidencias.km.fueradecorredor",
+			"El kilómetro 119.999 está fuera del corredor (120.000 a 148.000)."));
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		Assert.Equal(FamiliaErrorSincronizacion.Funcional, resultado.FamiliaUltimoError);
+		Assert.Contains("fuera del corredor", resultado.MensajeUltimoError);
+	}
+
+	[Fact]
+	public async Task UnEnvioAceptadoNoDejaMotivoDeRechazo()
+	{
+		_cola.Encolar(Pendiente());
+
+		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
+
+		Assert.Null(resultado.FamiliaUltimoError);
+		Assert.Null(resultado.MensajeUltimoError);
+	}
+
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
 	private static ResultadoEnvio Aceptada(string folio) =>
