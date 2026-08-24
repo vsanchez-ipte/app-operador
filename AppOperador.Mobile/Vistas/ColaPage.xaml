@@ -76,8 +76,11 @@
                                     <VerticalStackLayout Spacing="4">
 
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <!-- Clave local: existe desde la captura y nunca cambia -->
-                                            <Label Grid.Column="0" Text="{Binding ClaveLocal}"
+                                            <!-- Referencia principal (JTT-1403 CA 1): el folio en
+                                                 cuanto Jacob confirma, y la clave local mientras
+                                                 no. Cual de los dos es lo decide RegistroCola, no
+                                                 esta vista. -->
+                                            <Label Grid.Column="0" Text="{Binding ReferenciaPrincipal}"
                                                    FontAttributes="Bold" FontSize="14"
                                                    TextColor="{StaticResource TextoTitulo}" />
 
@@ -93,10 +96,12 @@
 
                                         <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
 
-                                        <!-- El folio central solo aparece cuando Jacob confirmó el registro -->
-                                        <Label Text="{Binding TextoFolio}"
+                                        <!-- Trazabilidad (JTT-1403 CA 2): con el folio arriba, la
+                                             clave local baja aqui en vez de desaparecer. Es la
+                                             unica referencia comun con la base del dispositivo. -->
+                                        <Label Text="{Binding TextoTrazabilidad}"
                                                Style="{StaticResource TextoDato}"
-                                               IsVisible="{Binding MuestraFolio}" />
+                                               IsVisible="{Binding MuestraTrazabilidad}" />
 
                                     </VerticalStackLayout>
                                 </Border>

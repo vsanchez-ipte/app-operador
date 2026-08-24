@@ -116,7 +116,14 @@ internal sealed class IncidenciaLocal
 	[Column("estado")]
 	public int Estado { get; set; }
 
-	/// <summary>Folio asignado por Jacob, con la forma <c>INC-####</c>. Nulo hasta sincronizar.</summary>
+	/// <summary>
+	/// Folio asignado por Jacob, con la forma <c>INC-APK-2026-0034</c>. Nulo hasta sincronizar.
+	/// </summary>
+	/// <remarks>
+	/// Se guarda como texto opaco: el formato lo fija el servidor y la app no lo descompone.
+	/// <b>Nunca se sobrescribe con nulo</b> —ver <c>ActualizarEnvioAsync</c>—, para que un
+	/// reintento fallido no borre el folio de un registro ya confirmado (JTT-1403 CA 5).
+	/// </remarks>
 	[Column("folio_central")]
 	public string? FolioCentral { get; set; }
 

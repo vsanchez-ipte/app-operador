@@ -36,6 +36,15 @@ public sealed class RegistroColaVista
 
 	public string ClaveLocal => Registro.ClaveLocal;
 
+	/// <summary>
+	/// Referencia que encabeza la tarjeta: el folio si ya llegó, la clave local mientras no.
+	/// </summary>
+	/// <remarks>
+	/// La decide el modelo de aplicación, no esta clase: es el CA 1 de JTT-1403 y tiene un solo
+	/// dueño, donde además se puede probar. Aquí solo se muestra.
+	/// </remarks>
+	public string ReferenciaPrincipal => Registro.ReferenciaPrincipal;
+
 	/// <summary>Línea de datos: clase, prioridad, descripción y kilómetro.</summary>
 	public string TextoDatos { get; }
 
@@ -46,10 +55,17 @@ public sealed class RegistroColaVista
 	public string ColorTextoEstado { get; }
 
 	/// <summary>
-	/// Folio central y confirmación de llegada al CCO.
+	/// Línea de trazabilidad: la clave local del registro, ya confirmado, y la confirmación de
+	/// que llegó al CCO (JTT-1403 CA 2).
 	/// </summary>
-	/// <remarks>El folio no existe hasta que Jacob confirma el registro (DA-15).</remarks>
-	public string TextoFolio => $"{Registro.FolioCentral} · Visible en Incidencias";
+	/// <remarks>
+	/// Cuando el folio encabeza la tarjeta, la clave local baja aquí en vez de desaparecer. Es
+	/// la única referencia común entre lo que el operador ve, la base del dispositivo y la
+	/// bitácora local, así que sin ella un registro confirmado deja de poder rastrearse hacia
+	/// atrás.
+	/// </remarks>
+	public string TextoTrazabilidad => $"{Registro.ClaveLocal} · Visible en Incidencias";
 
-	public bool MuestraFolio => !string.IsNullOrEmpty(Registro.FolioCentral);
+	/// <summary>Si la tarjeta lleva línea de trazabilidad, que es tanto como decir si ya tiene folio.</summary>
+	public bool MuestraTrazabilidad => Registro.TieneFolio;
 }
