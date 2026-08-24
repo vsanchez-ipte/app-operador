@@ -49,6 +49,14 @@
                             Command="{Binding SincronizarCommand}"
                             IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
+                    <!-- Qué pasó en la última sincronización (JTT-1401 CA 10). Va JUNTO al
+                         botón: sin esto, pulsar sin enlace no produce ningún cambio visible y
+                         el operador no distingue un botón que no respondió de una cola que no
+                         tenía nada que enviar, así que acaba pulsando en bucle. -->
+                    <Label Text="{Binding MensajeSincronizacion}"
+                           Style="{StaticResource TextoSecundario}"
+                           IsVisible="{Binding HayMensajeSincronizacion}" />
+
                 </VerticalStackLayout>
             </Border>
 

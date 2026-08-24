@@ -148,7 +148,7 @@ public sealed class ColaSincronizacionSqliteTests
 		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
 
 		var registro = Assert.Single(
-			(await cola.ObtenerRegistrosAsync()).Where(r => r.ClaveLocal == clave));
+			await cola.ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);
 		Assert.Equal(EstadoSincronizacion.Sincronizado, registro.Estado);
 
 		await reabierta.DisposeAsync();

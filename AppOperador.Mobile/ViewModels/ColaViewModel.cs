@@ -65,6 +65,9 @@ public sealed partial class ColaViewModel : ObservableObject
 
 	public bool HayRegistros => Registros.Count > 0;
 
+	/// <summary>Indica si hay algo que decir sobre la última sincronización.</summary>
+	public bool HayMensajeSincronizacion => !string.IsNullOrEmpty(MensajeSincronizacion);
+
 	/// <summary>
 	/// Recarga la cola desde el almacenamiento local.
 	/// </summary>
@@ -156,6 +159,9 @@ public sealed partial class ColaViewModel : ObservableObject
 	}
 
 	partial void OnPendientesChanged(int value) => OnPropertyChanged(nameof(TextoPendientes));
+
+	partial void OnMensajeSincronizacionChanged(string? value) =>
+		OnPropertyChanged(nameof(HayMensajeSincronizacion));
 
 	partial void OnOcupadoChanged(bool value) => NotificarAutorizacion();
 }
