@@ -13,10 +13,11 @@ namespace AppOperador.Infrastructure.Http;
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠️ <b>La respuesta no es simétrica, y es lo que más se presta a error.</b> En éxito (200) el
-/// cuerpo es el objeto pelón; en error (400) es el sobre con <c>codigoError</c> y
-/// <c>mensajeError</c>. Deserializar los dos con la misma forma deja un objeto vacío que parece
-/// un éxito sin folio.
+/// ⚠️ <b>La respuesta va envuelta SIEMPRE, en éxito y en error.</b> El §3 del contrato dice que
+/// el éxito llega sin sobre, y es falso: <c>BaseController.FromResult</c> devuelve un
+/// <c>Envelope</c> con <c>resultado</c>, <c>codigoError</c> y <c>mensajeError</c> en los dos
+/// casos. Comprobado el 21-ago contra el API corriendo. Buscar <c>folio</c> en la raíz hacía
+/// que una incidencia creada con éxito se marcara como fallida.
 /// </para>
 /// <para>
 /// <b>Nunca lanza por un rechazo.</b> Los fallos de red y los tiempos agotados también salen como
@@ -110,10 +111,28 @@ public sealed class ClienteIncidenciasJacob : IIncidenciasJacobClient
 		idSesionOrigen = incidencia.IdSesionOrigen,
 	};
 
-	/// <summary>Lee la respuesta de éxito, que llega sin sobre.</summary>
+	/// <summary>
+	/// Lee la respuesta de éxito.
+	/// </summary>
+	/// <remarks>
+	/// ⚠️ <b>Llega envuelta, al contrario de lo que dice el contrato.</b> El §3 de
+	/// <c>02-contrato-api-canal-movil.md</c> afirma que en éxito el cuerpo es el objeto pelón y
+	/// que solo el error trae sobre. <b>No es cierto:</b> <c>BaseController.FromResult</c>
+	/// devuelve siempre un <c>Envelope</c> con <c>resultado</c>, <c>codigoError</c> y
+	/// <c>mensajeError</c>, y se comprobó el 21-ago contra el API corriendo.
+	/// <para>
+	/// Costó un diagnóstico entero: la incidencia se creaba en Jacob con su folio, el API
+	/// respondía 200, y la app la marcaba fallida porque buscaba <c>folio</c> en la raíz.
+	/// </para>
+	/// <para>
+	/// Se aceptan las dos formas a propósito —con sobre y sin él—: si algún día el API se
+	/// alinea con el contrato, la app no se rompe.
+	/// </para>
+	/// </remarks>
 	private static ResultadoEnvio LeerAceptada(string cuerpo)
 	{
-		var dto = Deserializar<RespuestaIncidenciaDto>(cuerpo);
+		var dto = Deserializar<SobreRespuestaDto>(cuerpo)?.Resultado
+			?? Deserializar<RespuestaIncidenciaDto>(cuerpo);
 
 		// Un 200 sin folio no es un éxito utilizable: sin folio la incidencia queda marcada
 		// como sincronizada y sin la referencia que el operador necesita para dictarla.
@@ -177,6 +196,12 @@ public sealed class ClienteIncidenciasJacob : IIncidenciasJacobClient
 		public DateTime? FchRecepcionCentral { get; set; }
 
 		public bool YaExistia { get; set; }
+	}
+
+	/// <summary>El sobre que devuelve <c>BaseController.FromResult</c> en éxito.</summary>
+	private sealed class SobreRespuestaDto
+	{
+		public RespuestaIncidenciaDto? Resultado { get; set; }
 	}
 
 	private sealed class SobreErrorDto
