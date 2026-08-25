@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Infrastructure.Sqlite;
+using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
@@ -109,5 +110,45 @@ public sealed class BaseDatosLocalTests
 		Assert.Equal(107, otro.Id);
 
 		await segunda.DisposeAsync();
+	}
+
+	[Fact]
+	public async Task MigrarDesdeVersionCinco_conservaElCatalogoExistente()
+	{
+		var ruta = Path.Combine(Path.GetTempPath(), $"appoperador-migracion-{Guid.NewGuid():N}.db3");
+		try
+		{
+			var anterior = new BaseDatosLocal(ruta);
+			await anterior.InicializarAsync();
+			await new RepositorioCatalogoSqlite(anterior).ReemplazarAsync(
+				new CatalogosOperacion(
+					new DateOnly(2026, 8, 20),
+					[new TipoIncidencia(107, "Otro", ExigeDescripcion: true)],
+					[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
+					[new AfectacionIncidencia(1, "Total")],
+					[new CuerpoVia("A", "Cuerpo A")]));
+			await anterior.DisposeAsync();
+
+			using (var directa = new SQLiteConnection(ruta))
+			{
+				directa.Execute("PRAGMA user_version = 5;");
+			}
+
+			var actualizada = new BaseDatosLocal(ruta);
+			await actualizada.InicializarAsync();
+			var catalogo = await new RepositorioCatalogoSqlite(actualizada).ObtenerAsync();
+
+			Assert.Single(catalogo.Tipos);
+			Assert.Equal(107, catalogo.Tipos[0].Id);
+			Assert.Equal(BaseDatosLocal.VersionEsquemaActual, await actualizada.ObtenerVersionEsquemaAsync());
+			await actualizada.DisposeAsync();
+		}
+		finally
+		{
+			if (File.Exists(ruta))
+			{
+				File.Delete(ruta);
+			}
+		}
 	}
 }

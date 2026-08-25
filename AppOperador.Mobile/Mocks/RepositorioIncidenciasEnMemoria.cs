@@ -37,6 +37,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
 		// La prioridad de cola la decide la regla de dominio, no esta clase.
@@ -112,6 +113,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default) =>
 		Task.FromResult(false);
 }

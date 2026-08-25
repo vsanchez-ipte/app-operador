@@ -30,6 +30,8 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <param name="Nota">Nota del operador.</param>
 /// <param name="FchCapturaCampo">Cuándo capturó el operador, en UTC. El backend nunca la reemplaza.</param>
 /// <param name="IdSesionOrigen">Sesión en la que se capturó, si se conoce.</param>
+/// <param name="Latitud">Latitud original si el kilómetro se calculó por GPS.</param>
+/// <param name="Longitud">Longitud original si el kilómetro se calculó por GPS.</param>
 public sealed record EnvioIncidencia(
 	string Uuid,
 	int IdTipoIncidencia,
@@ -40,7 +42,9 @@ public sealed record EnvioIncidencia(
 	string Cuerpo,
 	string Nota,
 	DateTime FchCapturaCampo,
-	Guid? IdSesionOrigen);
+	Guid? IdSesionOrigen,
+	decimal? Latitud = null,
+	decimal? Longitud = null);
 
 /// <summary>
 /// Lo que Jacob contesta cuando acepta una incidencia.

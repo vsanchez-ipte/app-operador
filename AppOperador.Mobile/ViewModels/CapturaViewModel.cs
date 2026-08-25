@@ -40,7 +40,18 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// </remarks>
 	private const string MensajeSinCatalogo =
 		"Aún no se ha descargado el catálogo. Conéctese una vez para poder registrar incidencias.";
-	private const string MensajeGpsNoDisponible = "No se pudo obtener el GPS. Capture el KM manualmente.";
+	private const string MensajeGpsNoDisponible =
+		"No está disponible la ubicación del dispositivo. Capture el KM manualmente.";
+	private const string MensajeGpsSinPermiso =
+		"La app no tiene permiso para usar la ubicación. Capture el KM manualmente.";
+	private const string MensajeGpsSinPrecision =
+		"La señal GPS no tiene precisión suficiente. Reintente o capture el KM manualmente.";
+	private const string MensajeFueraDelCorredor =
+		"La ubicación está fuera del corredor. Capture el KM manualmente.";
+	private const string MensajeTramoSinGeometria =
+		"Este tramo todavía no tiene geometría disponible. Capture el KM manualmente.";
+	private const string MensajeErrorGps =
+		"No se pudo calcular el KM con la ubicación. Reintente o captúrelo manualmente.";
 
 	/// <summary>
 	/// Se muestra cuando la sesión no autoriza capturar (JTT-1404 CA 5).
@@ -77,15 +88,16 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private readonly ICatalogoRepository _catalogo;
 	private readonly ConvertirBorradorEnIncidencia _convertirBorrador;
 	private readonly ISincronizadorIncidencias _sincronizador;
-	private readonly ILocationService _ubicacion;
+	private readonly ObtenerKilometroPorUbicacion _obtenerKilometro;
 	private readonly CapacidadesDeLaSesion _capacidades;
+	private PosicionDispositivo? _posicionGps;
 
 	/// <summary>
 	/// Marca que el kilómetro lo está escribiendo la lectura del GPS, no el operador.
 	/// </summary>
 	/// <remarks>
 	/// Sin esto no se distingue quién escribió: <see cref="OnKilometroChanged(string)"/> se dispara
-	/// igual cuando <see cref="IntentarUbicarAsync"/> asigna la lectura que cuando el operador
+	/// igual cuando <see cref="RecalcularUbicacionAsync"/> asigna la lectura que cuando el operador
 	/// teclea, y la fuente acabaría siempre en <see cref="KilometerSource.Manual"/>.
 	/// </remarks>
 	private bool _asignandoDesdeGps;
@@ -141,7 +153,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	public CapturaViewModel(
 		IIncidentRepository incidencias,
 		ICatalogoRepository catalogo,
-		ILocationService ubicacion,
+		ObtenerKilometroPorUbicacion obtenerKilometro,
 		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace,
 		ConvertirBorradorEnIncidencia convertirBorrador,
@@ -151,7 +163,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 		_catalogo = catalogo;
 		_convertirBorrador = convertirBorrador;
 		_sincronizador = sincronizador;
-		_ubicacion = ubicacion;
+		_obtenerKilometro = obtenerKilometro;
 		_capacidades = capacidades;
 		Enlace = enlace;
 
@@ -228,7 +240,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 		// pantalla no estaba a la vista (JTT-1385 CA 3).
 		NotificarAutorizacion();
 
-		await IntentarUbicarAsync();
+		await RecalcularUbicacionAsync();
 		await RecargarBorradoresAsync();
 	}
 
@@ -293,25 +305,49 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// Si la posición no pertenece al corredor o no hay lectura válida, se avisa y queda
 	/// la captura manual, tal como describe el flujo 5.3 del documento de arquitectura.
 	/// </remarks>
-	private async Task IntentarUbicarAsync()
+	[RelayCommand]
+	private async Task RecalcularUbicacionAsync()
 	{
-		var lectura = await _ubicacion.ObtenerKilometroAsync();
-		if (lectura is null)
+		var resultado = await _obtenerKilometro.EjecutarAsync();
+		if (!resultado.HayKilometro)
 		{
-			AvisoGps = MensajeGpsNoDisponible;
+			var teniaKilometroGps = FuenteKilometro == KilometerSource.GPS;
+			_posicionGps = null;
 			FuenteKilometro = KilometerSource.Manual;
+
+			// Una lectura anterior no puede sobrevivir como si fuera captura manual. Lo que el
+			// operador haya escrito a mano sí se conserva cuando un reintento falla.
+			if (teniaKilometroGps)
+			{
+				_asignandoDesdeGps = true;
+				Kilometro = string.Empty;
+				_asignandoDesdeGps = false;
+			}
+
+			AvisoGps = MensajeDe(resultado.Motivo);
 			return;
 		}
 
 		AvisoGps = null;
+		_posicionGps = resultado.Posicion;
 
 		// La bandera evita que el propio GPS marque el kilómetro como capturado a mano.
 		_asignandoDesdeGps = true;
-		Kilometro = lectura.Valor;
+		Kilometro = resultado.Kilometro!.Valor;
 		_asignandoDesdeGps = false;
 
 		FuenteKilometro = KilometerSource.GPS;
 	}
+
+	private static string MensajeDe(MotivoSinKilometro? motivo) => motivo switch
+	{
+		MotivoSinKilometro.ServicioNoDisponible => MensajeGpsNoDisponible,
+		MotivoSinKilometro.PermisoDenegado => MensajeGpsSinPermiso,
+		MotivoSinKilometro.PrecisionInsuficiente => MensajeGpsSinPrecision,
+		MotivoSinKilometro.FueraDelCorredor => MensajeFueraDelCorredor,
+		MotivoSinKilometro.TramoSinGeometria => MensajeTramoSinGeometria,
+		_ => MensajeErrorGps,
+	};
 
 	/// <summary>Indica si la sesión autoriza registrar incidencias (JTT-1385 CA 3 y 4).</summary>
 	public bool PuedeRegistrar => TienePermisoDeCaptura && HayCatalogo;
@@ -415,7 +451,12 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 		MensajeError = null;
 		var clave = await _incidencias.GuardarAsync(
-			TipoSeleccionado, kilometro, FuenteKilometro, SeveridadSeleccionada, nota);
+			TipoSeleccionado,
+			kilometro,
+			FuenteKilometro,
+			SeveridadSeleccionada,
+			nota,
+			posicionGps: FuenteKilometro == KilometerSource.GPS ? _posicionGps : null);
 
 		LimpiarFormulario();
 		await RecargarBorradoresAsync();
@@ -466,7 +507,13 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private async Task ConvertirBorradorAbiertoAsync(string clave)
 	{
 		var resultado = await _convertirBorrador.EjecutarAsync(
-			clave, TipoSeleccionado, Kilometro, FuenteKilometro, SeveridadSeleccionada, Nota);
+			clave,
+			TipoSeleccionado,
+			Kilometro,
+			FuenteKilometro,
+			SeveridadSeleccionada,
+			Nota,
+			posicionGps: FuenteKilometro == KilometerSource.GPS ? _posicionGps : null);
 
 		if (resultado != ResultadoConversionBorrador.Convertido)
 		{
@@ -545,6 +592,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 		// manual: reponerlo no es una lectura del GPS por mucho que lo fuera al capturarlo.
 		Kilometro = borrador.Kilometro ?? string.Empty;
 		FuenteKilometro = KilometerSource.Manual;
+		_posicionGps = null;
 	}
 
 	/// <summary>
@@ -728,5 +776,6 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		FuenteKilometro = KilometerSource.Manual;
+		_posicionGps = null;
 	}
 }

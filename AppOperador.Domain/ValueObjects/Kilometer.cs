@@ -52,6 +52,44 @@ public sealed partial class Kilometer : IEquatable<Kilometer>
 	}
 
 	/// <summary>
+	/// Crea un <see cref="Kilometer"/> a partir del punto kilométrico en metros.
+	/// </summary>
+	/// <remarks>
+	/// Es el camino que usa el cálculo por GPS (JTT-1395 CA 7 y 8): la geometría trabaja en
+	/// metros y la pantalla necesita la forma <c>000+000</c>. <b>El formateo vive aquí y no en
+	/// quien calcula</b>, para que exista un solo sitio donde se decide cómo se escribe un
+	/// kilómetro.
+	/// </remarks>
+	/// <param name="metros">Punto kilométrico normalizado. <c>147716</c> es el 147+716.</param>
+	/// <exception cref="ArgumentOutOfRangeException">
+	/// Es negativo o no cabe en tres dígitos de kilómetro.
+	/// </exception>
+	public static Kilometer DesdeMetros(int metros)
+	{
+		if (metros is < 0 or > 999_999)
+		{
+			throw new ArgumentOutOfRangeException(
+				nameof(metros),
+				metros,
+				$"El punto kilométrico en metros tiene que caber en la forma {FormatoCanonico}: " +
+				"entre 0 y 999999.");
+		}
+
+		var (kilometros, resto) = Math.DivRem(metros, 1000);
+		return new Kilometer($"{kilometros:D3}+{resto:D3}", kilometros, resto);
+	}
+
+	/// <summary>
+	/// Punto kilométrico normalizado en metros (JTT-1395 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// Es el mismo dato que <see cref="Valor"/>, en la unidad con la que se puede hacer
+	/// aritmética. <b>Ojo con la unidad que espera el API</b>: el canal móvil recibe el kilómetro
+	/// en <b>kilómetros decimales</b> —147.716—, no en metros.
+	/// </remarks>
+	public int MetrosNormalizados => (Kilometros * 1000) + Metros;
+
+	/// <summary>
 	/// Intenta crear un <see cref="Kilometer"/> sin lanzar excepciones.
 	/// </summary>
 	/// <returns><see langword="true"/> si el valor respeta la forma canónica.</returns>

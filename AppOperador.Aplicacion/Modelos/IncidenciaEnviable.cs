@@ -1,4 +1,5 @@
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -33,6 +34,8 @@ namespace AppOperador.Aplicacion.Modelos;
 /// solo— de uno técnico, y <b>tiene que sobrevivir al cierre de la app</b> o el CA 8 se
 /// incumpliría en cuanto el operador reabriera.
 /// </param>
+/// <param name="KilometroMetros">Valor normalizado que acompaña a la forma canónica.</param>
+/// <param name="PosicionGps">Lectura original cuando la fuente fue GPS, para auditoría.</param>
 public sealed record IncidenciaEnviable(
 	string Uuid,
 	string ClaveLocal,
@@ -46,7 +49,9 @@ public sealed record IncidenciaEnviable(
 	EstadoSincronizacion Estado,
 	int Intentos,
 	DateTime UltimoIntentoUtc,
-	string? UltimoErrorCodigo);
+	string? UltimoErrorCodigo,
+	int? KilometroMetros = null,
+	PosicionDispositivo? PosicionGps = null);
 
 /// <summary>
 /// Lo que hay que escribir en la cola después de intentar un envío.

@@ -82,6 +82,20 @@
 		Si alguna vez se vuelve a fijar una version nativa a mano, releer esta nota antes.
 	-->
 
+	<!--
+		Geometria del corredor (JTT-1395). Va incrustada en el ensamblado, no como MauiAsset,
+		por dos motivos: el destino net10.0 no tiene sistema de archivos de la app y las
+		pruebas de integracion la leen ahi, y un recurso incrustado no se puede perder al
+		empaquetar sin que la compilacion lo note.
+
+		Viaja dentro del paquete porque hoy no hay endpoint que la publique. El dia que lo
+		haya, se cambia la implementacion de IRepositorioGeometriaCorredor y este archivo se
+		queda como respaldo o desaparece; nada mas del codigo lo nombra.
+	-->
+	<ItemGroup>
+	  <EmbeddedResource Include="Dispositivo\corredor-tijuana-tecate.csv" />
+	</ItemGroup>
+
 	<ItemGroup>
 	  <ProjectReference Include="..\AppOperador.Aplicacion\AppOperador.Aplicacion.csproj" />
 	  <ProjectReference Include="..\AppOperador.Domain\AppOperador.Domain.csproj" />

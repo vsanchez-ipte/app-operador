@@ -45,6 +45,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
 		ArgumentNullException.ThrowIfNull(severidad);
@@ -52,6 +53,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var ahora = _reloj.UtcAhora.Ticks;
 		var versionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
+		var lecturaGps = fuenteKilometro == KilometerSource.GPS ? posicionGps : null;
 
 		var fila = new IncidenciaLocal
 		{
@@ -61,6 +63,11 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			TipoNombre = tipo.Nombre,
 			Kilometro = kilometro.Valor,
 			FuenteKilometro = (int)fuenteKilometro,
+			KilometroMetros = kilometro.MetrosNormalizados,
+			GpsLatitud = lecturaGps?.Latitud,
+			GpsLongitud = lecturaGps?.Longitud,
+			GpsPrecisionMetros = lecturaGps?.PrecisionMetros,
+			GpsInstanteUtcTicks = lecturaGps?.InstanteUtc.Ticks,
 
 			// Del nivel se guardan las tres cosas: el identificador para enviarlo, y el nombre
 			// y el orden del momento para que el histórico no cambie si el catálogo se edita.
@@ -279,6 +286,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
 		ArgumentNullException.ThrowIfNull(tipo);
@@ -294,6 +302,12 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		fila.TipoNombre = tipo.Nombre;
 		fila.Kilometro = kilometro.Valor;
 		fila.FuenteKilometro = (int)fuenteKilometro;
+		fila.KilometroMetros = kilometro.MetrosNormalizados;
+		var lecturaGps = fuenteKilometro == KilometerSource.GPS ? posicionGps : null;
+		fila.GpsLatitud = lecturaGps?.Latitud;
+		fila.GpsLongitud = lecturaGps?.Longitud;
+		fila.GpsPrecisionMetros = lecturaGps?.PrecisionMetros;
+		fila.GpsInstanteUtcTicks = lecturaGps?.InstanteUtc.Ticks;
 		fila.SeveridadId = severidad.Id.ToString();
 		fila.SeveridadNombre = severidad.Nivel;
 		fila.SeveridadOrden = severidad.Orden;

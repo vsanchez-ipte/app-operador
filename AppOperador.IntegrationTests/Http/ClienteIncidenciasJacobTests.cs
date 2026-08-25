@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Infrastructure.Http;
@@ -103,5 +104,25 @@ public sealed class ClienteIncidenciasJacobTests
 
 		Assert.False(resultado.Exito);
 		Assert.Equal(FamiliaErrorSincronizacion.Tecnico, resultado.Familia);
+	}
+
+	[Fact]
+	public async Task EnviaLasCoordenadasOriginalesParaRevalidarLaGeometria()
+	{
+		const string Respuesta = """
+			{"resultado":{"folio":"INC-APK-2026-0003","yaExistia":false}}
+			""";
+		var manejador = ManejadorHttpFalso.Siempre(ManejadorHttpFalso.Json(HttpStatusCode.OK, Respuesta));
+		var cliente = new ClienteIncidenciasJacob(
+			new HttpClient(manejador),
+			new ConfiguracionApi { UrlBase = "http://localhost:5231" });
+		var envio = Envio with { Latitud = 32.5275769m, Longitud = -116.6861878m };
+
+		await cliente.RegistrarAsync(envio, "token");
+
+		var cuerpo = Assert.Single(manejador.Peticiones).Cuerpo;
+		using var json = JsonDocument.Parse(cuerpo!);
+		Assert.Equal(envio.Latitud, json.RootElement.GetProperty("latitud").GetDecimal());
+		Assert.Equal(envio.Longitud, json.RootElement.GetProperty("longitud").GetDecimal());
 	}
 }

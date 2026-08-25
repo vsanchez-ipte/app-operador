@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
@@ -95,5 +96,47 @@ public sealed class RellenoCamposNoCapturadosTests
 
 		Assert.Equal(0, envio.IdAfectacion);
 		Assert.Equal("C", envio.Cuerpo);
+	}
+
+	[Fact]
+	public void UnaLecturaGpsConservaSusCoordenadasEnElEnvio()
+	{
+		var posicion = PosicionDispositivo.Crear(
+			32.5275769,
+			-116.6861878,
+			8,
+			new DateTime(2026, 8, 24, 20, 0, 0, DateTimeKind.Utc));
+		var incidencia = Incidencia() with
+		{
+			FuenteKilometro = KilometerSource.GPS,
+			PosicionGps = posicion,
+		};
+
+		var envio = RellenoCamposNoCapturados.Completar(
+			incidencia,
+			Catalogo([new(3, "Sin afectación")], [new("C", "Ambos")]));
+
+		Assert.Equal((decimal)posicion.Latitud, envio.Latitud);
+		Assert.Equal((decimal)posicion.Longitud, envio.Longitud);
+	}
+
+	[Fact]
+	public void UnaFuenteManualNuncaEnviaCoordenadasResiduales()
+	{
+		var incidencia = Incidencia() with
+		{
+			PosicionGps = PosicionDispositivo.Crear(
+				32.5275769,
+				-116.6861878,
+				8,
+				new DateTime(2026, 8, 24, 20, 0, 0, DateTimeKind.Utc)),
+		};
+
+		var envio = RellenoCamposNoCapturados.Completar(
+			incidencia,
+			Catalogo([new(3, "Sin afectación")], [new("C", "Ambos")]));
+
+		Assert.Null(envio.Latitud);
+		Assert.Null(envio.Longitud);
 	}
 }

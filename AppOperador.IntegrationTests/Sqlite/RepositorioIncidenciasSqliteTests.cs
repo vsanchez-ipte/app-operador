@@ -132,6 +132,54 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.DoesNotContain("Normal", registro.Descripcion);
 	}
 
+	[Fact]
+	public async Task GuardarDesdeGps_conservaMetrosYPosicionOriginalParaAuditoria()
+	{
+		await using var contexto = new ContextoSqlite();
+		var posicion = PosicionDispositivo.Crear(
+			32.5275769,
+			-116.6861878,
+			8.5,
+			new DateTime(2026, 8, 24, 20, 15, 0, DateTimeKind.Utc));
+
+		await contexto.CrearRepositorio().GuardarAsync(
+			Objeto,
+			Kilometer.Crear("130+200"),
+			KilometerSource.GPS,
+			Advertencia,
+			"nota de prueba",
+			posicionGps: posicion);
+
+		var enviable = Assert.Single(await contexto.CrearCola().ObtenerEnviablesAsync());
+
+		Assert.Equal(130_200, enviable.KilometroMetros);
+		Assert.Equal(posicion, enviable.PosicionGps);
+	}
+
+	[Fact]
+	public async Task GuardarManual_noConservaUnaPosicionGps()
+	{
+		await using var contexto = new ContextoSqlite();
+		var posicionAccidental = PosicionDispositivo.Crear(
+			32.5275769,
+			-116.6861878,
+			8,
+			new DateTime(2026, 8, 24, 20, 15, 0, DateTimeKind.Utc));
+
+		await contexto.CrearRepositorio().GuardarAsync(
+			Objeto,
+			Kilometer.Crear("130+200"),
+			KilometerSource.Manual,
+			Advertencia,
+			"nota de prueba",
+			posicionGps: posicionAccidental);
+
+		var enviable = Assert.Single(await contexto.CrearCola().ObtenerEnviablesAsync());
+
+		Assert.Equal(130_200, enviable.KilometroMetros);
+		Assert.Null(enviable.PosicionGps);
+	}
+
 	// ── Persistencia de la cola local (JTT-1400 CA 4, 5 y 6) ──────────────────────────
 
 	[Fact]

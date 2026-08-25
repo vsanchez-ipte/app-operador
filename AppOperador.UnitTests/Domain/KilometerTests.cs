@@ -150,4 +150,24 @@ public class KilometerTests
 	{
 		Assert.Equal("012+345", Kilometer.Crear("012+345").ToString());
 	}
+
+	[Theory]
+	[InlineData(0, "000+000")]
+	[InlineData(147716, "147+716")]
+	[InlineData(999999, "999+999")]
+	public void DesdeMetros_formateaYConservaElValorNormalizado(int metros, string esperado)
+	{
+		var kilometro = Kilometer.DesdeMetros(metros);
+
+		Assert.Equal(esperado, kilometro.Valor);
+		Assert.Equal(metros, kilometro.MetrosNormalizados);
+	}
+
+	[Theory]
+	[InlineData(-1)]
+	[InlineData(1000000)]
+	public void DesdeMetros_rechazaValoresFueraDelFormato(int metros)
+	{
+		Assert.Throws<ArgumentOutOfRangeException>(() => Kilometer.DesdeMetros(metros));
+	}
 }

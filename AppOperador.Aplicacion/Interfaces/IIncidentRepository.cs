@@ -16,6 +16,9 @@ public interface IIncidentRepository
 	/// <summary>
 	/// Guarda una incidencia y la deja lista para enviarse.
 	/// </summary>
+	/// <param name="posicionGps">
+	/// Lectura original que produjo el kilómetro. Solo se conserva cuando la fuente es GPS.
+	/// </param>
 	/// <returns>La clave local asignada, con la forma <c>LOC-######</c>.</returns>
 	Task<string> GuardarAsync(
 		TipoIncidencia tipo,
@@ -23,6 +26,7 @@ public interface IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default);
 
 	/// <summary>
@@ -96,6 +100,9 @@ public interface IIncidentRepository
 	/// </para>
 	/// </remarks>
 	/// <returns><c>true</c> si se convirtió; <c>false</c> si no existe o no es suyo.</returns>
+	/// <param name="posicionGps">
+	/// Lectura original que produjo el kilómetro. Solo se conserva cuando la fuente es GPS.
+	/// </param>
 	Task<bool> ConvertirBorradorAsync(
 		string claveLocal,
 		TipoIncidencia tipo,
@@ -103,5 +110,6 @@ public interface IIncidentRepository
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default);
 }

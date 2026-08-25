@@ -70,10 +70,26 @@
 
                     </Grid>
 
-                    <!-- Aviso de GPS no disponible: habilita la captura manual del KM -->
-                    <Label Text="{Binding AvisoGps}"
-                           Style="{StaticResource MensajeError}"
-                           IsVisible="{Binding HayAvisoGps}" />
+                    <!-- JTT-1395 CA 11: se puede pedir una lectura nueva antes de guardar.
+
+                         El aviso NO usa el estilo de error, por la misma razon que el aviso de
+                         sincronizacion de JTT-1401: ninguno de los cinco motivos es un fallo del
+                         operador ni le impide capturar, porque el campo del KM siempre se puede
+                         teclear. Estar fuera del corredor es lo normal en el acceso a la caseta,
+                         y que a un tramo le falte geometria es una carencia del sistema. Pintarlo
+                         en rojo enseña a ignorar los mensajes rojos, y el dia que uno importe no
+                         se leeria. -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Grid.Column="0"
+                               Text="{Binding AvisoGps}"
+                               Style="{StaticResource TextoSecundario}"
+                               IsVisible="{Binding HayAvisoGps}"
+                               VerticalOptions="Center" />
+                        <Button Grid.Column="1"
+                                Text="Recalcular ubicación"
+                                Style="{StaticResource BotonSecundario}"
+                                Command="{Binding RecalcularUbicacionCommand}" />
+                    </Grid>
 
                     <VerticalStackLayout>
                         <Label Text="NOTA DEL OPERADOR" Style="{StaticResource EtiquetaCampo}" />

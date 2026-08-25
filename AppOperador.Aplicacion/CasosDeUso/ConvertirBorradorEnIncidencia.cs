@@ -81,6 +81,7 @@ public sealed class ConvertirBorradorEnIncidencia
 		KilometerSource fuenteKilometro,
 		SeveridadIncidencia? severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
 		if (tipo is null)
@@ -110,6 +111,7 @@ public sealed class ConvertirBorradorEnIncidencia
 			fuenteKilometro,
 			severidad,
 			nota.Trim(),
+			posicionGps,
 			cancelacion);
 
 		return convertido

@@ -98,7 +98,6 @@ public static class MauiProgram
 			VersionCatalogos: new DateOnly(2026, 7, 23)));
 
 		RegistrarCustodiaDelToken(servicios);
-		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 		servicios.AddSingleton<IAuthenticationService, ServicioAutenticacionSimulado>();
 
 		RegistrarUbicacion(servicios);
@@ -201,11 +200,15 @@ public static class MauiProgram
 	{
 #if ANDROID || IOS || MACCATALYST
 		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionDispositivo>();
+		servicios.AddSingleton<ILocationService, ServicioUbicacionDispositivo>();
 #else
 		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionSimulado>();
+		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 #endif
 
 		servicios.AddSingleton<VerificarUbicacionParaAcceso>();
+		servicios.AddSingleton<IRepositorioGeometriaCorredor, RepositorioGeometriaCorredorEmbebido>();
+		servicios.AddSingleton<ObtenerKilometroPorUbicacion>();
 	}
 
 	/// <summary>

@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 5;
+	public const int VersionEsquemaActual = 6;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -279,6 +279,9 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		//           incidencia_local y codigo_texto a intento_sincronizacion, las dos para
 		//           guardar el código de error del canal móvil, que es cadena y no número.
 		//           Aditivo: CreateTableAsync ya las aplicó arriba.
+		// De 5 a 6: JTT-1395 agrega el kilómetro normalizado y la lectura GPS original
+		//           (latitud, longitud, precisión e instante UTC) a incidencia_local.
+		//           Es aditivo: las filas anteriores quedan con esos campos nulos.
 		//
 		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
 		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
@@ -323,7 +326,10 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		// Que quede vacía hasta esa descarga es a propósito: un formulario sin tipos avisa de
 		// que falta bajar el catálogo, mientras que uno con seis tipos falsos deja capturar
 		// incidencias que Jacob va a rechazar.
-		await conexion.ExecuteAsync("DROP TABLE IF EXISTS catalogo_tipo_incidencia;");
+		if (version < 4)
+		{
+			await conexion.ExecuteAsync("DROP TABLE IF EXISTS catalogo_tipo_incidencia;");
+		}
 	}
 
 	public async ValueTask DisposeAsync()

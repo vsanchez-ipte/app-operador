@@ -2,6 +2,7 @@ using System.Globalization;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
@@ -219,5 +220,24 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		(EstadoSincronizacion)fila.Estado,
 		fila.Intentos,
 		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc),
-		fila.UltimoErrorCodigo);
+		fila.UltimoErrorCodigo,
+		fila.KilometroMetros,
+		APosicionGps(fila));
+
+	private static PosicionDispositivo? APosicionGps(IncidenciaLocal fila)
+	{
+		if (fila.GpsLatitud is not { } latitud
+			|| fila.GpsLongitud is not { } longitud
+			|| fila.GpsPrecisionMetros is not { } precision
+			|| fila.GpsInstanteUtcTicks is not { } instante)
+		{
+			return null;
+		}
+
+		return PosicionDispositivo.Crear(
+			latitud,
+			longitud,
+			precision,
+			new DateTime(instante, DateTimeKind.Utc));
+	}
 }

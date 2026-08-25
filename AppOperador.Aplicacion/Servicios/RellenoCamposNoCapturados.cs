@@ -47,6 +47,9 @@ public static class RellenoCamposNoCapturados
 	{
 		ArgumentNullException.ThrowIfNull(incidencia);
 		ArgumentNullException.ThrowIfNull(catalogos);
+		var posicionGps = incidencia.FuenteKilometro == KilometerSource.GPS
+			? incidencia.PosicionGps
+			: null;
 
 		return new EnvioIncidencia(
 			Uuid: incidencia.Uuid,
@@ -58,7 +61,9 @@ public static class RellenoCamposNoCapturados
 			Cuerpo: ElegirCuerpo(catalogos),
 			Nota: incidencia.Nota,
 			FchCapturaCampo: incidencia.CapturadaUtc,
-			IdSesionOrigen: Guid.TryParse(incidencia.SesionOrigen, out var sesion) ? sesion : null);
+			IdSesionOrigen: Guid.TryParse(incidencia.SesionOrigen, out var sesion) ? sesion : null,
+			Latitud: posicionGps is null ? null : (decimal)posicionGps.Latitud,
+			Longitud: posicionGps is null ? null : (decimal)posicionGps.Longitud);
 	}
 
 	/// <summary>

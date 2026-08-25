@@ -82,7 +82,7 @@ public sealed class ConvertirBorradorEnIncidenciaTests
 		_incidencias.ConvertirBorradorAsync(
 			Arg.Any<string>(), Arg.Any<TipoIncidencia>(), Arg.Any<Kilometer>(),
 			Arg.Any<KilometerSource>(), Arg.Any<SeveridadIncidencia>(), Arg.Any<string>(),
-			Arg.Any<CancellationToken>()).Returns(true);
+			Arg.Any<PosicionDispositivo?>(), Arg.Any<CancellationToken>()).Returns(true);
 
 		var resultado = await EjecutarAsync(Objeto, kilometro: "130+200", nota: "");
 
@@ -95,7 +95,7 @@ public sealed class ConvertirBorradorEnIncidenciaTests
 		_incidencias.ConvertirBorradorAsync(
 			Arg.Any<string>(), Arg.Any<TipoIncidencia>(), Arg.Any<Kilometer>(),
 			Arg.Any<KilometerSource>(), Arg.Any<SeveridadIncidencia>(), Arg.Any<string>(),
-			Arg.Any<CancellationToken>()).Returns(true);
+			Arg.Any<PosicionDispositivo?>(), Arg.Any<CancellationToken>()).Returns(true);
 
 		var resultado = await EjecutarAsync(Objeto, "130+200", nota: "  con espacios  ");
 
@@ -107,6 +107,7 @@ public sealed class ConvertirBorradorEnIncidenciaTests
 			KilometerSource.Manual,
 			Advertencia,
 			"con espacios",
+			Arg.Any<PosicionDispositivo?>(),
 			Arg.Any<CancellationToken>());
 	}
 
@@ -116,7 +117,7 @@ public sealed class ConvertirBorradorEnIncidenciaTests
 		_incidencias.ConvertirBorradorAsync(
 			Arg.Any<string>(), Arg.Any<TipoIncidencia>(), Arg.Any<Kilometer>(),
 			Arg.Any<KilometerSource>(), Arg.Any<SeveridadIncidencia>(), Arg.Any<string>(),
-			Arg.Any<CancellationToken>()).Returns(false);
+			Arg.Any<PosicionDispositivo?>(), Arg.Any<CancellationToken>()).Returns(false);
 
 		var resultado = await EjecutarAsync(Objeto, "130+200", "nota");
 

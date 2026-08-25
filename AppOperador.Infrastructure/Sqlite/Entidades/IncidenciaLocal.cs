@@ -67,6 +67,26 @@ internal sealed class IncidenciaLocal
 	[Column("fuente_kilometro")]
 	public int FuenteKilometro { get; set; }
 
+	/// <summary>Kilómetro normalizado en metros. Nulo en filas anteriores a JTT-1395.</summary>
+	[Column("kilometro_metros")]
+	public int? KilometroMetros { get; set; }
+
+	/// <summary>Latitud original de la lectura GPS, para auditoría y revalidación.</summary>
+	[Column("gps_latitud")]
+	public double? GpsLatitud { get; set; }
+
+	/// <summary>Longitud original de la lectura GPS, para auditoría y revalidación.</summary>
+	[Column("gps_longitud")]
+	public double? GpsLongitud { get; set; }
+
+	/// <summary>Precisión declarada por el dispositivo, en metros.</summary>
+	[Column("gps_precision_metros")]
+	public double? GpsPrecisionMetros { get; set; }
+
+	/// <summary>Instante UTC de la lectura GPS, en ticks.</summary>
+	[Column("gps_instante_utc_ticks")]
+	public long? GpsInstanteUtcTicks { get; set; }
+
 	/// <summary>
 	/// Gravedad del enum que la app tenía antes de JTT-1394. <b>Ya no se escribe.</b>
 	/// </summary>
