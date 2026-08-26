@@ -35,11 +35,17 @@
                     <Border Style="{StaticResource Tarjeta}">
                         <VerticalStackLayout Spacing="14">
 
+                            <!--
+                                Contra Jacob CCO la credencial es el CORREO, no un nombre de
+                                usuario: el API autentica por email y esa decisión está cerrada.
+                                La etiqueta cambia con el modo para no pedir un dato equivocado.
+                            -->
                             <VerticalStackLayout>
-                                <Label Text="USUARIO" Style="{StaticResource EtiquetaCampo}" />
+                                <Label Text="{Binding EtiquetaUsuario}" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Entry Style="{StaticResource CampoTexto}"
-                                           Placeholder="usuario.campo"
+                                           Placeholder="{Binding EjemploUsuario}"
+                                           Keyboard="{Binding TecladoUsuario}"
                                            Text="{Binding Usuario}" />
                                 </Border>
                             </VerticalStackLayout>
@@ -53,8 +59,13 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <!-- Selección del catálogo: JTT-279 no admite texto libre -->
-                            <VerticalStackLayout>
+                            <!--
+                                Selección del catálogo: JTT-279 no admite texto libre.
+                                Oculta contra el API real: las unidades verdaderas las
+                                devuelve la preautenticación y JTT-1378 no las muestra
+                                todavía. Enseñar las del simulador induciría a error.
+                            -->
+                            <VerticalStackLayout IsVisible="{Binding UsaApiReal, Converter={StaticResource InvertirBooleano}}">
                                 <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Picker Style="{StaticResource CampoLista}"
@@ -67,6 +78,13 @@
                             <Label Text="{Binding MensajeError}"
                                    Style="{StaticResource MensajeError}"
                                    IsVisible="{Binding HayError}" />
+
+                            <!-- Confirmación de la preautenticación. No muestra el desafío. -->
+                            <Label Text="{Binding MensajeAviso}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   TextColor="{StaticResource VerdeTexto}"
+                                   FontAttributes="Bold"
+                                   IsVisible="{Binding HayAviso}" />
 
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Button Grid.Column="0"

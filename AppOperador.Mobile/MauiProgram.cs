@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Infrastructure.Http;
 using AppOperador.Infrastructure.Sqlite;
 using AppOperador.Mobile.Mocks;
 using AppOperador.Mobile.ViewModels;
@@ -92,6 +93,63 @@ public static class MauiProgram
 		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
+
+		RegistrarCanalJacob(servicios);
+	}
+
+	/// <summary>
+	/// Registra la comunicación con el canal móvil de Jacob CCO (JTT-1378).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Este es el único interruptor entre la app simulada y la real.</b> Con
+	/// <see cref="ConfiguracionApi.UsarApiReal"/> apagado no se registra
+	/// <see cref="IPreauthClient"/>, el <c>AccesoViewModel</c> lo recibe nulo y la pantalla
+	/// se comporta exactamente como antes: recorrido completo contra simuladores.
+	/// </para>
+	/// <para>
+	/// Encendido, el botón de acceso ejecuta <c>GetPublicKey → cifrado → Preauth</c> contra
+	/// el API y se detiene ahí. JTT-1378 no abre sesión ni entra a la app: eso llega con el
+	/// segundo paso del acceso.
+	/// </para>
+	/// <para>
+	/// La URL depende de dónde corra la app. Desde el emulador de Android hay que usar
+	/// <c>10.0.2.2</c>, porque ahí <c>localhost</c> es el propio dispositivo virtual.
+	/// </para>
+	/// </remarks>
+	private static void RegistrarCanalJacob(IServiceCollection servicios)
+	{
+		var configuracion = new ConfiguracionApi
+		{
+			// Cambiar a true para probar contra el API local. Se deja apagado en el
+			// repositorio para que quien clone tenga la app funcionando sin servidor.
+			// Encendido, el acceso se detiene tras validar credenciales: no entra a la
+			// app, porque el segundo paso del acceso es de una historia posterior.
+			UsarApiReal = false,
+#if ANDROID
+			UrlBase = ConfiguracionApi.UrlBaseEmuladorAndroid,
+			Plataforma = "Android",
+#elif IOS
+			UrlBase = ConfiguracionApi.UrlBaseEscritorio,
+			Plataforma = "iOS",
+#else
+			UrlBase = ConfiguracionApi.UrlBaseEscritorio,
+#endif
+		};
+
+		servicios.AddSingleton(configuracion);
+
+		if (!configuracion.UsarApiReal)
+		{
+			return;
+		}
+
+		servicios.AddSingleton<IPreauthClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
+			return new ClientePreauthJacob(http, opciones);
+		});
 	}
 
 	/// <summary>
