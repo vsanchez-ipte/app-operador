@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Mobile.Mocks;
 
@@ -19,9 +20,12 @@ namespace AppOperador.Mobile.Mocks;
 ///   <item>Sin enlace: no se puede validar por primera vez.</item>
 /// </list>
 /// <para>
-/// La ubicación se consulta antes que nada, porque JTT-279 la exige para completar el
-/// acceso. Nada de esto es una regla de negocio: al llegar el API real esta clase
-/// desaparece completa.
+/// La ubicación <b>no</b> se comprueba aquí. Es un prerrequisito del dispositivo, no de
+/// Jacob CCO, y lo verifica <c>VerificarUbicacionParaAcceso</c> antes de llamar a este
+/// servicio, para que la regla valga igual contra el simulador y contra el API real.
+/// </para>
+/// <para>
+/// Nada de esto es una regla de negocio: al llegar el API real esta clase desaparece completa.
 /// </para>
 /// </remarks>
 public sealed class ServicioAutenticacionSimulado : IAuthenticationService
@@ -31,7 +35,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 
 	private readonly IClock _reloj;
 	private readonly IConnectivityService _conectividad;
-	private readonly ILocationService _ubicacion;
 	private readonly ISessionStore _sesiones;
 	private readonly IAuditLog _bitacora;
 
@@ -43,25 +46,25 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 	public ServicioAutenticacionSimulado(
 		IClock reloj,
 		IConnectivityService conectividad,
-		ILocationService ubicacion,
 		ISessionStore sesiones,
 		IAuditLog bitacora)
 	{
 		_reloj = reloj;
 		_conectividad = conectividad;
-		_ubicacion = ubicacion;
 		_sesiones = sesiones;
 		_bitacora = bitacora;
 	}
 
 	public Task<IReadOnlyList<UnidadVehicular>> ObtenerUnidadesAsync(CancellationToken cancelacion = default)
 	{
-		// En el diseño final este catálogo lo devuelve la preautenticación.
+		// En el diseño final este catálogo lo devuelve la preautenticación. Los identificadores
+		// imitan los uuid que emite Jacob, para que el simulador ejercite el mismo camino que
+		// el catálogo real y no una clave disfrazada de id.
 		IReadOnlyList<UnidadVehicular> unidades =
 		[
-			new("VEH-01", "Camioneta de campo 01"),
-			new("VEH-02", "Camioneta de campo 02"),
-			new("VEH-03", "Grúa ligera 03"),
+			new("11111111-1111-1111-1111-111111111111", "VEH-01", "Camioneta de campo 01"),
+			new("22222222-2222-2222-2222-222222222222", "VEH-02", "Camioneta de campo 02"),
+			new("33333333-3333-3333-3333-333333333333", "VEH-03", "Grúa ligera 03"),
 		];
 
 		return Task.FromResult(unidades);
@@ -73,12 +76,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 		UnidadVehicular unidad,
 		CancellationToken cancelacion = default)
 	{
-		// La ubicación es obligatoria para completar el acceso (JTT-279).
-		if (!await _ubicacion.HayPermisoAsync(cancelacion))
-		{
-			return ResultadoAcceso.Rechazar(MotivoRechazoAcceso.UbicacionNoDisponible);
-		}
-
 		// El primer ingreso siempre exige enlace: no existe login sin validar contra Jacob.
 		if (!_conectividad.HayEnlace)
 		{
@@ -128,12 +125,6 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 		return ResultadoAcceso.Autorizar(sesion);
 	}
 
-	public async Task CerrarSesionAsync(CancellationToken cancelacion = default)
-	{
-		// Se borra la sesión, no los pendientes: JTT-328 exige conservarlos.
-		_sesiones.Limpiar();
-		await _bitacora.RegistrarAsync(NivelAuditoria.Info, "Sesión cerrada por el operador.", cancelacion);
-	}
 
 	private static SesionOperador ConstruirSesion(string usuario, UnidadVehicular unidad, VigenciaOffline vigencia) =>
 		new(
@@ -141,7 +132,9 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 			rol: "Operador de campo",
 			unidadVehicular: unidad.Clave,
 			vigencia: vigencia,
-			permisos: ["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"],
+			// El simulador hace de Jacob: por eso puede entregar permisos. Ninguna otra parte
+			// de la app puede construirlos (JTT-1379 CA 7).
+			permisos: PermisosOperador.DelServidor(["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"]),
 			versionAplicacion: "1.2.0",
 			versionCatalogos: new DateOnly(2026, 7, 23));
 }

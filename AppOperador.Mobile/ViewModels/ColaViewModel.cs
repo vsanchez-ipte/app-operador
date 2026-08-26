@@ -19,7 +19,14 @@ public sealed partial class ColaViewModel : ObservableObject
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
 
-	public ColaViewModel(ISyncQueueService cola) => _cola = cola;
+	public ColaViewModel(ISyncQueueService cola, EstadoEnlaceViewModel enlace)
+	{
+		_cola = cola;
+		Enlace = enlace;
+	}
+
+	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
+	public EstadoEnlaceViewModel Enlace { get; }
 
 	/// <summary>Registros de la cola, listos para mostrarse. Los borradores no aparecen aquí.</summary>
 	public ObservableCollection<RegistroColaVista> Registros { get; } = [];

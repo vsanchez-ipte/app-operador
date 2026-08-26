@@ -160,5 +160,6 @@ internal sealed class ColaSincronizacionSqliteFactory
 		_baseDatos,
 		_contexto.Reloj,
 		_contexto.Conectividad,
-		new Infrastructure.Sqlite.BitacoraAuditoriaSqlite(_baseDatos, _contexto.Reloj));
+		new Infrastructure.Sqlite.BitacoraAuditoriaSqlite(_baseDatos, _contexto.Reloj),
+		_contexto.Sesion);
 }

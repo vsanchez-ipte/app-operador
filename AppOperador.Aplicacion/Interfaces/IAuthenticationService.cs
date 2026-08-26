@@ -39,8 +39,8 @@ public interface IAuthenticationService
 	/// </remarks>
 	Task<ResultadoAcceso> ContinuarSinConexionAsync(CancellationToken cancelacion = default);
 
-	/// <summary>
-	/// Cierra la sesión conservando los registros pendientes del operador.
-	/// </summary>
-	Task CerrarSesionAsync(CancellationToken cancelacion = default);
+	// El cierre de sesión vivía aquí y se retiró en JTT-1390. Ahora lo hace
+	// CerrarSesionMovil, que además avisa a Jacob y borra el token del almacenamiento
+	// seguro. Dejar las dos puertas abiertas invitaba a usar la que no limpia el token, que
+	// es justo el fallo que esa historia corrige.
 }

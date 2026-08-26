@@ -55,4 +55,37 @@ public enum MotivoRechazoAcceso
 	/// situaciones distintas y el operador debe poder distinguirlas.
 	/// </remarks>
 	ErrorDelServicio = 9,
+
+	/// <summary>
+	/// El desafío del acceso ya no sirve: no existe, venció o se consumió
+	/// (<c>appoperador.desafio.noexiste</c>, <c>.expirado</c>, <c>.consumido</c>).
+	/// </summary>
+	/// <remarks>
+	/// Los tres códigos se unifican a propósito: la salida del operador es la misma —volver
+	/// a autenticarse— y distinguirlos solo le diría al atacante en qué falló. El desafío
+	/// dura cinco minutos y es de un solo uso.
+	/// </remarks>
+	DesafioNoValido = 10,
+
+	/// <summary>
+	/// La unidad elegida ya no está disponible para el operador
+	/// (<c>appoperador.vehiculo.noautorizado</c>).
+	/// </summary>
+	/// <remarks>
+	/// El backend revalida la unidad al crear la sesión (JTT-1381 CA 7), así que puede
+	/// haberse desactivado o reasignado entre la preautenticación y el ingreso. Hay que
+	/// refrescar la lista, no reintentar con la misma.
+	/// </remarks>
+	UnidadNoAutorizada = 11,
+
+	/// <summary>
+	/// Jacob ya no reconoce la sesión: se revocó o dejó de ser válida
+	/// (<c>appoperador.sesion.revocada</c>, <c>appoperador.sesion.invalida</c>).
+	/// </summary>
+	/// <remarks>
+	/// Aparece al revalidar tras recuperar el enlace (JTT-1383 CA 11). No es un fallo de
+	/// red: la sesión existió y el servidor la dio de baja, así que reintentar no sirve y
+	/// hay que autenticarse otra vez.
+	/// </remarks>
+	SesionRevocada = 12,
 }

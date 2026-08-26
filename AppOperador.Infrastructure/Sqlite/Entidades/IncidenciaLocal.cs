@@ -91,4 +91,22 @@ internal sealed class IncidenciaLocal
 	/// <summary>Número de envíos intentados. Sirve para el reintento con espera creciente.</summary>
 	[Column("intentos")]
 	public int Intentos { get; set; }
+
+	/// <summary>
+	/// Contador monotónico del sistema en el momento de capturar (JTT-1383 CA 12).
+	/// </summary>
+	/// <remarks>
+	/// Acompaña a <see cref="CreadoUtcTicks"/>, que es la fecha del dispositivo y por tanto
+	/// se puede mover. Con las dos, quien reciba el registro puede ordenar lo capturado
+	/// dentro de una misma sesión aunque el reloj haya cambiado en medio.
+	/// </remarks>
+	public long MonotonicoTicks { get; set; }
+
+	/// <summary>
+	/// Sesión de la que salió el registro (JTT-1383 CA 12).
+	/// </summary>
+	/// <remarks>
+	/// Vacío en los recorridos simulados, que no crean sesión en Jacob.
+	/// </remarks>
+	public string SesionOrigen { get; set; } = string.Empty;
 }

@@ -29,6 +29,27 @@ public sealed class ConfiguracionApi
 	/// <summary>URL base del API vista desde el escritorio (pruebas y Windows).</summary>
 	public const string UrlBaseEscritorio = "http://localhost:5231";
 
+	/// <summary>
+	/// URL base del API en el servidor de desarrollo de IPTE.
+	/// </summary>
+	/// <remarks>
+	/// Es una dirección de la red interna: el dispositivo tiene que estar en esa red para
+	/// alcanzarla. Va por HTTP y no por HTTPS porque ese despliegue no publica el 443, así
+	/// que el host figura en la lista de tráfico en claro de Android.
+	/// </remarks>
+	public const string UrlBaseDesarrollo = "http://192.168.100.215:81";
+
+	/// <summary>
+	/// URL base del API en el servidor de QA de IPTE.
+	/// </summary>
+	/// <remarks>
+	/// Es el ambiente donde prueba el equipo de calidad, con sus propios datos. Vale lo mismo
+	/// que para desarrollo: dirección de la red interna, por HTTP porque ese despliegue
+	/// tampoco publica el 443, así que el host figura en la lista de tráfico en claro de
+	/// Android.
+	/// </remarks>
+	public const string UrlBaseQa = "http://192.168.100.230:81";
+
 	/// <summary>Dirección del API. Debe terminar sin barra final.</summary>
 	public string UrlBase { get; init; } = UrlBaseEscritorio;
 
@@ -37,14 +58,14 @@ public sealed class ConfiguracionApi
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// JTT-1378 solo implementa la preautenticación: no crea sesión ni entra a la app. Con
-	/// el interruptor apagado la app conserva el recorrido completo contra simuladores, que
-	/// es lo que permite seguir demostrando las cinco pantallas mientras el canal móvil no
-	/// esté desplegado.
+	/// <b>Encendido es lo normal.</b> El acceso en dos pasos, la creación de la sesión, la
+	/// reanudación sin conexión, la revalidación y el cierre están completos contra el canal
+	/// móvil de Jacob.
 	/// </para>
 	/// <para>
-	/// Encendido, el botón de acceso ejerce el flujo real
-	/// <c>GetPublicKey → cifrado → Preauth</c> y se detiene ahí a propósito.
+	/// Apagado, la app conserva el recorrido íntegro contra simuladores. Sigue sirviendo
+	/// para demostrar las pantallas sin levantar el servidor, pero <b>no</b> ejercita nada
+	/// del canal real: ni sesión persistida, ni revalidación, ni cierre remoto.
 	/// </para>
 	/// </remarks>
 	public bool UsarApiReal { get; init; }
@@ -69,4 +90,37 @@ public sealed class ConfiguracionApi
 
 	/// <summary>Ruta de la preautenticación. Anónima.</summary>
 	public const string RutaPreauth = "/ITS/AppLogin/Preauth";
+
+	/// <summary>
+	/// Ruta del segundo paso del acceso, que crea la sesión. Anónima: el desafío es la
+	/// credencial.
+	/// </summary>
+	public const string RutaLogin = "/ITS/AppLogin";
+
+	/// <summary>
+	/// Ruta del cierre de sesión. Exige el token en la cabecera.
+	/// </summary>
+	/// <remarks>
+	/// Es idempotente en el servidor: cerrar dos veces la misma sesión responde
+	/// <c>200</c>, no un error. Eso permite reintentar sin comprobar antes si ya se cerró.
+	/// </remarks>
+	public const string RutaLogout = "/ITS/AppLogin/Logout";
+
+	/// <summary>
+	/// Ruta de la revalidación de sesión. Exige el token y que la sesión siga activa.
+	/// </summary>
+	/// <remarks>
+	/// Renueva la ventana offline otras ocho horas tras comprobar que la sesión, el
+	/// operador, el permiso y la unidad siguen vigentes. No emite un token nuevo.
+	/// </remarks>
+	public const string RutaRevalidar = "/ITS/AppLogin/Revalidar";
+
+	/// <summary>
+	/// Ruta de la comprobación de comunicación. Exige el token y sesión activa.
+	/// </summary>
+	/// <remarks>
+	/// Respuesta mínima y pensada para invocarse con frecuencia: no devuelve datos del
+	/// operador ni de la unidad. Es la sonda del indicador de enlace (JTT-1391).
+	/// </remarks>
+	public const string RutaEstado = "/ITS/AppLogin/Estado";
 }

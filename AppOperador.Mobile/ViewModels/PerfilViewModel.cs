@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -12,24 +14,29 @@ namespace AppOperador.Mobile.ViewModels;
 public sealed partial class PerfilViewModel : ObservableObject
 {
 	private readonly ISessionStore _sesiones;
-	private readonly IAuthenticationService _autenticacion;
 	private readonly IConnectivityService _conectividad;
 	private readonly IAuditLog _bitacora;
 	private readonly IClock _reloj;
+	private readonly CerrarSesionMovil _cierre;
 
 	public PerfilViewModel(
 		ISessionStore sesiones,
-		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
 		IAuditLog bitacora,
-		IClock reloj)
+		IClock reloj,
+		CerrarSesionMovil cierre,
+		EstadoEnlaceViewModel enlace)
 	{
+		Enlace = enlace;
 		_sesiones = sesiones;
-		_autenticacion = autenticacion;
 		_conectividad = conectividad;
 		_bitacora = bitacora;
 		_reloj = reloj;
+		_cierre = cierre;
 	}
+
+	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
+	public EstadoEnlaceViewModel Enlace { get; }
 
 	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
 	public ObservableCollection<EventoAuditoriaVista> Eventos { get; } = [];
@@ -42,20 +49,16 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 	public string VersionCatalogos => _sesiones.Actual?.VersionCatalogos.ToString("yyyy-MM-dd") ?? "-";
 
-	/// <summary>Estado de la ventana offline: VIGENTE mientras quede tiempo.</summary>
-	public string EstadoVigencia
-	{
-		get
-		{
-			var vigencia = _sesiones.Actual?.Vigencia;
-			if (vigencia is null)
-			{
-				return "SIN SESIÓN";
-			}
-
-			return vigencia.EstaVigenteEn(_reloj.UtcAhora) ? "VIGENTE" : "EXPIRADA";
-		}
-	}
+	/// <summary>
+	/// Estado de la ventana offline.
+	/// </summary>
+	/// <remarks>
+	/// Con sesión abierta siempre es VIGENTE, y no es un atajo: la pantalla comprueba la
+	/// vigencia antes de mostrarse y una sesión vencida ya no existe cuando esto se pinta
+	/// (JTT-1384). Antes se recalculaba aquí contra el reloj del dispositivo, que es
+	/// justamente la medición que el resto de la app dejó de usar por manipulable.
+	/// </remarks>
+	public string EstadoVigencia => _sesiones.Actual is null ? "SIN SESIÓN" : "VIGENTE";
 
 	public bool VigenciaActiva => EstadoVigencia == "VIGENTE";
 
@@ -71,8 +74,15 @@ public sealed partial class PerfilViewModel : ObservableObject
 	/// <summary>Modo de operación visible en el perfil.</summary>
 	public string Modo => _conectividad.HayEnlace ? "ONLINE" : "OFFLINE";
 
-	/// <summary>Permisos efectivos, mostrados como etiquetas.</summary>
-	public IReadOnlyList<string> Permisos => _sesiones.Actual?.Permisos ?? [];
+	/// <summary>
+	/// Permisos efectivos, mostrados como etiquetas.
+	/// </summary>
+	/// <remarks>
+	/// El perfil los muestra, no los administra: la lista es de solo lectura por construcción
+	/// (JTT-1379 CA 7).
+	/// </remarks>
+	public IReadOnlyCollection<string> Permisos =>
+		_sesiones.Actual?.Permisos ?? PermisosOperador.Ninguno;
 
 	/// <summary>Refresca los datos de la pantalla.</summary>
 	public async Task ActualizarAsync()
@@ -94,11 +104,18 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 	}
 
+	/// <summary>
+	/// Termina la sesión del operador (JTT-1390).
+	/// </summary>
+	/// <remarks>
+	/// Lo pendiente de enviar no se toca: cerrar sesión no es desinstalar la app. La
+	/// navegación ocurre siempre, incluso si no se pudo avisar a Jacob, porque el cierre
+	/// local ya se aplicó y dejar al operador en el perfil daría a entender lo contrario.
+	/// </remarks>
 	[RelayCommand]
 	private async Task CerrarSesionAsync()
 	{
-		// Cerrar sesión no borra los registros pendientes (JTT-328).
-		await _autenticacion.CerrarSesionAsync();
+		await _cierre.CerrarAsync();
 		await Shell.Current.GoToAsync("//acceso");
 	}
 }

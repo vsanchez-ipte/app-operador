@@ -20,23 +20,29 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 	private readonly AlmacenRegistrosEnMemoria _almacen;
 	private readonly IConnectivityService _conectividad;
 	private readonly IAuditLog _bitacora;
+	private readonly ISessionStore _sesiones;
 
 	private int _folio = 9_959;
 
 	public ColaSincronizacionEnMemoria(
 		AlmacenRegistrosEnMemoria almacen,
 		IConnectivityService conectividad,
-		IAuditLog bitacora)
+		IAuditLog bitacora,
+		ISessionStore sesiones)
 	{
 		_almacen = almacen;
 		_conectividad = conectividad;
 		_bitacora = bitacora;
+		_sesiones = sesiones;
 	}
+
+	/// <summary>Operador de la sesión abierta. Sin sesión, la cola se ve vacía.</summary>
+	private string? OperadorActual => _sesiones.Actual?.Operador;
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerRegistrosAsync(CancellationToken cancelacion = default)
 	{
 		// Los borradores se listan aparte, en la pantalla de Captura.
-		IReadOnlyList<RegistroCola> registros = _almacen.Todos()
+		IReadOnlyList<RegistroCola> registros = _almacen.Todos(OperadorActual)
 			.Where(r => r.Estado != EstadoSincronizacion.Borrador)
 			.ToList();
 
@@ -44,7 +50,7 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 	}
 
 	public Task<int> ContarPendientesAsync(CancellationToken cancelacion = default) =>
-		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente));
+		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente, OperadorActual));
 
 	public async Task<int> SincronizarAsync(CancellationToken cancelacion = default)
 	{
@@ -56,7 +62,7 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 
 		// Las críticas primero; entre iguales, las más antiguas antes, para que las
 		// normales no se queden esperando indefinidamente.
-		var porEnviar = _almacen.Todos()
+		var porEnviar = _almacen.Todos(OperadorActual)
 			.Where(r => r.Estado == EstadoSincronizacion.Pendiente)
 			.OrderByDescending(r => r.Prioridad == SyncPriority.Critica)
 			.Reverse()

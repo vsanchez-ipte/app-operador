@@ -26,11 +26,27 @@ public sealed class VigenciaOffline
 		OfflineUntilUtc = lastValidatedAtUtc + Duracion;
 	}
 
+	private VigenciaOffline(DateTime lastValidatedAtUtc, DateTime offlineUntilUtc)
+	{
+		LastValidatedAtUtc = lastValidatedAtUtc;
+		OfflineUntilUtc = offlineUntilUtc;
+	}
+
 	/// <summary>Instante del último login o refresh exitoso, en UTC.</summary>
 	public DateTime LastValidatedAtUtc { get; }
 
 	/// <summary>Instante hasta el que se admite trabajo sin conexión, en UTC.</summary>
 	public DateTime OfflineUntilUtc { get; }
+
+	/// <summary>
+	/// Anchura de la ventana, tal como la fijó quien la abrió.
+	/// </summary>
+	/// <remarks>
+	/// Normalmente son las ocho horas de <see cref="Duracion"/>, pero cuando la ventana
+	/// viene del servidor manda la suya. Sirve para medirla contra un transcurso en lugar
+	/// de contra una fecha (JTT-1383).
+	/// </remarks>
+	public TimeSpan Ventana => OfflineUntilUtc - LastValidatedAtUtc;
 
 	/// <summary>
 	/// Abre una ventana de vigencia a partir de un login o refresh exitoso.
@@ -39,8 +55,44 @@ public sealed class VigenciaOffline
 	/// <exception cref="ArgumentException">El instante no está expresado en UTC.</exception>
 	public static VigenciaOffline Validada(DateTime instanteValidacionUtc)
 	{
-		ExigirUtc(instanteValidacionUtc, nameof(instanteValidacionUtc));
+		InstanteUtc.Exigir(instanteValidacionUtc, nameof(instanteValidacionUtc));
 		return new VigenciaOffline(instanteValidacionUtc);
+	}
+
+	/// <summary>
+	/// Adopta la ventana <b>tal como la calculó el servidor</b>, sin recalcularla.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Es la vía que debe usarse cuando la ventana viene de Jacob CCO (JTT-1382 CA 3 y CA 4):
+	/// el servidor manda <c>lastValidatedAtUtc</c> y <c>offlineUntilUtc</c>, y la app los
+	/// adopta. Volver a sumar ocho horas sobre el reloj del teléfono daría una ventana
+	/// distinta en cuanto ese reloj esté desfasado, y el operador seguiría trabajando
+	/// creyéndose en vigencia cuando el servidor ya lo dio por vencido.
+	/// </para>
+	/// <para>
+	/// No se valida que la diferencia sean ocho horas exactas: la duración la decide el
+	/// servidor y esta clase no está para discutírsela. Sí se exige que la ventana no vaya
+	/// hacia atrás, porque eso solo puede ser un error de integración.
+	/// </para>
+	/// </remarks>
+	/// <exception cref="ArgumentException">
+	/// Algún instante no está en UTC, o el fin de la ventana es anterior a la validación.
+	/// </exception>
+	public static VigenciaOffline DelServidor(DateTime lastValidatedAtUtc, DateTime offlineUntilUtc)
+	{
+		InstanteUtc.Exigir(lastValidatedAtUtc, nameof(lastValidatedAtUtc));
+		InstanteUtc.Exigir(offlineUntilUtc, nameof(offlineUntilUtc));
+
+		if (offlineUntilUtc < lastValidatedAtUtc)
+		{
+			throw new ArgumentException(
+				"La ventana offline no puede terminar antes de la validación que la abre; " +
+				$"se recibió {offlineUntilUtc:o} contra {lastValidatedAtUtc:o}.",
+				nameof(offlineUntilUtc));
+		}
+
+		return new VigenciaOffline(lastValidatedAtUtc, offlineUntilUtc);
 	}
 
 	/// <summary>
@@ -50,7 +102,7 @@ public sealed class VigenciaOffline
 	/// <exception cref="ArgumentException">El instante no está expresado en UTC.</exception>
 	public VigenciaOffline RenovarConExito(DateTime instanteRefreshUtc)
 	{
-		ExigirUtc(instanteRefreshUtc, nameof(instanteRefreshUtc));
+		InstanteUtc.Exigir(instanteRefreshUtc, nameof(instanteRefreshUtc));
 		return new VigenciaOffline(instanteRefreshUtc);
 	}
 
@@ -71,28 +123,31 @@ public sealed class VigenciaOffline
 	/// <exception cref="ArgumentException">El instante no está expresado en UTC.</exception>
 	public bool EstaVigenteEn(DateTime instanteUtc)
 	{
-		ExigirUtc(instanteUtc, nameof(instanteUtc));
+		InstanteUtc.Exigir(instanteUtc, nameof(instanteUtc));
 		return instanteUtc < OfflineUntilUtc;
+	}
+
+	/// <summary>
+	/// Indica si todavía se admite trabajo offline según un transcurso medido, en vez de
+	/// según el reloj del dispositivo.
+	/// </summary>
+	/// <remarks>
+	/// Es la comprobación que debe usarse al reanudar sin conexión (JTT-1383 CA 2, 5 y 6):
+	/// <see cref="EstaVigenteEn"/> se fía del reloj, y el reloj se puede mover.
+	/// </remarks>
+	public bool EstaVigenteTras(TranscursoOffline transcurso)
+	{
+		ArgumentNullException.ThrowIfNull(transcurso);
+		return transcurso.CabeEn(Ventana);
 	}
 
 	/// <summary>Tiempo que resta de ventana, o <see cref="TimeSpan.Zero"/> si ya venció.</summary>
 	/// <exception cref="ArgumentException">El instante no está expresado en UTC.</exception>
 	public TimeSpan RestanteEn(DateTime instanteUtc)
 	{
-		ExigirUtc(instanteUtc, nameof(instanteUtc));
+		InstanteUtc.Exigir(instanteUtc, nameof(instanteUtc));
 		var restante = OfflineUntilUtc - instanteUtc;
 		return restante > TimeSpan.Zero ? restante : TimeSpan.Zero;
 	}
 
-	// Se exige Kind.Utc explícito: aceptar Unspecified dejaría entrar horas locales
-	// sin que nada avise, y toda la regla se compara en UTC.
-	private static void ExigirUtc(DateTime instante, string nombreParametro)
-	{
-		if (instante.Kind != DateTimeKind.Utc)
-		{
-			throw new ArgumentException(
-				$"El instante debe estar expresado en UTC (DateTimeKind.Utc); se recibió {instante.Kind}.",
-				nombreParametro);
-		}
-	}
 }

@@ -17,8 +17,19 @@ namespace AppOperador.Mobile.Mocks;
 public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 {
 	private readonly AlmacenRegistrosEnMemoria _almacen;
+	private readonly ISessionStore _sesiones;
 
-	public RepositorioIncidenciasEnMemoria(AlmacenRegistrosEnMemoria almacen) => _almacen = almacen;
+	public RepositorioIncidenciasEnMemoria(AlmacenRegistrosEnMemoria almacen, ISessionStore sesiones)
+	{
+		_almacen = almacen;
+		_sesiones = sesiones;
+	}
+
+	/// <summary>
+	/// Operador que captura. Sin sesión no debería llegarse aquí: las pantallas de captura
+	/// están detrás del acceso.
+	/// </summary>
+	private string OperadorActual => _sesiones.Actual?.Operador ?? "-";
 
 	public Task<IReadOnlyList<TipoIncidencia>> ObtenerTiposAsync(CancellationToken cancelacion = default)
 	{
@@ -57,7 +68,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 			Kilometro: kilometro.Valor,
 			Estado: EstadoSincronizacion.Pendiente);
 
-		_almacen.Agregar(registro);
+		_almacen.Agregar(registro, OperadorActual);
 		return Task.FromResult(registro.ClaveLocal);
 	}
 
@@ -77,10 +88,10 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 			Kilometro: kilometro ?? "-",
 			Estado: EstadoSincronizacion.Borrador);
 
-		_almacen.Agregar(registro);
+		_almacen.Agregar(registro, OperadorActual);
 		return Task.FromResult(registro.ClaveLocal);
 	}
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerBorradoresAsync(CancellationToken cancelacion = default) =>
-		Task.FromResult(_almacen.PorEstado(EstadoSincronizacion.Borrador));
+		Task.FromResult(_almacen.PorEstado(EstadoSincronizacion.Borrador, OperadorActual));
 }

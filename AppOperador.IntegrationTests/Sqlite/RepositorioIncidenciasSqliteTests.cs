@@ -44,7 +44,8 @@ public sealed class RepositorioIncidenciasSqliteTests
 		// y no solo mientras el proceso vive.
 		var reabierta = contexto.ReabrirBaseDatos();
 		var cola = new ColaSincronizacionSqlite(
-			reabierta, contexto.Reloj, contexto.Conectividad, new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj));
+			reabierta, contexto.Reloj, contexto.Conectividad,
+			new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj), contexto.Sesion);
 
 		var registros = await cola.ObtenerRegistrosAsync();
 
