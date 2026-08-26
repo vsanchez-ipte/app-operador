@@ -41,6 +41,11 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 	public Task<int> ContarPendientesAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente, OperadorActual));
 
+	// El recorrido simulado no puede morirse a media llamada, así que no hay nada que
+	// recuperar. Se implementa para cumplir el contrato y no para probar la regla.
+	public Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default) =>
+		Task.FromResult(0);
+
 	// ── Envío (JTT-1401) ──────────────────────────────────────────────────────────────
 	//
 	// Sin implementar a propósito. El recorrido simulado se elimina completo en rama propia

@@ -84,11 +84,50 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var pendiente = (int)EstadoSincronizacion.Pendiente;
 		var fallido = (int)EstadoSincronizacion.Fallido;
+		var enviando = (int)EstadoSincronizacion.Enviando;
 
-		// Fallido también cuenta: sigue esperando envío, solo que ya falló una vez.
+		// Los tres cuentan: los tres siguen sin llegar a Jacob. Fallido ya falló una vez, y
+		// Enviando es un envío que no terminó —se recupera a Pendiente en la siguiente
+		// sincronización—. Dejar Enviando fuera hacía que el contador dijera menos de lo que
+		// había, que es la peor dirección para equivocarse en una cola.
 		return await conexion.Table<IncidenciaLocal>()
-			.Where(i => (i.Estado == pendiente || i.Estado == fallido) && i.Operador == operador)
+			.Where(i => (i.Estado == pendiente || i.Estado == fallido || i.Estado == enviando)
+				&& i.Operador == operador)
 			.CountAsync();
+	}
+
+	/// <inheritdoc />
+	public async Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default)
+	{
+		var operador = OperadorActual;
+		if (operador is null)
+		{
+			return 0;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var enviando = (int)EstadoSincronizacion.Enviando;
+		var pendiente = (int)EstadoSincronizacion.Pendiente;
+
+		var colgados = await conexion.Table<IncidenciaLocal>()
+			.Where(i => i.Estado == enviando && i.Operador == operador)
+			.ToListAsync();
+
+		if (colgados.Count == 0)
+		{
+			return 0;
+		}
+
+		// No se toca el contador de intentos: el intento se contó al marcar Enviando. Sumarlo
+		// otra vez al recuperar alargaría la espera del reintento por un fallo que no fue de
+		// Jacob ni de la red, sino de que el proceso se murió.
+		foreach (var fila in colgados)
+		{
+			fila.Estado = pendiente;
+		}
+
+		await conexion.UpdateAllAsync(colgados);
+		return colgados.Count;
 	}
 
 	/// <inheritdoc />

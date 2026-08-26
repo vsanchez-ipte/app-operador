@@ -70,6 +70,18 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.SinSesion);
 		}
 
+		// Antes de leer la cola: lo que quedó a medio enviar vuelve a Pendiente. Si no, un
+		// registro atrapado en Enviando no lo toma nadie —ni esta consulta ni el contador— y no
+		// llega nunca a Jacob, sin que el operador tenga forma de saberlo.
+		var recuperados = await _cola.RecuperarEnviosInterrumpidosAsync(cancelacion);
+		if (recuperados > 0)
+		{
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"Se recuperaron {recuperados} envíos interrumpidos que quedaron en Enviando.",
+				cancelacion);
+		}
+
 		var enviables = await _cola.ObtenerEnviablesAsync(cancelacion);
 
 		// El catálogo se lee una vez por sincronización, no por registro: una consulta por
@@ -254,7 +266,31 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			cancelacion);
 
 		var envio = RellenoCamposNoCapturados.Completar(incidencia, catalogos);
-		var resultado = await _jacob.RegistrarAsync(envio, token, cancelacion);
+
+		ResultadoEnvio resultado;
+		try
+		{
+			resultado = await _jacob.RegistrarAsync(envio, token, cancelacion);
+		}
+		catch (Exception excepcion) when (excepcion is not OperationCanceledException)
+		{
+			// El registro ya está marcado como Enviando. Si la excepción se propagara desde
+			// aquí, se quedaría ahí colgado hasta la siguiente recuperación; resolverlo en el
+			// acto lo devuelve al camino normal de reintentos.
+			//
+			// Técnico y no funcional: una excepción del cliente no dice que el registro esté
+			// mal, dice que no se pudo preguntar. Como funcional, dejaría de reintentarse por
+			// un fallo que el operador no puede corregir.
+			resultado = ResultadoEnvio.Rechazada(
+				FamiliaErrorSincronizacion.Tecnico,
+				CodigosErrorJacob.ErrorTecnico,
+				"No se pudo completar el envío. Se reintentará solo.");
+
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"Envío interrumpido por excepción: {excepcion.GetType().Name}.",
+				cancelacion);
+		}
 
 		var destino = resultado.Exito ? EstadoSincronizacion.Sincronizado : EstadoSincronizacion.Fallido;
 

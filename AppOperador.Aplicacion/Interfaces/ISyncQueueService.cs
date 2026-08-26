@@ -33,6 +33,26 @@ public interface ISyncQueueService
 	Task<int> ContarPendientesAsync(CancellationToken cancelacion = default);
 
 	/// <summary>
+	/// Devuelve a Pendiente los registros que quedaron en Enviando, y responde cuántos eran.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Un registro entra en Enviando justo antes de la llamada a Jacob y sale de ahí al
+	/// resolverse. <b>Si el proceso muere en medio</b> —la app se cierra, el teléfono se apaga,
+	/// el sistema mata la aplicación— nadie escribe el estado final y el registro se queda ahí:
+	/// no lo toma la cola, no lo cuenta el contador y no lo reintenta nadie. Se ve en pantalla
+	/// como «ENVIANDO» de forma indefinida.
+	/// </para>
+	/// <para>
+	/// Por eso se recuperan al arrancar una sincronización y no al escribirlos: <b>desde dentro
+	/// del proceso que se está muriendo no se puede hacer nada</b>. Reenviar uno que sí había
+	/// llegado no duplica nada — el <c>POST</c> es idempotente por <c>uuid</c> y devuelve el
+	/// mismo folio.
+	/// </para>
+	/// </remarks>
+	Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default);
+
+	/// <summary>
 	/// Registros que pueden intentarse, en el orden en que deben atenderse.
 	/// </summary>
 	/// <remarks>

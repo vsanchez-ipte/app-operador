@@ -62,7 +62,29 @@ public sealed partial class ColaViewModel : ObservableObject
 	public ObservableCollection<RegistroColaVista> Registros { get; } = [];
 
 	/// <summary>Resumen que encabeza la pantalla.</summary>
-	public string TextoPendientes => $"{Pendientes} incidencias pendientes de sincronizar.";
+	/// <remarks>
+	/// <para>
+	/// Dice <b>«sin enviar»</b> y no «pendientes de sincronizar». La cuenta incluye las
+	/// rechazadas, que no van a salir solas, y decir de ellas que están «pendientes de
+	/// sincronizar» contradice el aviso de abajo, que avisa justamente de que no se reintentan.
+	/// Las dos frases eran ciertas y juntas se leían como un error de la aplicación.
+	/// </para>
+	/// <para>
+	/// «Sin enviar» es lo único que vale para los tres estados que cuenta —pendiente, fallida y
+	/// el envío que quedó a medias— y es además lo que el operador necesita saber: cuántas de
+	/// las suyas no están todavía en el CCO.
+	/// </para>
+	/// </remarks>
+	public string TextoPendientes => Pendientes switch
+	{
+		0 => "No hay incidencias sin enviar.",
+		1 => "1 incidencia sin enviar al CCO.",
+		_ => $"{Pendientes} incidencias sin enviar al CCO.",
+	};
+
+	/// <summary>Concuerda el número con su sustantivo. «1 incidencias» se lee como descuido.</summary>
+	private static string Incidencias(int cuantas) =>
+		cuantas == 1 ? "1 incidencia" : $"{cuantas} incidencias";
 
 	public bool HayRegistros => Registros.Count > 0;
 
@@ -146,16 +168,16 @@ public sealed partial class ColaViewModel : ObservableObject
 		// con tres en la lista de arriba es contradecirse en la misma pantalla, y deja al
 		// operador sin saber si el botón funcionó.
 		_ when resultado.Intentados == 0 && resultado.OmitidosPorCorregir > 0 =>
-			$"{resultado.OmitidosPorCorregir} incidencias fueron rechazadas y no se reintentarán "
-			+ "solas. Revise su detalle en la lista.",
+			$"{Incidencias(resultado.OmitidosPorCorregir)} sin enviar: el CCO las rechazó y no "
+			+ "saldrán solas. Revise su detalle en la lista.",
 
 		_ when resultado.Intentados == 0 && resultado.OmitidosEnEspera > 0 =>
-			$"{resultado.OmitidosEnEspera} incidencias esperan su reintento. Saldrán solas.",
+			$"{Incidencias(resultado.OmitidosEnEspera)} esperan su reintento. Saldrán solas.",
 
 		_ when resultado.Intentados == 0 =>
-			"No hay incidencias pendientes de enviar.",
+			"No hay incidencias sin enviar.",
 		_ when resultado.Confirmados == resultado.Intentados =>
-			$"{resultado.Confirmados} incidencias enviadas al CCO.",
+			$"{Incidencias(resultado.Confirmados)} enviadas al CCO.",
 		// Ninguna salió y el fallo fue del camino: Jacob no llegó a evaluarlas. Decir que las
 		// rechazó mandaría al operador a revisar capturas que están bien.
 		_ when resultado.Confirmados == 0

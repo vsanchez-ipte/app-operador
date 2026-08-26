@@ -154,6 +154,63 @@ public sealed class ColaSincronizacionSqliteTests
 		await reabierta.DisposeAsync();
 	}
 
+	// ── El envío que quedó a medias ───────────────────────────────────────────────────
+	//
+	// Un registro entra en Enviando justo antes de la llamada a Jacob. Si el proceso muere ahí
+	// —la app se cierra, se apaga el teléfono, el sistema la mata— nadie escribe el estado
+	// final. Estas tres pruebas cubren lo que pasaba entonces: quedaba fuera de la cola, fuera
+	// del contador y sin nadie que lo reintentara, visible como «ENVIANDO» para siempre.
+
+	[Fact]
+	public async Task UnEnvioInterrumpido_vuelveAPendienteYSeSincroniza()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await DejarEnviandoAsync(contexto, clave);
+
+        var resultado = await contexto.CrearSincronizador().EjecutarAsync();
+
+		Assert.Equal(1, resultado.Confirmados);
+		var registro = Assert.Single(
+			await contexto.CrearCola().ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);
+		Assert.Equal(EstadoSincronizacion.Sincronizado, registro.Estado);
+		Assert.False(string.IsNullOrWhiteSpace(registro.FolioCentral));
+	}
+
+	[Fact]
+	public async Task UnEnvioInterrumpido_cuentaComoSinEnviar()
+	{
+		// El contador lo dejaba fuera, así que la pantalla decía menos de lo que había. Es la
+		// peor dirección para equivocarse en una cola: el operador cree que ya salió todo.
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await DejarEnviandoAsync(contexto, clave);
+
+		Assert.Equal(1, await contexto.CrearCola().ContarPendientesAsync());
+	}
+
+	[Fact]
+	public async Task UnEnvioInterrumpido_noSeLoLlevaElCierreDeLaApp()
+	{
+		// La recuperación tiene que servir también al caso real: la app se cerró, se vuelve a
+		// abrir y la base ya venía con el registro colgado de la sesión anterior.
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await DejarEnviandoAsync(contexto, clave);
+
+		var reabierta = contexto.ReabrirBaseDatos();
+		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
+
+		var recuperados = await cola.RecuperarEnviosInterrumpidosAsync();
+
+		Assert.Equal(1, recuperados);
+		var registro = Assert.Single(
+			await cola.ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);
+		Assert.Equal(EstadoSincronizacion.Pendiente, registro.Estado);
+
+		await reabierta.DisposeAsync();
+	}
+
 	private static Task<string> GuardarAsync(ContextoSqlite contexto, SeveridadIncidencia severidad) =>
 		contexto.CrearRepositorio().GuardarAsync(
 			Objeto,
@@ -161,4 +218,14 @@ public sealed class ColaSincronizacionSqliteTests
 			KilometerSource.GPS,
 			severidad,
 			"nota de prueba");
+
+	/// <summary>Deja el registro en Enviando, como si el proceso hubiera muerto a media llamada.</summary>
+	private static async Task DejarEnviandoAsync(ContextoSqlite contexto, string clave)
+	{
+		var cola = contexto.CrearCola();
+		var enviable = await cola.ObtenerEnviablePorClaveAsync(clave);
+
+		await cola.ActualizarEnvioAsync(new ActualizacionEnvio(
+			enviable!.Uuid, EstadoSincronizacion.Enviando, 1, null, null));
+	}
 }

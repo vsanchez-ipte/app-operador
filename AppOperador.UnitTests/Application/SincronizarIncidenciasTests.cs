@@ -36,6 +36,62 @@ public sealed class SincronizarIncidenciasTests
 		new BitacoraNula(),
 		new CatalogoFalso());
 
+	// ── El envío que nunca terminó ────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task AntesDeLeerLaCola_seRecuperanLosEnviosInterrumpidos()
+	{
+		// Un registro entra en Enviando justo antes de llamar a Jacob. Si el proceso muere ahí
+		// —la app se cierra, se apaga el teléfono— nadie escribe el estado final y el registro
+		// queda fuera de todo: no lo devuelve la cola, no lo cuenta el contador y no lo
+		// reintenta nadie. Se ve como «ENVIANDO» para siempre.
+		_cola.EnviosInterrumpidos = 2;
+
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(1, _cola.VecesQueSeRecupero);
+	}
+
+	[Fact]
+	public async Task ElEnvioSeRecuperaAunqueNoHayaNadaQueMandar()
+	{
+		// La recuperación no puede depender de que la cola traiga algo: precisamente lo que se
+		// recupera es lo que la cola no ve.
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(1, _cola.VecesQueSeRecupero);
+	}
+
+	[Fact]
+	public async Task SiElEnvioRevienta_elRegistroQuedaFallidoYNoEnviando()
+	{
+		// Sin esto, una excepción del cliente deja el registro marcado como Enviando y hay que
+		// esperar a la siguiente sincronización para rescatarlo. Se resuelve en el acto.
+		_cola.Encolar(Pendiente());
+		_jacob.LanzaExcepcion = true;
+
+		var resultado = await Crear().EjecutarAsync();
+
+		var ultima = _cola.Actualizaciones[^1];
+		Assert.Equal(EstadoSincronizacion.Fallido, ultima.Estado);
+		Assert.Equal(FamiliaErrorSincronizacion.Tecnico, resultado.FamiliaUltimoError);
+	}
+
+	[Fact]
+	public async Task UnEnvioQueRevienta_seClasificaComoTecnicoYNoComoFuncional()
+	{
+		// Que el cliente reviente no dice que el registro esté mal: dice que no se pudo
+		// preguntar. Como funcional dejaría de reintentarse por algo que el operador no puede
+		// corregir, y la incidencia no saldría nunca.
+		_cola.Encolar(Pendiente());
+		_jacob.LanzaExcepcion = true;
+
+		await Crear().EjecutarAsync();
+
+		var ultima = _cola.Actualizaciones[^1];
+		Assert.False(CodigosErrorJacob.EsFuncional(ultima.UltimoErrorCodigo));
+	}
+
 	// ── CA 7: la espera creciente ─────────────────────────────────────────────────────
 
 	[Fact]
@@ -394,6 +450,17 @@ public sealed class SincronizarIncidenciasTests
 			Task.FromResult<IReadOnlyList<RegistroCola>>([]);
 
 		public Task<int> ContarPendientesAsync(CancellationToken c = default) => Task.FromResult(0);
+
+		/// <summary>Cuántos envíos interrumpidos dice tener. Lo fija la prueba.</summary>
+		public int EnviosInterrumpidos { get; set; }
+
+		public int VecesQueSeRecupero { get; private set; }
+
+		public Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken c = default)
+		{
+			VecesQueSeRecupero++;
+			return Task.FromResult(EnviosInterrumpidos);
+		}
 	}
 
 	private sealed class JacobFalso : IIncidenciasJacobClient
@@ -401,6 +468,9 @@ public sealed class SincronizarIncidenciasTests
 		private readonly Queue<ResultadoEnvio> _programados = new();
 
 		public List<EnvioIncidencia> Recibidos { get; } = [];
+
+		/// <summary>Simula que el cliente revienta en vez de contestar.</summary>
+		public bool LanzaExcepcion { get; set; }
 
 		public JacobFalso Responde(ResultadoEnvio resultado)
 		{
@@ -412,6 +482,12 @@ public sealed class SincronizarIncidenciasTests
 			EnvioIncidencia incidencia, string accessToken, CancellationToken c = default)
 		{
 			Recibidos.Add(incidencia);
+
+			if (LanzaExcepcion)
+			{
+				throw new HttpRequestException("La conexión se cortó a media petición.");
+			}
+
 			return Task.FromResult(_programados.Count > 0
 				? _programados.Dequeue()
 				: Aceptada("INC-APK-2026-0001"));

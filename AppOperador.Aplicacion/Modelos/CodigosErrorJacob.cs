@@ -47,6 +47,12 @@ public static class CodigosErrorJacob
 	public const string PlazaNoResuelta = "appincidencias.plaza.noresuelta";
 
 	/// <summary>
+	/// Fallo del servidor o del camino. Es el mismo código que publica el contrato del canal
+	/// móvil, y el que la app se asigna cuando el envío revienta antes de obtener respuesta.
+	/// </summary>
+	public const string ErrorTecnico = "appincidencias.error.tecnico";
+
+	/// <summary>
 	/// Familia a la que pertenece un código.
 	/// </summary>
 	/// <remarks>

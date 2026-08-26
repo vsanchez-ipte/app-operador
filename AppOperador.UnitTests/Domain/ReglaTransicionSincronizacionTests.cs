@@ -5,13 +5,14 @@ namespace AppOperador.UnitTests.Domain;
 
 public class ReglaTransicionSincronizacionTests
 {
-	// Las cinco transiciones que el negocio declara válidas.
+	// Las seis transiciones que el negocio declara válidas.
 	public static TheoryData<EstadoSincronizacion, EstadoSincronizacion> TransicionesValidas => new()
 	{
 		{ EstadoSincronizacion.Borrador, EstadoSincronizacion.Pendiente },
 		{ EstadoSincronizacion.Pendiente, EstadoSincronizacion.Enviando },
 		{ EstadoSincronizacion.Enviando, EstadoSincronizacion.Sincronizado },
 		{ EstadoSincronizacion.Enviando, EstadoSincronizacion.Fallido },
+		{ EstadoSincronizacion.Enviando, EstadoSincronizacion.Pendiente },
 		{ EstadoSincronizacion.Fallido, EstadoSincronizacion.Pendiente },
 	};
 
@@ -122,13 +123,40 @@ public class ReglaTransicionSincronizacionTests
 	}
 
 	[Fact]
-	public void Enviando_TieneExactamenteDosSalidas()
+	public void Enviando_TieneExactamenteTresSalidas()
 	{
 		var destinos = ReglaTransicionSincronizacion.DestinosDesde(EstadoSincronizacion.Enviando);
 
-		Assert.Equal(2, destinos.Count);
+		Assert.Equal(3, destinos.Count);
 		Assert.Contains(EstadoSincronizacion.Sincronizado, destinos);
 		Assert.Contains(EstadoSincronizacion.Fallido, destinos);
+
+		// La tercera es la salida del envío que nunca terminó. Sin ella, una incidencia a la
+		// que se le cierra la app a media llamada se queda en Enviando para siempre: no la
+		// toma la cola, no la cuenta el contador y no la reintenta nadie.
+		Assert.Contains(EstadoSincronizacion.Pendiente, destinos);
+	}
+
+	[Fact]
+	public void EnvioInterrumpido_PuedeVolverAlCamino()
+	{
+		// Pendiente → Enviando → (el proceso muere) → Pendiente → Enviando → Sincronizado
+		Assert.True(ReglaTransicionSincronizacion.EsTransicionValida(
+			EstadoSincronizacion.Pendiente, EstadoSincronizacion.Enviando));
+		Assert.True(ReglaTransicionSincronizacion.EsTransicionValida(
+			EstadoSincronizacion.Enviando, EstadoSincronizacion.Pendiente));
+		Assert.True(ReglaTransicionSincronizacion.EsTransicionValida(
+			EstadoSincronizacion.Pendiente, EstadoSincronizacion.Enviando));
+		Assert.True(ReglaTransicionSincronizacion.EsTransicionValida(
+			EstadoSincronizacion.Enviando, EstadoSincronizacion.Sincronizado));
+	}
+
+	[Fact]
+	public void Sincronizado_SigueSiendoTerminal()
+	{
+		// La arista nueva no abre una puerta de vuelta desde lo ya confirmado: reenviar algo
+		// que Jacob aceptó no tiene sentido, y el folio se emite una sola vez.
+		Assert.Empty(ReglaTransicionSincronizacion.DestinosDesde(EstadoSincronizacion.Sincronizado));
 	}
 
 	[Fact]
