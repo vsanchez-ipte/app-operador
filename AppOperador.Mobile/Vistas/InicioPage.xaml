@@ -105,7 +105,13 @@
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
-                                <Border Style="{StaticResource InsigniaRosa}">
+                                <!--
+                                    Solo si la sesión autoriza capturar. Estaba fija y decía
+                                    «CAPTURA» hasta con un operador sin permiso; al lado del
+                                    nombre y del rol, eso se lee como una afirmación sobre él.
+                                -->
+                                <Border Style="{StaticResource InsigniaRosa}"
+                                        IsVisible="{Binding PuedeCapturar}">
                                     <Label Text="CAPTURA" Style="{StaticResource TextoInsigniaRosa}" />
                                 </Border>
                                 <Label Text="{Binding HoraActualizacion}"

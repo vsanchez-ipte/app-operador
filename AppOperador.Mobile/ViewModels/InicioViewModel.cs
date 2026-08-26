@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AppOperador.Mobile.ViewModels;
@@ -16,6 +17,7 @@ public sealed partial class InicioViewModel : ObservableObject
 	private readonly IConnectivityService _conectividad;
 	private readonly ISyncQueueService _cola;
 	private readonly IClock _reloj;
+	private readonly CapacidadesDeLaSesion _capacidades;
 
 	[ObservableProperty]
 	public partial ResumenOperativo Resumen { get; set; }
@@ -28,6 +30,7 @@ public sealed partial class InicioViewModel : ObservableObject
 		IConnectivityService conectividad,
 		ISyncQueueService cola,
 		IClock reloj,
+		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace)
 	{
 		Enlace = enlace;
@@ -35,6 +38,7 @@ public sealed partial class InicioViewModel : ObservableObject
 		_conectividad = conectividad;
 		_cola = cola;
 		_reloj = reloj;
+		_capacidades = capacidades;
 		_conectividad.EnlaceCambio += (_, _) => NotificarEstadoEnlace();
 
 		Resumen = ResumenOperativo.Vacio;
@@ -66,6 +70,25 @@ public sealed partial class InicioViewModel : ObservableObject
 	/// </remarks>
 	public string UnidadVehicular => _sesiones.Actual?.UnidadVehicular ?? "-";
 
+	/// <summary>
+	/// Si la sesión autoriza registrar incidencias, que es lo que decide si la tarjeta muestra
+	/// la insignia «CAPTURA».
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>La insignia estaba escrita a mano en el XAML</b>, heredada de la maqueta: decía
+	/// «CAPTURA» siempre, incluso con un operador que no puede capturar. Puesta junto al nombre
+	/// y al rol se lee como una afirmación sobre ese operador, así que afirmaba algo falso justo
+	/// donde más se cree.
+	/// </para>
+	/// <para>
+	/// Se oculta en vez de sustituirse por otro texto: un «SOLO LECTURA» sería un literal que
+	/// Producto no ha fijado. Su ausencia, con el aviso que Captura sí da (JTT-1404 CA 5),
+	/// alcanza para contar lo que pasa.
+	/// </para>
+	/// </remarks>
+	public bool PuedeCapturar => _capacidades.Puede(CapacidadOperador.RegistrarIncidencia);
+
 	public bool HayEnlace => _conectividad.HayEnlace;
 
 	/// <summary>Kilómetro conocido, o un guion cuando no hay lectura.</summary>
@@ -88,6 +111,9 @@ public sealed partial class InicioViewModel : ObservableObject
 		OnPropertyChanged(nameof(Operador));
 		OnPropertyChanged(nameof(Rol));
 		OnPropertyChanged(nameof(UnidadVehicular));
+		// Va con la identidad y no con el enlace: las capacidades llegan en la misma
+		// instantánea de sesión, y cambian cuando cambia ella.
+		OnPropertyChanged(nameof(PuedeCapturar));
 		OnPropertyChanged(nameof(KilometroActual));
 	}
 
