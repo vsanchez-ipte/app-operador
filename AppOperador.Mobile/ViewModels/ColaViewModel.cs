@@ -86,6 +86,31 @@ public sealed partial class ColaViewModel : ObservableObject
 	private static string Incidencias(int cuantas) =>
 		cuantas == 1 ? "1 incidencia" : $"{cuantas} incidencias";
 
+	/// <summary>
+	/// Explica por qué no salió nada, nombrando <b>las dos</b> razones cuando las dos se dan.
+	/// </summary>
+	/// <remarks>
+	/// La suma de lo que se nombra aquí tiene que cuadrar con el «sin enviar» del encabezado.
+	/// Que no cuadre es lo que hace que el operador desconfíe de la pantalla, y la diferencia
+	/// entre las dos razones es la que decide qué hacer: <b>las que esperan salen solas y las
+	/// rechazadas no</b>.
+	/// </remarks>
+	private static string MotivoDeLoOmitido(int porCorregir, int enEspera)
+	{
+		var rechazadas = $"{Incidencias(porCorregir)} sin enviar: el CCO las rechazó y no saldrán "
+			+ "solas. Revise su detalle en la lista.";
+
+		var esperando = $"{Incidencias(enEspera)} esperan su reintento. Saldrán solas.";
+
+		if (porCorregir > 0 && enEspera > 0)
+		{
+			// Primero lo que exige algo del operador; después lo que se resuelve solo.
+			return $"{rechazadas} {esperando}";
+		}
+
+		return porCorregir > 0 ? rechazadas : esperando;
+	}
+
 	public bool HayRegistros => Registros.Count > 0;
 
 	/// <summary>Indica si hay algo que decir sobre la última sincronización.</summary>
@@ -167,12 +192,13 @@ public sealed partial class ColaViewModel : ObservableObject
 		// Nada se intentó, pero eso NO significa que no haya nada. Decir «no hay pendientes»
 		// con tres en la lista de arriba es contradecirse en la misma pantalla, y deja al
 		// operador sin saber si el botón funcionó.
-		_ when resultado.Intentados == 0 && resultado.OmitidosPorCorregir > 0 =>
-			$"{Incidencias(resultado.OmitidosPorCorregir)} sin enviar: el CCO las rechazó y no "
-			+ "saldrán solas. Revise su detalle en la lista.",
-
-		_ when resultado.Intentados == 0 && resultado.OmitidosEnEspera > 0 =>
-			$"{Incidencias(resultado.OmitidosEnEspera)} esperan su reintento. Saldrán solas.",
+		// Las dos razones de saltarse un registro pueden darse a la vez, y antes ganaba la
+		// primera rama del switch: con dos rechazadas y una esperando, la pantalla decía «3 sin
+		// enviar» arriba y hablaba solo de 2 abajo. La que faltaba era justo la que sí va a
+		// salir sola, así que el operador la daba por perdida.
+		_ when resultado.Intentados == 0
+			&& (resultado.OmitidosPorCorregir > 0 || resultado.OmitidosEnEspera > 0) =>
+			MotivoDeLoOmitido(resultado.OmitidosPorCorregir, resultado.OmitidosEnEspera),
 
 		_ when resultado.Intentados == 0 =>
 			"No hay incidencias sin enviar.",
