@@ -33,4 +33,21 @@
 	-->
 	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+	<!--
+		Evidencia de la incidencia (JTT-1398 CA 2, 3 y 4).
+
+		CAMERA se pide al usar la función, no al iniciar sesión: lo exigen el CA 3 de esta
+		historia y los criterios 1 a 3 de JTT-1387. Lo pide MediaPicker al invocarlo.
+
+		android:required="false" en la cámara porque la evidencia es OPCIONAL: un dispositivo
+		sin cámara tiene que poder instalar la app y capturar incidencias sin foto. Con
+		required="true", Google Play lo dejaría fuera del catálogo de instalación.
+
+		NO se declaran READ_EXTERNAL_STORAGE ni READ_MEDIA_IMAGES: el selector del sistema
+		devuelve el archivo ya autorizado por el propio diálogo, así que pedir acceso a toda
+		la galería sería más de lo necesario. Es el CA 6 de JTT-1387.
+	-->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

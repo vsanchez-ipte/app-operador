@@ -120,6 +120,27 @@ public static class MauiProgram
 		servicios.AddSingleton<ICatalogoRepository, RepositorioCatalogoSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
+		// Evidencia de la incidencia (JTT-1398). El repositorio va aparte del de incidencias
+		// porque la evidencia se sincroniza y se reintenta por su cuenta: una evidencia
+		// fallida no revierte una incidencia ya confirmada.
+		servicios.AddSingleton<IRepositorioEvidencias, RepositorioEvidenciasSqlite>();
+
+		// Fábrica explícita: el almacén recibe el directorio de datos de la app, que es un
+		// valor de plataforma y no un servicio que el contenedor sepa resolver. Es el espacio
+		// privado —no la caché— porque el sistema vacía la caché cuando le falta espacio, y
+		// ahí se perdería una evidencia pendiente de enviar.
+		servicios.AddSingleton<IAlmacenEvidencias>(
+			_ => new AlmacenEvidenciasDispositivo(FileSystem.AppDataDirectory));
+
+		// El selector se registra en todos los destinos, sin variante simulada. En escritorio
+		// MediaPicker no existe: la implementación lo detecta y responde que no está
+		// disponible, que es la verdad y basta para que la pantalla no ofrezca el botón. Una
+		// versión simulada solo serviría para adjuntar archivos falsos que nadie va a probar.
+		servicios.AddSingleton<ISelectorEvidencia, SelectorEvidenciaDispositivo>();
+
+		servicios.AddSingleton<AdjuntarEvidencia>();
+		servicios.AddSingleton<QuitarEvidencia>();
+
 #if EXPORTAR_BASE_DATOS
 		// Copia legible de la base para revisarla en el escritorio. Solo existe en paquetes
 		// compilados con -p:HabilitarExportacionBaseDatos=true; en cualquier otro, ni esta

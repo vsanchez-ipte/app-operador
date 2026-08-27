@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 7;
+	public const int VersionEsquemaActual = 8;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -290,6 +290,10 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		//           catálogo: no se puede adjuntar mientras tanto. Es deliberado —validar con
 		//           números que la app se invente es peor que no admitir adjuntos— y se
 		//           resuelve solo en cuanto haya conexión.
+		//
+		// De 7 a 8: JTT-1398 agrega nombre_original a evidencia_local. Aditivo. La tabla
+		//           existía desde el primer esquema y nadie había escrito en ella, así que no
+		//           hay filas anteriores a las que les falte: la columna nace poblada.
 		//
 		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
 		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
