@@ -562,7 +562,8 @@ public sealed class SincronizarIncidenciasTests
 				[new TipoIncidencia(11, "Objeto en camino")],
 				[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
 				[new AfectacionIncidencia(3, "Parcial")],
-				[new CuerpoVia("A", "Cuerpo A")]));
+				[new CuerpoVia("A", "Cuerpo A")],
+				LimitesEvidencia.Desconocidos));
 
 		public Task ReemplazarAsync(CatalogosOperacion catalogos, CancellationToken c = default) =>
 			Task.CompletedTask;

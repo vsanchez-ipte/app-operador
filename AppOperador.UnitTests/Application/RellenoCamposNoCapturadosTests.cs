@@ -23,7 +23,13 @@ public sealed class RellenoCamposNoCapturadosTests
 	private static CatalogosOperacion Catalogo(
 		IReadOnlyList<AfectacionIncidencia> afectaciones,
 		IReadOnlyList<CuerpoVia> cuerpos) =>
-		new(new DateOnly(2026, 8, 20), [new TipoIncidencia(11, "Objeto")], [], afectaciones, cuerpos);
+		new(
+			new DateOnly(2026, 8, 20),
+			[new TipoIncidencia(11, "Objeto")],
+			[],
+			afectaciones,
+			cuerpos,
+			LimitesEvidencia.Desconocidos);
 
 	[Fact]
 	public void NuncaRellenaConElCierreTotal()

@@ -15,7 +15,8 @@ public class ActualizarCatalogoLocalTests
 			[new TipoIncidencia(11, "Choque por alcance")],
 			[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
 			[],
-			[]);
+			[],
+			LimitesEvidencia.Desconocidos);
 
 	private sealed class ClienteFalso(CatalogosOperacion? respuesta) : ICatalogosJacobClient
 	{

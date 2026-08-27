@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 6;
+	public const int VersionEsquemaActual = 7;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -282,6 +282,14 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		// De 5 a 6: JTT-1395 agrega el kilómetro normalizado y la lectura GPS original
 		//           (latitud, longitud, precisión e instante UTC) a incidencia_local.
 		//           Es aditivo: las filas anteriores quedan con esos campos nulos.
+		//
+		// De 6 a 7: JTT-1398 agrega los límites de evidencia a la fila de metadatos del
+		//           catálogo: formatos admitidos, tamaño máximo y número de archivos. Aditivo.
+		//           Una base anterior queda con las tres columnas en su valor por omisión, y
+		//           eso deja los límites como «desconocidos» hasta la primera descarga del
+		//           catálogo: no se puede adjuntar mientras tanto. Es deliberado —validar con
+		//           números que la app se invente es peor que no admitir adjuntos— y se
+		//           resuelve solo en cuanto haya conexión.
 		//
 		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
 		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se

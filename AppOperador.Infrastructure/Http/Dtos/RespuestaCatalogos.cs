@@ -32,6 +32,28 @@ public sealed class RespuestaCatalogos
 
 	[JsonPropertyName("cuerpos")]
 	public IReadOnlyList<CuerpoCatalogo>? Cuerpos { get; init; }
+
+	/// <summary>Lo que el servidor admite como evidencia (JTT-1398).</summary>
+	/// <remarks>
+	/// Puede faltar: un servidor anterior a la tercera tanda del canal móvil no lo publica. En
+	/// ese caso no se inventan valores —la app deja de admitir adjuntos hasta que llegue—,
+	/// porque validar con números distintos a los del servidor es peor que no validar.
+	/// </remarks>
+	[JsonPropertyName("limitesEvidencia")]
+	public LimitesEvidenciaCatalogo? LimitesEvidencia { get; init; }
+}
+
+/// <summary>Límites de evidencia vigentes, tal como los declara el servidor (JTT-1398).</summary>
+public sealed class LimitesEvidenciaCatalogo
+{
+	[JsonPropertyName("formatosPermitidos")]
+	public IReadOnlyList<string>? FormatosPermitidos { get; init; }
+
+	[JsonPropertyName("tamanoMaximoMb")]
+	public int? TamanoMaximoMb { get; init; }
+
+	[JsonPropertyName("maximoArchivosPorIncidencia")]
+	public int? MaximoArchivosPorIncidencia { get; init; }
 }
 
 /// <summary>Tipo de incidencia vigente.</summary>

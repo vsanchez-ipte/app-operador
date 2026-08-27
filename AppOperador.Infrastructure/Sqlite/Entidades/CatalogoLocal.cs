@@ -97,4 +97,23 @@ internal sealed class CatalogoMetaLocal
 	/// <summary>Fecha en que se descargó el catálogo, en formato <c>yyyy-MM-dd</c>.</summary>
 	[Column("version")]
 	public string Version { get; set; } = string.Empty;
+
+	/// <summary>
+	/// Tipos MIME de evidencia admitidos, separados por coma (JTT-1398).
+	/// </summary>
+	/// <remarks>
+	/// Van en la fila de metadatos y no en una tabla propia porque son <b>un solo dato del
+	/// catálogo</b>, no una lista consultable: nadie filtra ni ordena por formato. Una tabla de
+	/// cuatro filas para leerlas siempre juntas sería ceremonia sin uso.
+	/// </remarks>
+	[Column("evidencia_formatos")]
+	public string EvidenciaFormatos { get; set; } = string.Empty;
+
+	/// <summary>Tope por archivo en megabytes; <c>0</c> significa que no se ha descargado.</summary>
+	[Column("evidencia_tamano_maximo_mb")]
+	public int EvidenciaTamanoMaximoMb { get; set; }
+
+	/// <summary>Archivos admitidos por incidencia; <c>0</c> significa que no se ha descargado.</summary>
+	[Column("evidencia_maximo_archivos")]
+	public int EvidenciaMaximoArchivos { get; set; }
 }

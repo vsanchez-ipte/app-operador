@@ -65,7 +65,12 @@ public sealed class CatalogoSimulado : ICatalogosJacobClient
 				new CuerpoVia("B", "Cuerpo B"),
 				new CuerpoVia("C", "Ambos cuerpos"),
 				new CuerpoVia("D", "Camellón/cuneta central"),
-			]);
+			],
+
+			// Los mismos que publica el servidor hoy. Aquí sí van escritos, porque este
+			// catálogo ES el simulador: no hay servidor del que leerlos. En el camino real
+			// nunca se codifican (JTT-1398).
+			new LimitesEvidencia(["image/jpeg", "image/png", "image/bmp", "application/pdf"], 5, 3));
 
 		return Task.FromResult<CatalogosOperacion?>(catalogos);
 	}

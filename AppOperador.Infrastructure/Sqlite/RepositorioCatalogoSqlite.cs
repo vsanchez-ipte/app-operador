@@ -18,6 +18,9 @@ public sealed class RepositorioCatalogoSqlite : ICatalogoRepository
 	/// <summary>Formato con el que se guarda la versión, invariante de la cultura.</summary>
 	private const string FormatoVersion = "yyyy-MM-dd";
 
+	/// <summary>Separador de la lista de formatos de evidencia. No aparece en un tipo MIME.</summary>
+	private const char SeparadorFormatos = ',';
+
 	private readonly BaseDatosLocal _baseDatos;
 
 	public RepositorioCatalogoSqlite(BaseDatosLocal baseDatos)
@@ -41,7 +44,8 @@ public sealed class RepositorioCatalogoSqlite : ICatalogoRepository
 			[.. tipos.Select(t => new TipoIncidencia(t.Id, t.Nombre, t.ExigeDescripcion))],
 			[.. severidades.Select(LeerSeveridad).OfType<SeveridadIncidencia>()],
 			[.. afectaciones.Select(a => new AfectacionIncidencia(a.Id, a.Nombre))],
-			[.. cuerpos.Select(c => new CuerpoVia(c.Clave, c.Nombre))]);
+			[.. cuerpos.Select(c => new CuerpoVia(c.Clave, c.Nombre))],
+			LeerLimites(meta));
 	}
 
 	/// <inheritdoc />
@@ -100,6 +104,10 @@ public sealed class RepositorioCatalogoSqlite : ICatalogoRepository
 			{
 				Clave = CatalogoMetaLocal.ClaveUnica,
 				Version = catalogos.Version.ToString(FormatoVersion, CultureInfo.InvariantCulture),
+				EvidenciaFormatos = string.Join(
+					SeparadorFormatos, catalogos.LimitesEvidencia.FormatosPermitidos),
+				EvidenciaTamanoMaximoMb = catalogos.LimitesEvidencia.TamanoMaximoMb,
+				EvidenciaMaximoArchivos = catalogos.LimitesEvidencia.MaximoArchivosPorIncidencia,
 			});
 		});
 	}
@@ -117,6 +125,33 @@ public sealed class RepositorioCatalogoSqlite : ICatalogoRepository
 		Guid.TryParse(fila.Id, out var id)
 			? new SeveridadIncidencia(id, fila.Nivel, fila.Orden, fila.Hexadecimal)
 			: null;
+
+	/// <summary>
+	/// Lee los límites de evidencia guardados; incompletos equivalen a no tenerlos (JTT-1398).
+	/// </summary>
+	/// <remarks>
+	/// Una base de antes de esta versión trae las tres columnas en su valor por omisión, así que
+	/// el operador que actualice sin haber vuelto a descargar el catálogo <b>no podrá adjuntar
+	/// hasta la primera conexión</b>. Es lo correcto: la alternativa es validar con números que
+	/// la app se inventó.
+	/// </remarks>
+	private static LimitesEvidencia LeerLimites(CatalogoMetaLocal? meta)
+	{
+		if (meta is null)
+		{
+			return LimitesEvidencia.Desconocidos;
+		}
+
+		var formatos = meta.EvidenciaFormatos
+			.Split(SeparadorFormatos, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+		var limites = new LimitesEvidencia(
+			formatos,
+			meta.EvidenciaTamanoMaximoMb,
+			meta.EvidenciaMaximoArchivos);
+
+		return limites.EstanDefinidos ? limites : LimitesEvidencia.Desconocidos;
+	}
 
 	/// <summary>Lee la versión guardada; una fecha ilegible equivale a no tener catálogo.</summary>
 	private static DateOnly LeerVersion(string? guardada) =>

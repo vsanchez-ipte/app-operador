@@ -127,8 +127,39 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 			tipos,
 			severidades,
 			afectaciones,
-			cuerpos);
+			cuerpos,
+			ConvertirLimites(respuesta.LimitesEvidencia));
 
 		return catalogo.EsUtilizable ? catalogo : null;
+	}
+
+	/// <summary>
+	/// Convierte los límites de evidencia, o los deja desconocidos si el servidor no los declara
+	/// completos.
+	/// </summary>
+	/// <remarks>
+	/// <b>Es todo o nada, y a propósito.</b> Unos límites a medias —formatos sin tope de tamaño,
+	/// por ejemplo— llevarían a la app a completar el hueco con un número propio, que es justo
+	/// lo que este diseño evita: la app validaría con un número que el servidor no conoce. Sin
+	/// los tres, no se admite adjuntar y se dice por qué.
+	/// </remarks>
+	private static LimitesEvidencia ConvertirLimites(LimitesEvidenciaCatalogo? limites)
+	{
+		if (limites is null)
+		{
+			return LimitesEvidencia.Desconocidos;
+		}
+
+		var formatos = (limites.FormatosPermitidos ?? [])
+			.Where(f => !string.IsNullOrWhiteSpace(f))
+			.Select(f => f.Trim())
+			.ToList();
+
+		var convertidos = new LimitesEvidencia(
+			formatos,
+			limites.TamanoMaximoMb ?? 0,
+			limites.MaximoArchivosPorIncidencia ?? 0);
+
+		return convertidos.EstanDefinidos ? convertidos : LimitesEvidencia.Desconocidos;
 	}
 }

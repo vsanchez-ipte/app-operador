@@ -95,7 +95,8 @@ public sealed class BaseDatosLocalTests
 				[new TipoIncidencia(107, "Otro", ExigeDescripcion: true)],
 				[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
 				[new AfectacionIncidencia(1, "Total")],
-				[new CuerpoVia("A", "Cuerpo A")]));
+				[new CuerpoVia("A", "Cuerpo A")],
+				LimitesEvidencia.Desconocidos));
 
 		var segunda = contexto.ReabrirBaseDatos();
 		await segunda.InicializarAsync();
@@ -126,7 +127,8 @@ public sealed class BaseDatosLocalTests
 					[new TipoIncidencia(107, "Otro", ExigeDescripcion: true)],
 					[new SeveridadIncidencia(Guid.NewGuid(), "Crítico", 1, "#EB1409")],
 					[new AfectacionIncidencia(1, "Total")],
-					[new CuerpoVia("A", "Cuerpo A")]));
+					[new CuerpoVia("A", "Cuerpo A")],
+					LimitesEvidencia.Desconocidos));
 			await anterior.DisposeAsync();
 
 			using (var directa = new SQLiteConnection(ruta))
