@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;

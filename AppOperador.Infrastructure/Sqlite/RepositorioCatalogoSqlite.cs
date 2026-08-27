@@ -1,6 +1,7 @@
 using System.Globalization;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;

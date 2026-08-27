@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 

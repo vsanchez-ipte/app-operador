@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
