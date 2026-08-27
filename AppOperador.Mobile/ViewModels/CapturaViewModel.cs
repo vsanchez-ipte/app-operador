@@ -90,6 +90,22 @@ public sealed partial class CapturaViewModel : ObservableObject
 	private readonly ISincronizadorIncidencias _sincronizador;
 	private readonly ObtenerKilometroPorUbicacion _obtenerKilometro;
 	private readonly CapacidadesDeLaSesion _capacidades;
+	private readonly ISelectorEvidencia _selectorEvidencia;
+	private readonly AdjuntarEvidencia _adjuntarEvidencia;
+	private readonly QuitarEvidencia _quitarEvidencia;
+	private readonly ObtenerEvidenciasDeIncidencia _obtenerEvidencias;
+
+	/// <summary>
+	/// UUID del registro al que se están adjuntando evidencias, o <see langword="null"/>.
+	/// </summary>
+	/// <remarks>
+	/// <b>Adjuntar antes de guardar obliga a que exista algo a lo que adjuntar.</b> El CA 1
+	/// permite lo primero y el UUID nace al guardar, así que al adjuntar sin borrador abierto se
+	/// guarda uno: la evidencia queda atada desde el principio y, si la app se cierra, no se
+	/// pierde. Es el mismo criterio que JTT-1401 aplicó al envío —guardar antes de arriesgar— y
+	/// usa lo que JTT-1399 ya construyó, incluido que convertir conserva el UUID.
+	/// </remarks>
+	private string? _uuidParaEvidencias;
 	private PosicionDispositivo? _posicionGps;
 
 	/// <summary>
@@ -157,7 +173,11 @@ public sealed partial class CapturaViewModel : ObservableObject
 		CapacidadesDeLaSesion capacidades,
 		EstadoEnlaceViewModel enlace,
 		ConvertirBorradorEnIncidencia convertirBorrador,
-		ISincronizadorIncidencias sincronizador)
+		ISincronizadorIncidencias sincronizador,
+		ISelectorEvidencia selectorEvidencia,
+		AdjuntarEvidencia adjuntarEvidencia,
+		QuitarEvidencia quitarEvidencia,
+		ObtenerEvidenciasDeIncidencia obtenerEvidencias)
 	{
 		_incidencias = incidencias;
 		_catalogo = catalogo;
@@ -165,6 +185,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 		_sincronizador = sincronizador;
 		_obtenerKilometro = obtenerKilometro;
 		_capacidades = capacidades;
+		_selectorEvidencia = selectorEvidencia;
+		_adjuntarEvidencia = adjuntarEvidencia;
+		_quitarEvidencia = quitarEvidencia;
+		_obtenerEvidencias = obtenerEvidencias;
 		Enlace = enlace;
 
 		Kilometro = string.Empty;
@@ -242,6 +266,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 		await RecalcularUbicacionAsync();
 		await RecargarBorradoresAsync();
+
+		// Aunque todavía no haya registro: hacen falta los límites para saber si el botón de
+		// adjuntar va encendido antes de que exista nada que adjuntar.
+		await RecargarEvidenciasAsync();
 	}
 
 	/// <summary>
@@ -584,6 +612,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 		MensajeError = null;
 		BorradorEnEdicion = borrador.ClaveLocal;
 
+		// Sus evidencias vienen con él: se adjuntaron a este UUID y siguen siendo suyas.
+		_uuidParaEvidencias = borrador.Uuid;
+
 		TipoSeleccionado = Tipos.FirstOrDefault(t => t.Id == borrador.TipoId);
 		SeveridadSeleccionada = Severidades.FirstOrDefault(s => s.Id == borrador.SeveridadId);
 		Nota = borrador.Nota;
@@ -609,6 +640,24 @@ public sealed partial class CapturaViewModel : ObservableObject
 		MensajeError = null;
 		LimpiarFormulario();
 		Kilometro = string.Empty;
+	}
+
+	/// <summary>
+	/// Suelta el registro al que se estaban adjuntando evidencias y vacía la lista.
+	/// </summary>
+	/// <remarks>
+	/// <b>No borra nada.</b> Las evidencias siguen guardadas y atadas a su registro; lo que se
+	/// suelta es la pantalla. Al abrir ese borrador otra vez vuelven a aparecer.
+	/// </remarks>
+	private void SoltarEvidencias()
+	{
+		_uuidParaEvidencias = null;
+		Evidencias.Clear();
+		ResumenEvidencias = ResumenEvidencias with { Adjuntas = [] };
+
+		OnPropertyChanged(nameof(PuedeAdjuntar));
+		OnPropertyChanged(nameof(ContadorEvidencias));
+		OnPropertyChanged(nameof(HayEvidencias));
 	}
 
 	/// <summary>
@@ -738,6 +787,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 	{
 		Nota = string.Empty;
 		SeveridadSeleccionada = Severidades.FirstOrDefault();
+		SoltarEvidencias();
 	}
 
 	partial void OnMensajeErrorChanged(string? value) => OnPropertyChanged(nameof(HayError));
@@ -778,4 +828,157 @@ public sealed partial class CapturaViewModel : ObservableObject
 		FuenteKilometro = KilometerSource.Manual;
 		_posicionGps = null;
 	}
+
+	// ── Evidencia (JTT-1398 CA 1) ─────────────────────────────────────────────────────
+
+	/// <summary>Los archivos adjuntos, tal como se listan antes de guardar.</summary>
+	public ObservableCollection<EvidenciaVista> Evidencias { get; } = [];
+
+	/// <summary>Lo que se puede hacer con las evidencias. Lo decide Aplicación, no la vista.</summary>
+	[ObservableProperty]
+	public partial ResumenEvidencias ResumenEvidencias { get; set; } = ResumenEvidencias.Vacio;
+
+	/// <summary>Indica si el botón de adjuntar va encendido.</summary>
+	/// <remarks>
+	/// Exige además el permiso de captura: adjuntar es capturar, y el mismo módulo que autoriza
+	/// registrar autoriza adjuntar (JTT-1385, JTT-1404).
+	/// </remarks>
+	public bool PuedeAdjuntar => TienePermisoDeCaptura && ResumenEvidencias.PuedeAdjuntar;
+
+	/// <summary>Indica si el dispositivo tiene cámara. Sin ella el botón no se ofrece.</summary>
+	public bool HayCamara => _selectorEvidencia.Disponible(OrigenEvidencia.Camara);
+
+	/// <summary>Contador combinado, como lo pidió el PO: sin separar fotos de videos.</summary>
+	public string ContadorEvidencias =>
+		ResumenEvidencias.Limites.EstanDefinidos
+			? $"{ResumenEvidencias.Cuantas}/{ResumenEvidencias.Limites.MaximoArchivosPorIncidencia} archivos"
+			: "Sin conexión previa: no se puede adjuntar todavía";
+
+	public bool HayEvidencias => Evidencias.Count > 0;
+
+	[RelayCommand]
+	private Task AdjuntarDeCamaraAsync() => AdjuntarAsync(OrigenEvidencia.Camara);
+
+	[RelayCommand]
+	private Task AdjuntarDeGaleriaAsync() => AdjuntarAsync(OrigenEvidencia.Galeria);
+
+	/// <summary>
+	/// Pide un archivo y lo adjunta, creando el borrador si hacía falta.
+	/// </summary>
+	private async Task AdjuntarAsync(OrigenEvidencia origen)
+	{
+		if (!_capacidades.Puede(CapacidadOperador.AdjuntarEvidencia))
+		{
+			NotificarAutorizacion();
+			return;
+		}
+
+		if (!ResumenEvidencias.PuedeAdjuntar)
+		{
+			MensajeError = MensajeDe(ResumenEvidencias.MotivoParaNoAdjuntar);
+			return;
+		}
+
+		var archivo = await _selectorEvidencia.ElegirAsync(origen);
+
+		// Cancelar y negar el permiso llegan igual, y los dos son respuestas válidas: el CA 4
+		// dice que la negativa no impide guardar la incidencia sin evidencia.
+		if (archivo is null)
+		{
+			return;
+		}
+
+		var uuid = await AsegurarRegistroParaEvidenciaAsync();
+		if (uuid is null)
+		{
+			return;
+		}
+
+		var resultado = await _adjuntarEvidencia.EjecutarAsync(uuid, archivo);
+
+		MensajeError = resultado.Exito ? null : MensajeDe(resultado.Motivo);
+
+		await RecargarEvidenciasAsync();
+	}
+
+	[RelayCommand]
+	private async Task QuitarEvidenciaAsync(EvidenciaVista? evidencia)
+	{
+		if (evidencia is null)
+		{
+			return;
+		}
+
+		await _quitarEvidencia.EjecutarAsync(evidencia.Uuid);
+		await RecargarEvidenciasAsync();
+	}
+
+	/// <summary>
+	/// Devuelve el UUID al que atar la evidencia, guardando un borrador si todavía no hay.
+	/// </summary>
+	/// <remarks>
+	/// <b>El borrador aparece en la lista, y eso es visible para el operador.</b> Es el precio
+	/// de no perder la foto: sin registro previo, la evidencia viviría en memoria y se iría con
+	/// la app. Convertir el borrador conserva el UUID (JTT-1399), así que la evidencia sigue
+	/// siendo de la misma incidencia cuando se registre.
+	/// </remarks>
+	private async Task<string?> AsegurarRegistroParaEvidenciaAsync()
+	{
+		if (_uuidParaEvidencias is { } yaHay)
+		{
+			return yaHay;
+		}
+
+		if (BorradorEnEdicion is not { } clave)
+		{
+			clave = await _incidencias.GuardarBorradorAsync(
+				TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
+
+			BorradorEnEdicion = clave;
+			await RecargarBorradoresAsync();
+		}
+
+		var borrador = await _incidencias.ObtenerBorradorAsync(clave);
+		_uuidParaEvidencias = borrador?.Uuid;
+
+		return _uuidParaEvidencias;
+	}
+
+	/// <summary>Vuelve a leer las evidencias y refresca lo que la pantalla muestra de ellas.</summary>
+	private async Task RecargarEvidenciasAsync()
+	{
+		ResumenEvidencias = await _obtenerEvidencias.EjecutarAsync(_uuidParaEvidencias);
+
+		Evidencias.Clear();
+		foreach (var adjunta in ResumenEvidencias.Adjuntas)
+		{
+			Evidencias.Add(EvidenciaVista.Desde(adjunta));
+		}
+
+		OnPropertyChanged(nameof(PuedeAdjuntar));
+		OnPropertyChanged(nameof(ContadorEvidencias));
+		OnPropertyChanged(nameof(HayEvidencias));
+		AdjuntarDeCamaraCommand.NotifyCanExecuteChanged();
+		AdjuntarDeGaleriaCommand.NotifyCanExecuteChanged();
+	}
+
+	/// <summary>Traduce el motivo del rechazo al aviso que lee el operador.</summary>
+	/// <remarks>
+	/// Cada motivo dice algo distinto porque cada uno se corrige distinto. Los literales son
+	/// provisionales, como los demás de esta pantalla.
+	/// </remarks>
+	private string MensajeDe(MotivoEvidenciaRechazada motivo) => motivo switch
+	{
+		MotivoEvidenciaRechazada.LimitesDesconocidos =>
+			"Conéctese una vez para poder adjuntar archivos.",
+		MotivoEvidenciaRechazada.CupoLleno =>
+			$"Ya adjuntó el máximo de {ResumenEvidencias.Limites.MaximoArchivosPorIncidencia} archivos. Quite uno para agregar otro.",
+		MotivoEvidenciaRechazada.FormatoNoAdmitido =>
+			"Ese tipo de archivo no se admite. Elija una fotografía o un PDF.",
+		MotivoEvidenciaRechazada.DemasiadoGrande =>
+			$"El archivo pasa de {ResumenEvidencias.Limites.TamanoMaximoMb} MB.",
+		MotivoEvidenciaRechazada.ArchivoVacio =>
+			"El archivo no se pudo leer. Intente tomarlo de nuevo.",
+		_ => "No se pudo adjuntar el archivo.",
+	};
 }

@@ -21,7 +21,14 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <param name="Kilometro">Kilómetro tal como se escribió, sin validar.</param>
 /// <param name="SeveridadId">Identificador del nivel elegido, si ya se eligió.</param>
 /// <param name="Nota">Nota capturada hasta ahora. Vacía si no se ha escrito nada.</param>
+/// <param name="Uuid">
+/// Identidad del registro. <b>Es la clave de idempotencia frente al servidor</b> y la que ata
+/// las evidencias a su incidencia (JTT-1398): la clave local sirve para que el operador la
+/// reconozca, pero lo que viaja y lo que relaciona es el UUID. Se conserva al convertir el
+/// borrador en incidencia, así que la evidencia adjuntada antes de guardar sigue siendo suya.
+/// </param>
 public sealed record BorradorIncidencia(
+	string Uuid,
 	string ClaveLocal,
 	int? TipoId,
 	string? Kilometro,

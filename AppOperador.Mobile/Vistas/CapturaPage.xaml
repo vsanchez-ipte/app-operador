@@ -117,6 +117,72 @@
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayAvisoSinCatalogo}" />
 
+                    <!-- ===== Evidencia (JTT-1398 CA 1) =====
+
+                         Va ANTES de los botones de guardar porque el criterio dice «adjuntar
+                         evidencia opcional ANTES de guardar»: si estuviera después, el
+                         operador leería el orden al revés.
+
+                         La lista muestra nombre, tipo y tamaño de cada archivo, que son los
+                         tres datos que el PO pidió visibles, y deja quitarlos.
+                    -->
+                    <Label Text="EVIDENCIA (OPCIONAL)" Style="{StaticResource EtiquetaCampo}" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <!-- La cámara solo si el dispositivo la tiene: ofrecer un botón que no
+                             puede funcionar es peor que no ofrecerlo. -->
+                        <Button Grid.Column="0"
+                                Text="Tomar foto"
+                                Style="{StaticResource BotonSecundario}"
+                                IsVisible="{Binding HayCamara}"
+                                IsEnabled="{Binding PuedeAdjuntar}"
+                                Command="{Binding AdjuntarDeCamaraCommand}" />
+                        <Button Grid.Column="1"
+                                Text="Elegir archivo"
+                                Style="{StaticResource BotonSecundario}"
+                                IsEnabled="{Binding PuedeAdjuntar}"
+                                Command="{Binding AdjuntarDeGaleriaCommand}" />
+                    </Grid>
+
+                    <!-- Contador combinado, sin separar fotos de videos: así lo fijó el PO. -->
+                    <Label Text="{Binding ContadorEvidencias}"
+                           Style="{StaticResource TextoSecundario}"
+                           HorizontalOptions="End" />
+
+                    <VerticalStackLayout Spacing="6" IsVisible="{Binding HayEvidencias}"
+                                         BindableLayout.ItemsSource="{Binding Evidencias}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EvidenciaVista">
+                                <Border Style="{StaticResource TarjetaInterna}">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                            <Label Text="{Binding Nombre}"
+                                                   Style="{StaticResource TextoDato}"
+                                                   LineBreakMode="MiddleTruncation" />
+                                            <Label Style="{StaticResource TextoSecundario}">
+                                                <Label.Text>
+                                                    <MultiBinding StringFormat="{}{0} · {1}">
+                                                        <Binding Path="Tipo" />
+                                                        <Binding Path="Tamano" />
+                                                    </MultiBinding>
+                                                </Label.Text>
+                                            </Label>
+                                        </VerticalStackLayout>
+
+                                        <!-- No se puede quitar lo que el CCO ya confirmó: el
+                                             archivo existe del otro lado. -->
+                                        <Button Grid.Column="1"
+                                                Text="Quitar"
+                                                Style="{StaticResource BotonSecundario}"
+                                                IsEnabled="{Binding YaEnviada, Converter={StaticResource InvertirBooleano}}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CapturaViewModel}}, Path=QuitarEvidenciaCommand}"
+                                                CommandParameter="{Binding .}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
                     <!-- Por qué los botones están apagados (JTT-1404 CA 5). Va JUNTO a
                          ellos y no arriba del formulario: el operador mira el botón que no
                          responde, y ahí es donde tiene que encontrar la explicación. -->

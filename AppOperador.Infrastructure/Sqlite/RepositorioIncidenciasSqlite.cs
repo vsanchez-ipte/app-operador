@@ -220,6 +220,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		}
 
 		return new BorradorIncidencia(
+			fila.Uuid,
 			fila.ClaveLocal,
 			// El tipo se guardó como texto invariante; si la fila es anterior a JTT-1394 trae
 			// una clave de maqueta —OBJETO, VEHICULO…— que no es un entero. En ese caso se
