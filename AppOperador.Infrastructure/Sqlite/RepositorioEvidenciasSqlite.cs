@@ -88,6 +88,47 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		await conexion.DeleteAsync<EvidenciaLocal>(uuid);
 	}
 
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerPendientesDeIncidenciaAsync(
+		string incidenciaUuid,
+		CancellationToken cancelacion = default)
+	{
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var sincronizado = (int)EstadoSincronizacion.Sincronizado;
+
+		// Todo lo que no esté confirmado cuenta, incluido lo fallido: la subida es idempotente
+		// por contenido, así que reintentar no duplica ni gasta cupo. Antes de que el servidor
+		// lo fuera, reintentar tres veces una sola foto agotaba el tope del operador.
+		var filas = await conexion.Table<EvidenciaLocal>()
+			.Where(e => e.IncidenciaUuid == incidenciaUuid && e.Estado != sincronizado)
+			.OrderBy(e => e.CreadoUtcTicks)
+			.ToListAsync();
+
+		return [.. filas.Select(Convertir)];
+	}
+
+	/// <inheritdoc />
+	public async Task ActualizarEnvioAsync(
+		string uuid,
+		EstadoSincronizacion estado,
+		string? codigoError,
+		CancellationToken cancelacion = default)
+	{
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var fila = await conexion.FindAsync<EvidenciaLocal>(uuid);
+
+		if (fila is null)
+		{
+			return;
+		}
+
+		fila.Estado = (int)estado;
+		fila.Intentos++;
+		fila.UltimoErrorCodigo = codigoError;
+
+		await conexion.UpdateAsync(fila);
+	}
+
 	private static EvidenciaAdjunta Convertir(EvidenciaLocal fila) => new(
 		fila.Uuid,
 		fila.IncidenciaUuid,
@@ -95,5 +136,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		fila.TipoMedio,
 		fila.Bytes,
 		fila.RutaArchivo,
-		(EstadoSincronizacion)fila.Estado);
+		(EstadoSincronizacion)fila.Estado,
+		fila.UltimoErrorCodigo);
 }

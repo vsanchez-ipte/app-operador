@@ -194,6 +194,25 @@ public sealed class AdjuntarEvidenciaTests
 			Registradas.RemoveAll(e => e.Uuid == uuid);
 			return Task.CompletedTask;
 		}
+
+		public Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerPendientesDeIncidenciaAsync(
+			string incidenciaUuid, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaAdjunta>>(
+				[.. Registradas.Where(e => e.IncidenciaUuid == incidenciaUuid
+					&& e.Estado != EstadoSincronizacion.Sincronizado)]);
+
+		public Task ActualizarEnvioAsync(
+			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
+		{
+			var indice = Registradas.FindIndex(e => e.Uuid == uuid);
+
+			if (indice >= 0)
+			{
+				Registradas[indice] = Registradas[indice] with { Estado = estado };
+			}
+
+			return Task.CompletedTask;
+		}
 	}
 
 	private sealed class AlmacenFalso : IAlmacenEvidencias

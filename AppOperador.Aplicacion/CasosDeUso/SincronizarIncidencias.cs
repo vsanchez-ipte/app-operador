@@ -31,6 +31,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	private readonly IClock _reloj;
 	private readonly IAuditLog _bitacora;
 	private readonly ICatalogoRepository _catalogo;
+	private readonly IRepositorioEvidencias _evidencias;
+	private readonly IEvidenciasJacobClient _clienteEvidencias;
 
 	public SincronizarIncidencias(
 		ISyncQueueService cola,
@@ -40,7 +42,9 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		CapacidadesDeLaSesion capacidades,
 		IClock reloj,
 		IAuditLog bitacora,
-		ICatalogoRepository catalogo)
+		ICatalogoRepository catalogo,
+		IRepositorioEvidencias evidencias,
+		IEvidenciasJacobClient clienteEvidencias)
 	{
 		_cola = cola;
 		_jacob = jacob;
@@ -50,6 +54,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		_reloj = reloj;
 		_bitacora = bitacora;
 		_catalogo = catalogo;
+		_evidencias = evidencias;
+		_clienteEvidencias = clienteEvidencias;
 	}
 
 	/// <summary>
@@ -306,6 +312,66 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		await _cola.RegistrarIntentoAsync(
 			incidencia.Uuid, resultado.Exito, resultado.Codigo, resultado.Mensaje, cancelacion);
 
+		// Las evidencias van DESPUÉS y solo si la incidencia confirmó: el servidor valida que el
+		// uuid exista, y una evidencia que salga antes recibe appevidencias.incidencia.noexiste.
+		if (resultado.Exito)
+		{
+			await EnviarEvidenciasDeAsync(incidencia.Uuid, token, cancelacion);
+		}
+
 		return resultado;
+	}
+
+	/// <summary>
+	/// Sube las evidencias pendientes de una incidencia ya confirmada (JTT-1398 CA 11).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Una evidencia que falle no revierte la incidencia.</b> Ya está en el CCO con su folio,
+	/// y marcarla como fallida por una foto que no subió mandaría al operador a recapturar algo
+	/// que sí llegó. Cada evidencia lleva su propio estado y su propio reintento, que es para lo
+	/// que <c>evidencia_local</c> se diseñó así desde el primer esquema.
+	/// </para>
+	/// <para>
+	/// <b>Y una que falle no detiene a las siguientes</b>, por el mismo argumento del CA 13 de
+	/// JTT-1401: que la tercera foto no suba no puede impedir que suban la cuarta y la quinta.
+	/// </para>
+	/// </remarks>
+	private async Task EnviarEvidenciasDeAsync(
+		string incidenciaUuid,
+		string token,
+		CancellationToken cancelacion)
+	{
+		var pendientes = await _evidencias.ObtenerPendientesDeIncidenciaAsync(
+			incidenciaUuid, cancelacion);
+
+		foreach (var evidencia in pendientes)
+		{
+			cancelacion.ThrowIfCancellationRequested();
+
+			// Lo funcional no se reintenta, igual que en las incidencias: reenviar un formato
+			// que el servidor no admite da el mismo rechazo y gasta datos del operador.
+            if (CodigosErrorJacob.EsFuncional(evidencia.UltimoErrorCodigo))
+            {
+                continue;
+            }
+
+			var resultado = await _clienteEvidencias.SubirAsync(
+				incidenciaUuid,
+				evidencia.RutaArchivo,
+				evidencia.NombreOriginal,
+				token,
+				cancelacion);
+
+			// yaExistia es éxito: el servidor ya tenía este contenido para esta incidencia. La
+			// subida es idempotente por contenido, así que un reintento tras una respuesta
+			// perdida devuelve lo mismo sin duplicar ni gastar cupo.
+			var destino = resultado.Exito
+				? EstadoSincronizacion.Sincronizado
+				: EstadoSincronizacion.Fallido;
+
+			await _evidencias.ActualizarEnvioAsync(
+				evidencia.Uuid, destino, resultado.Codigo, cancelacion);
+		}
 	}
 }

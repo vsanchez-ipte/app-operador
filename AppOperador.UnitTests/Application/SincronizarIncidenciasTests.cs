@@ -25,6 +25,8 @@ public sealed class SincronizarIncidenciasTests
 	private readonly JacobFalso _jacob = new();
 	private readonly ConectividadFalsa _conectividad = new();
 	private readonly SesionFalsa _sesion = new();
+	private readonly EvidenciasFalsas _evidencias = new();
+	private readonly EvidenciasJacobFalso _jacobEvidencias = new();
 
 	private SincronizarIncidencias Crear() => new(
 		_cola,
@@ -34,7 +36,9 @@ public sealed class SincronizarIncidenciasTests
 		new CapacidadesDeLaSesion(_sesion),
 		_reloj,
 		new BitacoraNula(),
-		new CatalogoFalso());
+		new CatalogoFalso(),
+		_evidencias,
+		_jacobEvidencias);
 
 	// ── El envío que nunca terminó ────────────────────────────────────────────────────
 
@@ -567,5 +571,172 @@ public sealed class SincronizarIncidenciasTests
 
 		public Task ReemplazarAsync(CatalogosOperacion catalogos, CancellationToken c = default) =>
 			Task.CompletedTask;
+	}
+
+
+	// ── La evidencia va encadenada a su incidencia (JTT-1398 CA 11) ───────────────────
+
+	private static EvidenciaAdjunta EvidenciaDe(
+		string incidenciaUuid = "uuid-1",
+		string uuid = "ev-1",
+		string? ultimoError = null) =>
+		new(uuid, incidenciaUuid, $"{uuid}.jpg", "image/jpeg", 1024,
+			$"/privado/{uuid}.jpg", EstadoSincronizacion.Pendiente, ultimoError);
+
+	[Fact]
+	public async Task LaEvidenciaSaleDespuesDeQueLaIncidenciaConfirma()
+	{
+		_cola.Encolar(Pendiente());
+		_evidencias.Pendientes.Add(EvidenciaDe());
+
+		await Crear().EjecutarAsync();
+
+		Assert.Single(_jacobEvidencias.Subidas);
+		Assert.Contains(_evidencias.Actualizadas,
+			a => a.Estado == EstadoSincronizacion.Sincronizado);
+	}
+
+	[Fact]
+	public async Task SiLaIncidenciaNoConfirma_laEvidenciaNiSeIntenta()
+	{
+		// El servidor valida que el uuid exista: una evidencia que salga antes recibe
+		// appevidencias.incidencia.noexiste, que es funcional y la dejaría parada para siempre
+		// por un problema que no es suyo.
+		_cola.Encolar(Pendiente());
+		_jacob.Responde(ResultadoEnvio.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
+		_evidencias.Pendientes.Add(EvidenciaDe());
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalla_noRevierteLaIncidenciaYaConfirmada()
+	{
+		// Ya está en el CCO con su folio. Marcarla fallida por una foto que no subió mandaría al
+		// operador a recapturar algo que sí llegó.
+		_cola.Encolar(Pendiente());
+		_evidencias.Pendientes.Add(EvidenciaDe());
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
+
+		var resultado = await Crear().EjecutarAsync();
+
+		Assert.Equal(1, resultado.Confirmados);
+		Assert.Contains(_cola.Actualizaciones, a => a.Estado == EstadoSincronizacion.Sincronizado);
+		Assert.Contains(_evidencias.Actualizadas, a => a.Estado == EstadoSincronizacion.Fallido);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalla_noDetieneALasSiguientes()
+	{
+		// Mismo argumento que el CA 13 de JTT-1401: que la tercera foto no suba no puede impedir
+		// que suban la cuarta y la quinta.
+		_cola.Encolar(Pendiente());
+		_evidencias.Pendientes.Add(EvidenciaDe(uuid: "ev-1"));
+		_evidencias.Pendientes.Add(EvidenciaDe(uuid: "ev-2"));
+
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(2, _jacobEvidencias.Subidas.Count);
+	}
+
+	[Fact]
+	public async Task YaExistia_esExitoYNoSeReintenta()
+	{
+		// La subida es idempotente por contenido: el servidor ya lo tenía. Tratarlo como error
+		// dejaría la evidencia reintentándose para siempre contra un servidor que ya la tiene.
+		_cola.Encolar(Pendiente());
+        _evidencias.Pendientes.Add(EvidenciaDe());
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Aceptada(
+			new EvidenciaRegistrada("id-remoto", "image/jpeg", "hash", YaExistia: true)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Contains(_evidencias.Actualizadas,
+			a => a.Estado == EstadoSincronizacion.Sincronizado);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRechazadaPorFormato_noSeVuelveAIntentar()
+	{
+		// Reenviar un formato que el servidor no admite da el mismo rechazo y gasta datos del
+		// operador. Es el CA 8 de JTT-1401 aplicado a la evidencia.
+		_cola.Encolar(Pendiente());
+		_evidencias.Pendientes.Add(
+			EvidenciaDe(ultimoError: "appevidencias.formato.nopermitido"));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	// ── Dobles de evidencia (JTT-1398) ────────────────────────────────────────────────
+
+	private sealed class EvidenciasFalsas : IRepositorioEvidencias
+	{
+		public List<EvidenciaAdjunta> Pendientes { get; } = [];
+
+		public List<(string Uuid, EstadoSincronizacion Estado)> Actualizadas { get; } = [];
+
+		public Task AgregarAsync(EvidenciaAdjunta evidencia, CancellationToken c = default) =>
+			Task.CompletedTask;
+
+		public Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerDeIncidenciaAsync(
+			string incidenciaUuid, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaAdjunta>>([.. Pendientes]);
+
+		public Task<int> ContarDeIncidenciaAsync(string incidenciaUuid, CancellationToken c = default) =>
+			Task.FromResult(Pendientes.Count);
+
+		public Task<EvidenciaAdjunta?> ObtenerAsync(string uuid, CancellationToken c = default) =>
+			Task.FromResult(Pendientes.FirstOrDefault(e => e.Uuid == uuid));
+
+		public Task EliminarAsync(string uuid, CancellationToken c = default) => Task.CompletedTask;
+
+		public Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerPendientesDeIncidenciaAsync(
+			string incidenciaUuid, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaAdjunta>>(
+				[.. Pendientes.Where(e => e.IncidenciaUuid == incidenciaUuid)]);
+
+		public Task ActualizarEnvioAsync(
+			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
+		{
+			Actualizadas.Add((uuid, estado));
+			return Task.CompletedTask;
+		}
+	}
+
+	private sealed class EvidenciasJacobFalso : IEvidenciasJacobClient
+	{
+		private readonly Queue<ResultadoEnvioEvidencia> _programados = new();
+
+		public List<string> Subidas { get; } = [];
+
+		public EvidenciasJacobFalso Responde(ResultadoEnvioEvidencia resultado)
+		{
+			_programados.Enqueue(resultado);
+			return this;
+		}
+
+		public Task<ResultadoEnvioEvidencia> SubirAsync(
+			string incidenciaUuid,
+			string rutaArchivo,
+			string nombreOriginal,
+			string accessToken,
+			CancellationToken cancelacion = default)
+		{
+			Subidas.Add(rutaArchivo);
+
+			return Task.FromResult(_programados.Count > 0
+				? _programados.Dequeue()
+				: ResultadoEnvioEvidencia.Aceptada(
+					new EvidenciaRegistrada("id-remoto", "image/jpeg", "hash", YaExistia: false)));
+		}
 	}
 }

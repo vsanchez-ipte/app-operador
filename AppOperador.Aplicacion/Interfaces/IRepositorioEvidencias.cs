@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.Enums;
 
 namespace AppOperador.Aplicacion.Interfaces;
 
@@ -41,4 +42,26 @@ public interface IRepositorioEvidencias
 
 	/// <summary>Borra la fila. El archivo lo retira <see cref="IAlmacenEvidencias"/>.</summary>
 	Task EliminarAsync(string uuid, CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Evidencias que todavía no ha confirmado el servidor, de una incidencia (JTT-1398 CA 11).
+	/// </summary>
+	/// <remarks>
+	/// <b>Se piden por incidencia y no en una lista global</b>, porque el envío va encadenado: la
+	/// evidencia no puede subir antes que su incidencia, así que se atienden las de cada registro
+	/// justo después de que ese registro confirme.
+	/// </remarks>
+	Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerPendientesDeIncidenciaAsync(
+		string incidenciaUuid,
+		CancellationToken cancelacion = default);
+
+	/// <summary>Deja constancia de cómo terminó un intento de envío.</summary>
+	/// <param name="uuid">La evidencia.</param>
+	/// <param name="estado">Dónde queda tras el intento.</param>
+	/// <param name="codigoError">Último código de Jacob, o <see langword="null"/> si salió bien.</param>
+	Task ActualizarEnvioAsync(
+		string uuid,
+		EstadoSincronizacion estado,
+		string? codigoError,
+		CancellationToken cancelacion = default);
 }

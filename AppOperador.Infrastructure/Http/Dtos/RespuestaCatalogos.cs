@@ -114,3 +114,37 @@ public sealed class CuerpoCatalogo
 	[JsonPropertyName("nombre")]
 	public string? Nombre { get; init; }
 }
+
+/// <summary>
+/// Contenido de <c>resultado</c> en <c>POST /ITS/AppIncidencias/{uuid}/Evidencias</c> (JTT-1398).
+/// </summary>
+/// <remarks>
+/// Todo anulable, como el resto de los DTO de este canal: son datos de la red y el
+/// deserializador no garantiza nada.
+/// </remarks>
+public sealed class RespuestaEvidencia
+{
+	[JsonPropertyName("idEvidencia")]
+	public string? IdEvidencia { get; init; }
+
+	/// <summary>El que el <b>servidor</b> determinó por contenido, no el que se envió.</summary>
+	[JsonPropertyName("tipoMime")]
+	public string? TipoMime { get; init; }
+
+	[JsonPropertyName("tamanoBytes")]
+	public long? TamanoBytes { get; init; }
+
+	/// <summary>Del contenido guardado, 64 hexadecimales.</summary>
+	[JsonPropertyName("hashSha256")]
+	public string? HashSha256 { get; init; }
+
+	[JsonPropertyName("archivosAdjuntos")]
+	public int? ArchivosAdjuntos { get; init; }
+
+	[JsonPropertyName("maximoArchivos")]
+	public int? MaximoArchivos { get; init; }
+
+	/// <summary>El servidor ya tenía este contenido para esta incidencia. <b>Es éxito.</b></summary>
+	[JsonPropertyName("yaExistia")]
+	public bool? YaExistia { get; init; }
+}

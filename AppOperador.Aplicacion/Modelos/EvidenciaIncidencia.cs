@@ -38,6 +38,10 @@ public sealed record ArchivoElegido(
 /// <param name="Bytes">Tamaño del archivo copiado.</param>
 /// <param name="RutaArchivo">Dónde quedó dentro del espacio privado. Nunca sale de la app.</param>
 /// <param name="Estado">Dónde va en su propio camino de sincronización.</param>
+/// <param name="UltimoErrorCodigo">
+/// Último código con el que Jacob la rechazó, o <see langword="null"/> si nunca falló. Es lo que
+/// decide si se vuelve a intentar: lo funcional no se reintenta (JTT-1401 CA 8).
+/// </param>
 public sealed record EvidenciaAdjunta(
 	string Uuid,
 	string IncidenciaUuid,
@@ -45,7 +49,8 @@ public sealed record EvidenciaAdjunta(
 	string TipoMime,
 	long Bytes,
 	string RutaArchivo,
-	EstadoSincronizacion Estado);
+	EstadoSincronizacion Estado,
+	string? UltimoErrorCodigo = null);
 
 /// <summary>
 /// Lo que ocurrió al intentar adjuntar un archivo (JTT-1398).
@@ -76,4 +81,77 @@ public sealed record ResultadoAdjuntar
 
 	public static ResultadoAdjuntar Rechazada(MotivoEvidenciaRechazada motivo) =>
 		new(null, motivo);
+}
+
+/// <summary>Lo que Jacob contestó al recibir una evidencia (JTT-1398 CA 11).</summary>
+/// <param name="IdEvidencia">Identificador que le asignó el servidor.</param>
+/// <param name="TipoMime">El que el <b>servidor</b> determinó por contenido, no el que se envió.</param>
+/// <param name="HashSha256">Del contenido guardado. Sirve para comprobar que llegó completo.</param>
+/// <param name="YaExistia">
+/// El servidor ya tenía este archivo para esta incidencia.
+/// <b>Es éxito, no error</b>: ver <see cref="ResultadoEnvioEvidencia"/>.
+/// </param>
+public sealed record EvidenciaRegistrada(
+	string IdEvidencia,
+	string TipoMime,
+	string HashSha256,
+	bool YaExistia);
+
+/// <summary>
+/// Resultado de subir una evidencia (JTT-1398 CA 11).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Un tipo y no excepciones, igual que <c>ResultadoEnvio</c>: que el servidor rechace un archivo
+/// —formato, tamaño, cupo— es parte del trabajo de subir, no algo excepcional.
+/// </para>
+/// <para>
+/// <b>La subida es idempotente por incidencia y contenido</b>, no por nombre. Reenviar el mismo
+/// archivo devuelve el mismo identificador con <c>yaExistia</c> en verdadero, sin crear otra
+/// evidencia ni gastar un lugar del cupo. Eso cambia cómo se trata el reintento: <b>antes cada
+/// reintento creaba otra fila, y con el tope en tres bastaban tres reintentos de una sola foto
+/// para agotarle el cupo al operador</b>. Ahora reintentar es seguro.
+/// </para>
+/// <para>
+/// Y por lo mismo, <b>con el cupo lleno el reintento sigue pasando</b>: reenviar algo ya
+/// guardado responde éxito. <c>appevidencias.archivos.demasiados</c> solo aparece con un archivo
+/// nuevo.
+/// </para>
+/// </remarks>
+public sealed record ResultadoEnvioEvidencia
+{
+	private ResultadoEnvioEvidencia(
+		EvidenciaRegistrada? registrada,
+		FamiliaErrorSincronizacion? familia,
+		string? codigo,
+		string? mensaje)
+	{
+		Registrada = registrada;
+		Familia = familia;
+		Codigo = codigo;
+		Mensaje = mensaje;
+	}
+
+	/// <summary>Lo que el servidor guardó, o <see langword="null"/> si la rechazó.</summary>
+	public EvidenciaRegistrada? Registrada { get; }
+
+	/// <summary>Naturaleza del rechazo, que decide si se reintenta.</summary>
+	public FamiliaErrorSincronizacion? Familia { get; }
+
+	/// <summary>Código estable de Jacob. <b>Se decide por él, nunca por el mensaje.</b></summary>
+	public string? Codigo { get; }
+
+	/// <summary>Mensaje para mostrarle al operador.</summary>
+	public string? Mensaje { get; }
+
+	public bool Exito => Registrada is not null;
+
+	public static ResultadoEnvioEvidencia Aceptada(EvidenciaRegistrada registrada) =>
+		new(registrada, null, null, null);
+
+	public static ResultadoEnvioEvidencia Rechazada(
+		FamiliaErrorSincronizacion familia,
+		string codigo,
+		string mensaje) =>
+		new(null, familia, codigo, mensaje);
 }

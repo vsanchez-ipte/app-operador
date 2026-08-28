@@ -33,6 +33,7 @@ public static class CodigosErrorJacob
 		"appevidencias.archivo.demasiadogrande",
 		"appevidencias.archivos.demasiados",
 		"appevidencias.incidencia.noexiste",
+		"appevidencias.archivo.noesta",
 	};
 
 	/// <summary>
@@ -51,6 +52,17 @@ public static class CodigosErrorJacob
 	/// móvil, y el que la app se asigna cuando el envío revienta antes de obtener respuesta.
 	/// </summary>
 	public const string ErrorTecnico = "appincidencias.error.tecnico";
+
+	/// <summary>
+	/// La fila de evidencia apunta a un archivo que ya no está en el dispositivo.
+	/// </summary>
+	/// <remarks>
+	/// <b>No lo emite Jacob: lo detecta la app antes de intentar subir.</b> Es funcional porque
+	/// reintentar no va a devolver el archivo; quien tiene que actuar es el operador volviendo a
+	/// adjuntarlo. Se le da código propio para que la cola no lo confunda con un fallo de red y
+	/// lo reintente eternamente.
+	/// </remarks>
+	public const string EvidenciaSinArchivo = "appevidencias.archivo.noesta";
 
 	/// <summary>
 	/// Familia a la que pertenece un código.

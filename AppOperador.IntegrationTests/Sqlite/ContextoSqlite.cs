@@ -54,6 +54,8 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	/// <summary>Copia local del catálogo, de donde salen los campos que se rellenan al enviar.</summary>
 	public RepositorioCatalogoSqlite CrearCatalogo() => new(BaseDatos);
 
+	public RepositorioEvidenciasSqlite CrearRepositorioEvidencias() => new(BaseDatos);
+
 	/// <summary>
 	/// El caso de uso del envío, armado sobre la base real y un Jacob controlable.
 	/// </summary>
@@ -65,7 +67,8 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	public SincronizarIncidencias CrearSincronizador(
 		JacobControlado? jacob = null,
 		ISessionStore? sesion = null,
-		CapacidadesDeLaSesion? capacidades = null)
+		CapacidadesDeLaSesion? capacidades = null,
+		EvidenciasControladas? jacobEvidencias = null)
 	{
 		var deQuien = sesion ?? Sesion;
 
@@ -77,7 +80,9 @@ public sealed class ContextoSqlite : IAsyncDisposable
 			capacidades ?? new CapacidadesDeLaSesion(deQuien),
 			Reloj,
 			Bitacora,
-			CrearCatalogo());
+			CrearCatalogo(),
+			CrearRepositorioEvidencias(),
+			jacobEvidencias ?? new EvidenciasControladas());
 	}
 
 	/// <summary>
@@ -233,4 +238,40 @@ public sealed class TokenFijo : ITokenProvider
 		Task.CompletedTask;
 
 	public Task LimpiarAsync(CancellationToken cancelacion = default) => Task.CompletedTask;
+}
+
+/// <summary>
+/// Jacob para las evidencias, programable por la prueba.
+/// </summary>
+/// <remarks>
+/// Por omisión acepta todo: la mayoría de las pruebas del envío de incidencias no hablan de
+/// evidencias y no deben fallar por ellas.
+/// </remarks>
+public sealed class EvidenciasControladas : IEvidenciasJacobClient
+{
+	private readonly Queue<ResultadoEnvioEvidencia> _programados = new();
+
+	/// <summary>Lo que se le pidió subir, en orden.</summary>
+	public List<(string Incidencia, string Ruta)> Recibidas { get; } = [];
+
+	public EvidenciasControladas Responde(ResultadoEnvioEvidencia resultado)
+	{
+		_programados.Enqueue(resultado);
+		return this;
+	}
+
+	public Task<ResultadoEnvioEvidencia> SubirAsync(
+		string incidenciaUuid,
+		string rutaArchivo,
+		string nombreOriginal,
+		string accessToken,
+		CancellationToken cancelacion = default)
+	{
+		Recibidas.Add((incidenciaUuid, rutaArchivo));
+
+		return Task.FromResult(_programados.Count > 0
+			? _programados.Dequeue()
+			: ResultadoEnvioEvidencia.Aceptada(
+				new EvidenciaRegistrada(Guid.NewGuid().ToString(), "image/jpeg", "hash", false)));
+	}
 }

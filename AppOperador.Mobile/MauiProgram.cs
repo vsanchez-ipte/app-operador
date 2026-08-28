@@ -140,6 +140,7 @@ public static class MauiProgram
 
 		servicios.AddSingleton<AdjuntarEvidencia>();
 		servicios.AddSingleton<QuitarEvidencia>();
+		servicios.AddSingleton<ObtenerEvidenciasDeIncidencia>();
 
 #if EXPORTAR_BASE_DATOS
 		// Copia legible de la base para revisarla en el escritorio. Solo existe en paquetes
@@ -298,6 +299,16 @@ public static class MauiProgram
 			var opciones = sp.GetRequiredService<ConfiguracionApi>();
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
 			return new ClienteIncidenciasJacob(http, opciones);
+		});
+
+		// Evidencias (JTT-1398). Cliente propio porque viaja en multipart y no en JSON, y con
+		// un tiempo de espera más largo: 15 MB por datos móviles en carretera no caben en el
+		// mismo margen que un JSON de dos kilobytes.
+		servicios.AddSingleton<IEvidenciasJacobClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera * 4 };
+			return new ClienteEvidenciasJacob(http, opciones);
 		});
 
 		servicios.AddSingleton<ActualizarCatalogoLocal>();
