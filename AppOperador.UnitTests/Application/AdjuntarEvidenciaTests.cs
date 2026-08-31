@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
@@ -32,9 +32,11 @@ public sealed class AdjuntarEvidenciaTests
 	private static ArchivoElegido Archivo(
 		string nombre = "IMG_0001.jpg",
 		string mime = "image/jpeg",
-		long bytes = 1024) =>
+		long bytes = 1024,
+		OrigenEvidencia origen = OrigenEvidencia.Galeria) =>
 		new(nombre, mime, bytes,
-			_ => Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("contenido"))));
+			_ => Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("contenido"))),
+			origen);
 
 	[Fact]
 	public async Task UnArchivoValido_seCopiaYSeRegistra()
@@ -242,6 +244,60 @@ public sealed class AdjuntarEvidenciaTests
 			Borrados.Add(rutaArchivo);
 			return Task.CompletedTask;
 		}
+	}
+
+	// ── Con que nombre queda la evidencia (31-ago) ───────────────────────────────────
+
+	[Fact]
+	public async Task LoCapturadoConLaCamara_seNombraConLaClaveLocal()
+	{
+		// El sistema entrega un GUID para la foto recien tomada. Era lo que se veia en el CCO.
+		var resultado = await Crear().EjecutarAsync(
+			Incidencia,
+			Archivo(nombre: "6441d2f9fb6f4cea9b48fc0bae7dbad6.jpg", origen: OrigenEvidencia.Camara),
+			claveLocal: "LOC-000123");
+
+		Assert.Equal("LOC-000123-120000.jpg", resultado.Adjuntada!.NombreOriginal);
+	}
+
+	[Fact]
+	public async Task ElVideoGrabadoSeNombraIgual()
+	{
+		// El catalogo de estas pruebas no admite video -lo fija
+		// UnFormatoQueNoSeAdmite_niSiquieraSeCopia-, asi que aqui hay que declararlo o la
+		// regla lo rechaza antes de llegar a nombrarlo.
+		_catalogo.Limites = Limites with { FormatosPermitidos = ["video/mp4"] };
+
+		var resultado = await Crear().EjecutarAsync(
+			Incidencia,
+			Archivo(nombre: "VID_9f2.mp4", mime: "video/mp4", origen: OrigenEvidencia.Video),
+			claveLocal: "LOC-000123");
+
+		Assert.Equal("LOC-000123-120000.mp4", resultado.Adjuntada!.NombreOriginal);
+	}
+
+	[Theory]
+	[InlineData(OrigenEvidencia.Galeria)]
+	[InlineData(OrigenEvidencia.Archivo)]
+	public async Task LoQueElOperadorEligio_conservaSuNombre(OrigenEvidencia origen)
+	{
+		// Un "acta-1234.pdf" dice mucho mas que cualquier cosa que compusieramos nosotros.
+		var resultado = await Crear().EjecutarAsync(
+			Incidencia,
+			Archivo(nombre: "acta-1234.pdf", mime: "application/pdf", origen: origen),
+			claveLocal: "LOC-000123");
+
+		Assert.Equal("acta-1234.pdf", resultado.Adjuntada!.NombreOriginal);
+	}
+
+	[Fact]
+	public async Task SinClaveLocal_noSePierdeElNombre()
+	{
+		var resultado = await Crear().EjecutarAsync(
+			Incidencia,
+			Archivo(nombre: "6441d2f9.jpg", origen: OrigenEvidencia.Camara));
+
+		Assert.Equal("6441d2f9.jpg", resultado.Adjuntada!.NombreOriginal);
 	}
 
 	private sealed class RelojFijo : IClock

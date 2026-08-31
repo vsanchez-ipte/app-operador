@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Interfaces;
+﻿using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.Reglas;
@@ -49,9 +49,16 @@ public sealed class AdjuntarEvidencia
 	}
 
 	/// <summary>Intenta adjuntar el archivo elegido a la incidencia indicada.</summary>
+	/// <param name="incidenciaUuid">La incidencia a la que se ata la evidencia.</param>
+	/// <param name="archivo">Lo que entregó el selector, con su origen.</param>
+	/// <param name="claveLocal">
+	/// Clave visible de la incidencia, <c>LOC-######</c>, con la que se nombra lo capturado.
+	/// Opcional: sin ella se conserva el nombre del sistema.
+	/// </param>
 	public async Task<ResultadoAdjuntar> EjecutarAsync(
 		string incidenciaUuid,
 		ArchivoElegido archivo,
+		string? claveLocal = null,
 		CancellationToken cancelacion = default)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(incidenciaUuid);
@@ -90,7 +97,7 @@ public sealed class AdjuntarEvidencia
 		var evidencia = new EvidenciaAdjunta(
 			uuid,
 			incidenciaUuid,
-			archivo.NombreOriginal,
+			NombreParaMostrar(archivo, claveLocal),
 			archivo.TipoMime,
 			archivo.Bytes,
 			ruta,
@@ -105,4 +112,22 @@ public sealed class AdjuntarEvidencia
 
 		return ResultadoAdjuntar.Aceptada(evidencia);
 	}
+
+	/// <summary>
+	/// Con qué nombre se guarda y se envía la evidencia.
+	/// </summary>
+	/// <remarks>
+	/// <b>Solo se compone lo capturado.</b> Una fotografía o un video recién tomados llegan con el
+	/// nombre que el sistema inventa para su archivo temporal —un GUID—, que no dice nada a nadie
+	/// y era lo que se veía en el CCO. Lo que el operador <i>eligió</i> ya trae nombre propio, y un
+	/// <c>acta-1234.pdf</c> informa mucho más que cualquier cosa que compusiéramos aquí.
+	/// <para>
+	/// El origen viaja en el archivo, así que esto no adivina: no se mira si el nombre «parece un
+	/// GUID», se sabe de dónde vino.
+	/// </para>
+	/// </remarks>
+	private string NombreParaMostrar(ArchivoElegido archivo, string? claveLocal) =>
+		archivo.Origen is OrigenEvidencia.Camara or OrigenEvidencia.Video
+			? NombreEvidencia.Componer(claveLocal, _reloj.UtcAhora, archivo.NombreOriginal)
+			: archivo.NombreOriginal;
 }

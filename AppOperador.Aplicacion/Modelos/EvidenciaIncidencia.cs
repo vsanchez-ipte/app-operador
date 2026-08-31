@@ -1,3 +1,4 @@
+﻿using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Domain.Enums;
 
 namespace AppOperador.Aplicacion.Modelos;
@@ -22,11 +23,21 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <param name="TipoMime">Lo que el dispositivo declara. <b>El servidor lo determina otra vez por contenido.</b></param>
 /// <param name="Bytes">Tamaño, para validar antes de copiar.</param>
 /// <param name="AbrirContenido">Abre el flujo de lectura. Se invoca una sola vez, al copiar.</param>
+/// <param name="Origen">
+/// De dónde salió.
+/// <para>
+/// <b>Viaja con el archivo para no tener que adivinarlo despues.</b> Lo capturado con la camara
+/// llega con un nombre que el sistema inventa —un GUID— y hay que componerle uno legible; lo que
+/// el operador eligio trae el suyo, que dice algo y se respeta. Deducirlo mirando si el nombre
+/// "parece un GUID" seria adivinar: el selector ya lo sabe con certeza.
+/// </para>
+/// </param>
 public sealed record ArchivoElegido(
 	string NombreOriginal,
 	string TipoMime,
 	long Bytes,
-	Func<CancellationToken, Task<Stream>> AbrirContenido);
+	Func<CancellationToken, Task<Stream>> AbrirContenido,
+	OrigenEvidencia Origen = OrigenEvidencia.Galeria);
 
 /// <summary>
 /// Evidencia ya guardada en el espacio privado y registrada en la cola local (JTT-1398).

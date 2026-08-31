@@ -942,7 +942,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 			return;
 		}
 
-		var resultado = await _adjuntarEvidencia.EjecutarAsync(uuid, archivo);
+		// BorradorEnEdicion es la clave local del registro: con ella se nombra lo capturado en
+		// vez de dejar el GUID que entrega el sistema.
+		var resultado = await _adjuntarEvidencia.EjecutarAsync(uuid, archivo, BorradorEnEdicion);
 
 		MensajeError = resultado.Exito ? null : MensajeDe(resultado.Motivo);
 

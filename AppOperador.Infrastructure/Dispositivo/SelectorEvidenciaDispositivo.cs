@@ -84,7 +84,7 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 				return SeleccionEvidencia.Cancelada;
 			}
 
-			var descrito = await DescribirAsync(resultado, cancelacion);
+			var descrito = await DescribirAsync(resultado, origen, cancelacion);
 
 			// El sistema entregó un archivo que no se puede leer. No es del operador.
 			return descrito is null
@@ -141,6 +141,7 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	/// <summary>Lee del archivo lo que hace falta para validarlo, sin cargarlo en memoria.</summary>
 	private static async Task<ArchivoElegido?> DescribirAsync(
 		FileResult archivo,
+		OrigenEvidencia origen,
 		CancellationToken cancelacion)
 	{
 		long bytes;
@@ -164,6 +165,7 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 			archivo.FileName,
 			string.IsNullOrWhiteSpace(archivo.ContentType) ? TipoPorOmision : archivo.ContentType,
 			bytes,
-			_ => archivo.OpenReadAsync());
+			_ => archivo.OpenReadAsync(),
+			origen);
 	}
 }
