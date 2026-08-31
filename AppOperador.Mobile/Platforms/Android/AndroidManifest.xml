@@ -50,4 +50,37 @@
 	-->
 	<uses-permission android:name="android.permission.CAMERA" />
 	<uses-feature android:name="android.hardware.camera" android:required="false" />
+
+	<!--
+		Visibilidad de paquetes (Android 11+, y aquí targetSdk 36).
+
+		SIN ESTE BLOQUE LOS TRES BOTONES DE EVIDENCIA NO HACEN NADA. Desde Android 11 una app
+		solo "ve" las demás que declara, así que resolver el intent de la cámara devuelve vacío
+		y MediaPicker responde null **sin lanzar ninguna excepción**: para el código es
+		indistinguible de que el operador cancelara, y en pantalla no ocurre absolutamente nada.
+
+		Se declara un intent por cada cosa que se lanza: tomar la foto, grabar el video y abrir
+		el selector de archivos. Es lo mínimo: no se usa <package> ni QUERY_ALL_PACKAGES, que
+		dispara la revisión manual de Google Play.
+	-->
+	<queries>
+		<intent>
+			<action android:name="android.media.action.IMAGE_CAPTURE" />
+		</intent>
+		<intent>
+			<action android:name="android.media.action.VIDEO_CAPTURE" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.GET_CONTENT" />
+			<data android:mimeType="*/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.OPEN_DOCUMENT" />
+			<data android:mimeType="*/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.PICK" />
+			<data android:mimeType="image/*" />
+		</intent>
+	</queries>
 </manifest>
