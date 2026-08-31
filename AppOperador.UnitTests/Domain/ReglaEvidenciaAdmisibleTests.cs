@@ -1,4 +1,4 @@
-using AppOperador.Domain.Enums;
+﻿using AppOperador.Domain.Enums;
 using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 
@@ -113,5 +113,37 @@ public sealed class ReglaEvidenciaAdmisibleTests
 		Assert.Equal(
 			MotivoEvidenciaRechazada.CupoLleno,
 			ReglaEvidenciaAdmisible.Comprobar(deJtt289, "video/mp4", UnMegabyte, yaAdjuntas: 8));
+	}
+
+	// ── Si el servidor admite video ───────────────────────────────────────────────────
+
+	[Fact]
+	public void ElCatalogoDeHoyNoAdmiteVideo()
+	{
+		// Imagen y PDF, ningún video/*. Es lo que mantiene apagado el botón de grabar.
+		var deHoy = new LimitesEvidencia(
+			["image/jpeg", "image/png", "image/bmp", "application/pdf"], 5, 3);
+
+		Assert.False(deHoy.AdmiteVideo);
+	}
+
+	[Fact]
+	public void UnFormatoDeVideoEnElCatalogoLoAdmite()
+	{
+		Assert.True(new LimitesEvidencia(["image/jpeg", "video/mp4"], 15, 8).AdmiteVideo);
+	}
+
+	[Fact]
+	public void LaCajaDelTipoNoImporta()
+	{
+		// El tipo lo determina el servidor por contenido y no hay garantía de con qué caja lo
+		// escriba, igual que en AdmiteFormato.
+		Assert.True(new LimitesEvidencia(["VIDEO/MP4"], 15, 8).AdmiteVideo);
+	}
+
+	[Fact]
+	public void SinLimitesDescargados_noSeAsumeQueAdmiteVideo()
+	{
+		Assert.False(LimitesEvidencia.Desconocidos.AdmiteVideo);
 	}
 }

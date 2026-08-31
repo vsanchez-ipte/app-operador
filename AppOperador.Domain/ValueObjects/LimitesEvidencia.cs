@@ -51,4 +51,14 @@ public sealed record LimitesEvidencia(
 	public bool AdmiteFormato(string? tipoMime) =>
 		!string.IsNullOrWhiteSpace(tipoMime)
 		&& FormatosPermitidos.Any(f => string.Equals(f, tipoMime, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>Indica si el servidor admite algún formato de video.</summary>
+	/// <remarks>
+	/// <b>Es lo que enciende el botón de capturar video.</b> Hoy el catálogo publica solo imagen
+	/// y PDF, así que sale apagado; el día que el servidor declare un <c>video/*</c> se enciende
+	/// solo, sin tocar la app ni publicar una versión nueva. Es el mismo trato que a los otros
+	/// tres límites: lo que el servidor admite lo dice el servidor.
+	/// </remarks>
+	public bool AdmiteVideo =>
+		FormatosPermitidos.Any(f => f.StartsWith("video/", StringComparison.OrdinalIgnoreCase));
 }

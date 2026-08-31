@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.CasosDeUso;
+﻿using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.ValueObjects;
@@ -95,5 +95,57 @@ public sealed class ResumenEvidenciasTests
 
 		Assert.Equal(6, resumen.Faltantes);
 		Assert.True(resumen.PuedeAdjuntar);
+	}
+
+	// ── El video se habilita desde el catálogo ────────────────────────────────────────
+
+	[Fact]
+	public void HoyNoSePuedeGrabarVideo_porqueElServidorNoLoAdmite()
+	{
+		// El catálogo publica imagen y PDF, ningún video/*. El botón sale apagado aunque
+		// quepan más archivos: grabar quince megabytes para que los rechace el formato es
+		// justo lo que se evita.
+		var resumen = new ResumenEvidencias([], Limites);
+
+		Assert.True(resumen.PuedeAdjuntar);
+		Assert.False(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.FormatoNoAdmitido, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	[Fact]
+	public void ElDiaQueElCatalogoPubliqueVideo_seEnciendeSolo()
+	{
+		// Es la comprobación de que JTT-289 no deja trabajo de app: el servidor declara un
+		// video/* y el botón se enciende sin recompilar ni publicar en las tiendas.
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+
+		var resumen = new ResumenEvidencias([], conVideo);
+
+		Assert.True(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.Ninguno, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	[Fact]
+	public void ConElCupoLleno_elVideoDiceQueElCupoEstaLleno_noQueFaltaElFormato()
+	{
+		// Con las dos causas presentes manda la del cupo: mandar a habilitar el video cuando
+		// lo que hay que hacer es quitar un archivo deja al operador sin salida.
+		var conVideo = Limites with { FormatosPermitidos = ["video/mp4"] };
+
+		var resumen = new ResumenEvidencias(
+			[Evidencia("a"), Evidencia("b"), Evidencia("c")], conVideo);
+
+		Assert.False(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.CupoLleno, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	[Fact]
+	public void SinCatalogo_elVideoNoCulpaAlFormato()
+	{
+		// Sin límites descargados no se sabe si admite video: la causa es que no hay catálogo.
+		var resumen = new ResumenEvidencias([], LimitesEvidencia.Desconocidos);
+
+		Assert.False(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.LimitesDesconocidos, resumen.MotivoParaNoAdjuntarVideo);
 	}
 }

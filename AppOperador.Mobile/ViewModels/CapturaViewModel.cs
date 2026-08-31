@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
@@ -613,7 +613,10 @@ public sealed partial class CapturaViewModel : ObservableObject
 		BorradorEnEdicion = borrador.ClaveLocal;
 
 		// Sus evidencias vienen con él: se adjuntaron a este UUID y siguen siendo suyas.
+		// Reponer el UUID no basta —la lista y el contador siguen los del formulario anterior,
+		// que SoltarEvidencias dejó vacíos—, así que hay que releerlas del repositorio.
 		_uuidParaEvidencias = borrador.Uuid;
+		await RecargarEvidenciasAsync();
 
 		TipoSeleccionado = Tipos.FirstOrDefault(t => t.Id == borrador.TipoId);
 		SeveridadSeleccionada = Severidades.FirstOrDefault(s => s.Id == borrador.SeveridadId);
@@ -656,6 +659,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 		ResumenEvidencias = ResumenEvidencias with { Adjuntas = [] };
 
 		OnPropertyChanged(nameof(PuedeAdjuntar));
+		OnPropertyChanged(nameof(PuedeAdjuntarVideo));
+		OnPropertyChanged(nameof(AvisoVideo));
+		OnPropertyChanged(nameof(HayAvisoVideo));
 		OnPropertyChanged(nameof(ContadorEvidencias));
 		OnPropertyChanged(nameof(HayEvidencias));
 	}
@@ -845,8 +851,29 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// </remarks>
 	public bool PuedeAdjuntar => TienePermisoDeCaptura && ResumenEvidencias.PuedeAdjuntar;
 
+	/// <summary>Indica si el botón de grabar video va encendido.</summary>
+	/// <remarks>
+	/// <b>Hoy sale apagado</b>: el catálogo no publica ningún <c>video/*</c>. Se enciende solo
+	/// el día que el servidor lo declare, sin tocar la app ni publicar una versión nueva — el
+	/// mismo trato que a los otros tres límites.
+	/// </remarks>
+	public bool PuedeAdjuntarVideo => TienePermisoDeCaptura && ResumenEvidencias.PuedeAdjuntarVideo;
+
 	/// <summary>Indica si el dispositivo tiene cámara. Sin ella el botón no se ofrece.</summary>
 	public bool HayCamara => _selectorEvidencia.Disponible(OrigenEvidencia.Camara);
+
+	/// <summary>Por qué el botón de video está apagado, cuando lo está.</summary>
+	/// <remarks>
+	/// Va junto al botón por lo mismo que el aviso de permiso: el operador mira el botón que no
+	/// responde, y ahí es donde tiene que encontrar la explicación. Sin esto, un botón visible y
+	/// muerto se lee como que la app está rota.
+	/// </remarks>
+	public string AvisoVideo => ResumenEvidencias.Limites.EstanDefinidos
+		&& !ResumenEvidencias.Limites.AdmiteVideo
+			? "El servidor todavía no admite video."
+			: string.Empty;
+
+	public bool HayAvisoVideo => AvisoVideo.Length > 0;
 
 	/// <summary>Contador combinado, como lo pidió el PO: sin separar fotos de videos.</summary>
 	public string ContadorEvidencias =>
@@ -862,6 +889,13 @@ public sealed partial class CapturaViewModel : ObservableObject
 	[RelayCommand]
 	private Task AdjuntarDeGaleriaAsync() => AdjuntarAsync(OrigenEvidencia.Galeria);
 
+	[RelayCommand]
+	private Task AdjuntarDeVideoAsync() => AdjuntarAsync(OrigenEvidencia.Video);
+
+	/// <summary>Adjunta desde el selector de archivos, que es por donde entra un PDF.</summary>
+	[RelayCommand]
+	private Task AdjuntarDeArchivoAsync() => AdjuntarAsync(OrigenEvidencia.Archivo);
+
 	/// <summary>
 	/// Pide un archivo y lo adjunta, creando el borrador si hacía falta.
 	/// </summary>
@@ -873,18 +907,32 @@ public sealed partial class CapturaViewModel : ObservableObject
 			return;
 		}
 
-		if (!ResumenEvidencias.PuedeAdjuntar)
+		// El video tiene una condición más que los demás orígenes —que el servidor lo admita—,
+		// así que se pregunta por la suya y no por la general.
+		var puede = origen is OrigenEvidencia.Video
+			? ResumenEvidencias.PuedeAdjuntarVideo
+			: ResumenEvidencias.PuedeAdjuntar;
+
+		if (!puede)
 		{
-			MensajeError = MensajeDe(ResumenEvidencias.MotivoParaNoAdjuntar);
+			MensajeError = MensajeDe(origen is OrigenEvidencia.Video
+				? ResumenEvidencias.MotivoParaNoAdjuntarVideo
+				: ResumenEvidencias.MotivoParaNoAdjuntar);
 			return;
 		}
 
-		var archivo = await _selectorEvidencia.ElegirAsync(origen);
+		var seleccion = await _selectorEvidencia.ElegirAsync(origen);
 
-		// Cancelar y negar el permiso llegan igual, y los dos son respuestas válidas: el CA 4
-		// dice que la negativa no impide guardar la incidencia sin evidencia.
-		if (archivo is null)
+		if (seleccion.Archivo is not { } archivo)
 		{
+			// Que el dispositivo no pueda abrir la cámara o el selector NO es una respuesta del
+			// operador, y callarlo lo deja pulsando un botón mudo: es lo que pasó el 28-ago.
+			// Cancelar y negar el permiso sí se atienden en silencio, que es lo que pide el CA 4.
+			if (seleccion.NoSePudoAbrir)
+			{
+				MensajeError = MensajeNoSePudoAbrir(origen);
+			}
+
 			return;
 		}
 
@@ -956,6 +1004,9 @@ public sealed partial class CapturaViewModel : ObservableObject
 		}
 
 		OnPropertyChanged(nameof(PuedeAdjuntar));
+		OnPropertyChanged(nameof(PuedeAdjuntarVideo));
+		OnPropertyChanged(nameof(AvisoVideo));
+		OnPropertyChanged(nameof(HayAvisoVideo));
 		OnPropertyChanged(nameof(ContadorEvidencias));
 		OnPropertyChanged(nameof(HayEvidencias));
 		AdjuntarDeCamaraCommand.NotifyCanExecuteChanged();
@@ -967,6 +1018,35 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// Cada motivo dice algo distinto porque cada uno se corrige distinto. Los literales son
 	/// provisionales, como los demás de esta pantalla.
 	/// </remarks>
+	/// <summary>Los formatos que el servidor admite, como se le dicen al operador.</summary>
+	/// <remarks>
+	/// <b>Se arman con lo que publica el catálogo, no con una lista escrita aquí.</b> El texto
+	/// anterior decía «elija una fotografía o un PDF», que era cierto hoy y dejaría de serlo en
+	/// cuanto el API admitiera video: el operador leería que no se admite justo lo que sí. El
+	/// CA 8 pide que el rechazo diga qué formato sí se admite, y eso solo lo sabe el servidor.
+	/// </remarks>
+	private string FormatosLegibles => string.Join(
+		", ",
+		ResumenEvidencias.Limites.FormatosPermitidos
+			.Select(formato => formato[(formato.LastIndexOf('/') + 1)..].ToUpperInvariant())
+			.Distinct());
+
+	/// <summary>Qué se le dice al operador cuando el dispositivo no pudo abrir el selector.</summary>
+	/// <remarks>
+	/// Nombra <b>qué</b> no se pudo abrir y ofrece la salida que queda, porque la evidencia es
+	/// opcional y las cuatro vías son intercambiables: si la cámara falla, el archivo sirve.
+	/// <para>
+	/// Textos provisionales: Producto no ha fijado los literales de esta pantalla.
+	/// </para>
+	/// </remarks>
+	private static string MensajeNoSePudoAbrir(OrigenEvidencia origen) => origen switch
+	{
+		OrigenEvidencia.Camara => "No se pudo abrir la cámara. Adjunte el archivo desde el dispositivo.",
+		OrigenEvidencia.Video => "No se pudo abrir la cámara para grabar. Adjunte el archivo desde el dispositivo.",
+		OrigenEvidencia.Galeria => "No se pudo abrir la galería. Use «Elegir archivo».",
+		_ => "No se pudo abrir el selector de archivos.",
+	};
+
 	private string MensajeDe(MotivoEvidenciaRechazada motivo) => motivo switch
 	{
 		MotivoEvidenciaRechazada.LimitesDesconocidos =>
@@ -974,7 +1054,7 @@ public sealed partial class CapturaViewModel : ObservableObject
 		MotivoEvidenciaRechazada.CupoLleno =>
 			$"Ya adjuntó el máximo de {ResumenEvidencias.Limites.MaximoArchivosPorIncidencia} archivos. Quite uno para agregar otro.",
 		MotivoEvidenciaRechazada.FormatoNoAdmitido =>
-			"Ese tipo de archivo no se admite. Elija una fotografía o un PDF.",
+			$"Ese tipo de archivo no se admite. Se admiten: {FormatosLegibles}.",
 		MotivoEvidenciaRechazada.DemasiadoGrande =>
 			$"El archivo pasa de {ResumenEvidencias.Limites.TamanoMaximoMb} MB.",
 		MotivoEvidenciaRechazada.ArchivoVacio =>

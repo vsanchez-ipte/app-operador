@@ -22,14 +22,29 @@ public sealed record EvidenciaVista(
 	string Nombre,
 	string Tipo,
 	string Tamano,
-	bool YaEnviada)
+	bool YaEnviada,
+	string Ruta,
+	bool EsImagen)
 {
 	public static EvidenciaVista Desde(EvidenciaAdjunta adjunta) => new(
 		adjunta.Uuid,
 		adjunta.NombreOriginal,
 		TipoLegible(adjunta.TipoMime),
 		TamanoLegible(adjunta.Bytes),
-		adjunta.Estado == EstadoSincronizacion.Sincronizado);
+		adjunta.Estado == EstadoSincronizacion.Sincronizado,
+		adjunta.RutaArchivo,
+		EsImagen: adjunta.TipoMime.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// Qué se pinta cuando el archivo no es una imagen.
+	/// </summary>
+	/// <remarks>
+	/// Un PDF o un video no tienen miniatura que mostrar sin decodificarlos, y decodificar un
+	/// video de quince megabytes en un teléfono de campo para pintar un cuadro de 72 píxeles es
+	/// gasto que no compra nada. Se muestra el tipo, que es lo que el operador necesita
+	/// distinguir de un vistazo.
+	/// </remarks>
+	public string Etiqueta => EsImagen ? string.Empty : Tipo;
 
 	/// <summary>
 	/// «image/jpeg» se lee «JPEG».

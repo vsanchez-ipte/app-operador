@@ -69,6 +69,32 @@ public sealed record ResumenEvidencias(
 
 	/// <summary>Suma de lo que ocupan, para que la vista pueda advertir de una cola pesada.</summary>
 	public long BytesTotales => Adjuntas.Sum(e => e.Bytes);
+
+	/// <summary>
+	/// Indica si se puede grabar y adjuntar un video.
+	/// </summary>
+	/// <remarks>
+	/// Son <b>dos condiciones</b>, y por eso no basta con <see cref="PuedeAdjuntar"/>: que quepa
+	/// otro archivo y que el servidor admita algún <c>video/*</c>. Hoy lo segundo es falso, así
+	/// que el botón sale apagado; cuando el catálogo publique video se enciende solo. Grabar un
+	/// video de quince megabytes para que lo rechace el formato es lo que esto evita.
+	/// </remarks>
+	public bool PuedeAdjuntarVideo => PuedeAdjuntar && Limites.AdmiteVideo;
+
+	/// <summary>
+	/// Por qué no se puede grabar video, cuando no se puede.
+	/// </summary>
+	/// <remarks>
+	/// Se separa de <see cref="MotivoParaNoAdjuntar"/> porque tiene una causa más, y es la que
+	/// hoy aplica: el servidor no admite el formato. Decir «ya no caben más» cuando lo que pasa
+	/// es que el video todavía no está habilitado mandaría a quitar archivos sin necesidad.
+	/// </remarks>
+	public MotivoEvidenciaRechazada MotivoParaNoAdjuntarVideo =>
+		MotivoParaNoAdjuntar is not MotivoEvidenciaRechazada.Ninguno
+			? MotivoParaNoAdjuntar
+			: Limites.AdmiteVideo
+				? MotivoEvidenciaRechazada.Ninguno
+				: MotivoEvidenciaRechazada.FormatoNoAdmitido;
 }
 
 /// <summary>Arma el resumen de evidencias de una incidencia.</summary>

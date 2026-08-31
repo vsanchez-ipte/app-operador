@@ -128,26 +128,108 @@
                     -->
                     <Label Text="EVIDENCIA (OPCIONAL)" Style="{StaticResource EtiquetaCampo}" />
 
+                    <!-- El visor de la maqueta, ahora con contenido. Antes era decorativo
+                         —una elipse sobre un fondo oscuro— y los botones que lo acompañaban
+                         estaban muertos, mientras otro juego de botones vivos hacía lo mismo
+                         más arriba. Es un solo bloque: se mira aquí y se actúa aquí.
+
+                         Muestra lo adjuntado, no la cámara en vivo: capturar se delega a la
+                         app de cámara del sistema, que ya trae enfoque, flash y HDR, y es lo
+                         que hace que el permiso se pida al usar la función (CA 3). -->
+                    <Border BackgroundColor="#1E1A1A" StrokeThickness="0" Padding="12"
+                            HeightRequest="170" StrokeShape="RoundRectangle 8">
+                        <Grid RowDefinitions="Auto,*,Auto">
+                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="CAM-MOVIL" FontSize="10" TextColor="#C9BFB6" />
+                                <!-- Contador combinado, sin separar fotos de videos: así lo fijó el PO. -->
+                                <Label Grid.Column="1" Text="{Binding ContadorEvidencias}"
+                                       FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource RosaFondo}" />
+                            </Grid>
+
+                            <!-- Sin nada adjunto se conserva la elipse de la maqueta: el
+                                 recuadro vacío y negro se lee como que algo falló. -->
+                            <VerticalStackLayout Grid.Row="1" Spacing="6"
+                                                 HorizontalOptions="Center" VerticalOptions="Center"
+                                                 IsVisible="{Binding HayEvidencias, Converter={StaticResource InvertirBooleano}}">
+                                <Ellipse WidthRequest="56" HeightRequest="56"
+                                         Stroke="#8A7F78" StrokeThickness="2"
+                                         HorizontalOptions="Center" />
+                                <Label Text="Sin evidencia adjunta" FontSize="10"
+                                       TextColor="#8A7F78" HorizontalOptions="Center" />
+                            </VerticalStackLayout>
+
+                            <ScrollView Grid.Row="1" Orientation="Horizontal"
+                                        HorizontalScrollBarVisibility="Never"
+                                        IsVisible="{Binding HayEvidencias}"
+                                        VerticalOptions="Center">
+                                <HorizontalStackLayout Spacing="8"
+                                                       BindableLayout.ItemsSource="{Binding Evidencias}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:EvidenciaVista">
+                                            <Border WidthRequest="72" HeightRequest="72"
+                                                    BackgroundColor="#2B2523" StrokeThickness="0"
+                                                    StrokeShape="RoundRectangle 6">
+                                                <Grid>
+                                                    <Image Source="{Binding Ruta}" Aspect="AspectFill"
+                                                           IsVisible="{Binding EsImagen}" />
+                                                    <!-- Un PDF o un video no tienen miniatura sin
+                                                         decodificarlos, y decodificar quince
+                                                         megabytes para un cuadro de 72 píxeles no
+                                                         compra nada. Se muestra el tipo. -->
+                                                    <Label Text="{Binding Etiqueta}"
+                                                           FontSize="11" FontAttributes="Bold"
+                                                           TextColor="#C9BFB6"
+                                                           HorizontalOptions="Center"
+                                                           VerticalOptions="Center"
+                                                           IsVisible="{Binding EsImagen, Converter={StaticResource InvertirBooleano}}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </HorizontalStackLayout>
+                            </ScrollView>
+
+                            <Label Grid.Row="2" Text="{Binding Kilometro, StringFormat='KM {0}'}"
+                                   FontSize="10" TextColor="#C9BFB6" />
+                        </Grid>
+                    </Border>
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <!-- La cámara solo si el dispositivo la tiene: ofrecer un botón que no
                              puede funcionar es peor que no ofrecerlo. -->
                         <Button Grid.Column="0"
-                                Text="Tomar foto"
-                                Style="{StaticResource BotonSecundario}"
+                                Text="Capturar foto"
+                                Style="{StaticResource BotonPrimario}"
                                 IsVisible="{Binding HayCamara}"
                                 IsEnabled="{Binding PuedeAdjuntar}"
                                 Command="{Binding AdjuntarDeCamaraCommand}" />
+                        <!-- Queda visible y apagado mientras el catálogo no publique un
+                             video/*, y se enciende solo el día que lo haga: es el mismo trato
+                             que a los otros tres límites. Ocultarlo dejaría JTT-289 con trabajo
+                             de app que hoy no hace falta. -->
                         <Button Grid.Column="1"
-                                Text="Elegir archivo"
+                                Text="Capturar video corto"
                                 Style="{StaticResource BotonSecundario}"
-                                IsEnabled="{Binding PuedeAdjuntar}"
-                                Command="{Binding AdjuntarDeGaleriaCommand}" />
+                                IsVisible="{Binding HayCamara}"
+                                IsEnabled="{Binding PuedeAdjuntarVideo}"
+                                Command="{Binding AdjuntarDeVideoCommand}" />
                     </Grid>
 
-                    <!-- Contador combinado, sin separar fotos de videos: así lo fijó el PO. -->
-                    <Label Text="{Binding ContadorEvidencias}"
+                    <!-- El selector de archivos es la otra mitad del CA 2, «selector de archivos
+                         o fotografías». Sin él, el PDF que el servidor admite no tenía por dónde
+                         entrar: la galería solo ofrece el carrete. -->
+                    <Button Text="Elegir archivo"
+                            Style="{StaticResource BotonSecundario}"
+                            IsEnabled="{Binding PuedeAdjuntar}"
+                            Command="{Binding AdjuntarDeArchivoCommand}" />
+
+                    <!-- Por qué el botón de video está apagado. Va junto a él por lo mismo que
+                         el aviso de permiso: un botón visible y muerto sin explicación se lee
+                         como que la app está rota. -->
+                    <Label Text="{Binding AvisoVideo}"
                            Style="{StaticResource TextoSecundario}"
-                           HorizontalOptions="End" />
+                           IsVisible="{Binding HayAvisoVideo}" />
 
                     <VerticalStackLayout Spacing="6" IsVisible="{Binding HayEvidencias}"
                                          BindableLayout.ItemsSource="{Binding Evidencias}">
@@ -278,44 +360,6 @@
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
-
-                </VerticalStackLayout>
-            </Border>
-
-            <!--
-                Cámara del operador (JTT-289). Esqueleto visual: la captura real llega con
-                el servicio de medios y la copia a archivos privados.
-            -->
-            <Border Style="{StaticResource Tarjeta}">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Camara del operador" Style="{StaticResource TituloTarjeta}" />
-
-                    <Border BackgroundColor="#1E1A1A" StrokeThickness="0" Padding="12" HeightRequest="170"
-                            StrokeShape="RoundRectangle 8">
-                        <Grid RowDefinitions="Auto,*,Auto">
-                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0" Text="CAM-MOVIL" FontSize="10" TextColor="#C9BFB6" />
-                                <Label Grid.Column="1" Text="LISTA" FontSize="10" FontAttributes="Bold"
-                                       TextColor="{StaticResource RosaFondo}" />
-                            </Grid>
-
-                            <Ellipse Grid.Row="1" WidthRequest="56" HeightRequest="56"
-                                     Stroke="#8A7F78" StrokeThickness="2"
-                                     HorizontalOptions="Center" VerticalOptions="Center" />
-
-                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0" Text="{Binding Kilometro, StringFormat='KM {0}'}"
-                                       FontSize="10" TextColor="#C9BFB6" />
-                            </Grid>
-                        </Grid>
-                    </Border>
-
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <Button Grid.Column="0" Text="Capturar foto"
-                                Style="{StaticResource BotonPrimario}" IsEnabled="False" />
-                        <Button Grid.Column="1" Text="Capturar video corto"
-                                Style="{StaticResource BotonSecundario}" IsEnabled="False" />
-                    </Grid>
 
                 </VerticalStackLayout>
             </Border>
