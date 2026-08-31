@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Modelos;
+﻿using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 
 namespace AppOperador.UnitTests.Application;
@@ -68,6 +68,58 @@ public class RegistroColaTests
 		Assert.Equal(folio, registro.ReferenciaPrincipal);
 	}
 
+	// ── La severidad no es la prioridad de sincronizacion (31-ago) ───────────────────
+
+	[Theory]
+	[InlineData("Advertencia")]
+	[InlineData("Información")]
+	[InlineData("Normal")]
+	public void CadaSeveridadSeMuestraTalCualEsAunqueSuPrioridadSeaNormal(string severidad)
+	{
+		// El defecto: la pantalla mostraba la PRIORIDAD rotulada como severidad, y la prioridad
+		// solo tiene dos valores. Las tres de aqui comparten prioridad Normal y son distintas.
+		var registro = Registro(null, EstadoSincronizacion.Pendiente) with
+		{
+			Prioridad = SyncPriority.Normal,
+			Severidad = severidad,
+		};
+
+		Assert.Equal(severidad, registro.SeveridadLegible);
+	}
+
+	[Fact]
+	public void UnaSeveridadCriticaNoDependeDeLaPrioridadParaMostrarse()
+	{
+		var registro = Registro(null, EstadoSincronizacion.Pendiente) with
+		{
+			Prioridad = SyncPriority.Critica,
+			Severidad = "Crítica",
+		};
+
+		Assert.Equal("Crítica", registro.SeveridadLegible);
+	}
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	[InlineData("   ")]
+	public void UnBorradorSinSeveridadLoDiceEnVezDeInventarUna(string? severidad)
+	{
+		// Dejarlo vacio se leeria como error de carga, y poner "Normal" seria afirmar algo que
+		// el operador no eligio.
+		var registro = Registro(null, EstadoSincronizacion.Borrador) with { Severidad = severidad };
+
+		Assert.Equal("Sin severidad", registro.SeveridadLegible);
+	}
+
+	[Fact]
+	public void LaSeveridadSeMuestraSinEspaciosDeSobra()
+	{
+		var registro = Registro(null, EstadoSincronizacion.Pendiente) with { Severidad = "  Advertencia " };
+
+		Assert.Equal("Advertencia", registro.SeveridadLegible);
+	}
+
 	private static RegistroCola Registro(string? folio, EstadoSincronizacion estado) => new(
 		"LOC-000123",
 		ClaseRegistro.Incidencia,
@@ -75,5 +127,6 @@ public class RegistroColaTests
 		"Objeto en camino",
 		"130+200",
 		estado,
-		folio);
+		folio,
+		"Normal");
 }

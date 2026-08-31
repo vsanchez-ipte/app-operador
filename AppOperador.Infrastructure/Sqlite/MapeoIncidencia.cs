@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Modelos;
+﻿using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Infrastructure.Sqlite.Entidades;
 
@@ -23,7 +23,8 @@ internal static class MapeoIncidencia
 		Describir(fila),
 		fila.Kilometro ?? string.Empty,
 		(EstadoSincronizacion)fila.Estado,
-		fila.FolioCentral);
+		fila.FolioCentral,
+		fila.SeveridadNombre);
 
 	/// <summary>
 	/// Describe el contenido del registro: solo el tipo de incidencia.

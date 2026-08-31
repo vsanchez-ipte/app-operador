@@ -1,4 +1,4 @@
-using AppOperador.Domain.Enums;
+﻿using AppOperador.Domain.Enums;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -21,6 +21,15 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <param name="Kilometro">Punto kilométrico asociado, en forma canónica.</param>
 /// <param name="Estado">Estado dentro de la cola.</param>
 /// <param name="FolioCentral">Folio asignado por Jacob, si ya se sincronizó.</param>
+/// <param name="Severidad">
+/// Severidad con la que se capturó, tal como la nombra el catálogo.
+/// <para>
+/// <b>No es lo mismo que <see cref="Prioridad"/>, y confundirlas fue un defecto real.</b> La
+/// pantalla mostraba la prioridad rotulada como severidad, y la prioridad solo tiene dos
+/// valores: toda severidad que no fuera crítica —Advertencia, Información, Normal— se leía
+/// «Normal». El operador que capturó una Advertencia veía otra cosa en la Cola.
+/// </para>
+/// </param>
 public sealed record RegistroCola(
 	string ClaveLocal,
 	ClaseRegistro Clase,
@@ -28,8 +37,23 @@ public sealed record RegistroCola(
 	string Descripcion,
 	string Kilometro,
 	EstadoSincronizacion Estado,
-	string? FolioCentral = null)
+	string? FolioCentral = null,
+	string? Severidad = null)
 {
+	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
+	/// <remarks>
+	/// <b>Vive aquí y no en la vista</b>, por lo mismo que <see cref="ReferenciaPrincipal"/>: qué
+	/// se le muestra al operador no es una decisión de estilo, y en la vista no llega ninguna
+	/// prueba. La Cola ya se contradijo dos veces en un día —26 de agosto— por decidir en el
+	/// ViewModel, y este defecto es de la misma familia.
+	/// <para>
+	/// Un borrador puede no tener severidad todavía. Se dice, en vez de dejar el hueco vacío o
+	/// —peor— rellenarlo con algo que parezca una severidad de verdad.
+	/// </para>
+	/// </remarks>
+	public string SeveridadLegible =>
+		string.IsNullOrWhiteSpace(Severidad) ? "Sin severidad" : Severidad!.Trim();
+
 	/// <summary>
 	/// Referencia con la que se identifica el registro: el folio si ya llegó, la clave local
 	/// mientras no (JTT-1403 CA 1).

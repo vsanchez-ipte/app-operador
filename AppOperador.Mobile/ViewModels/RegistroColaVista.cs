@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Modelos;
+﻿using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 
 namespace AppOperador.Mobile.ViewModels;
@@ -18,8 +18,13 @@ public sealed class RegistroColaVista
 		Registro = registro;
 
 		var clase = registro.Clase == ClaseRegistro.Incidencia ? "Incidencia" : "Evidencia local";
-		var prioridad = registro.Prioridad == SyncPriority.Critica ? "Crítica" : "Normal";
-		TextoDatos = $"{clase} / {prioridad} / {registro.Descripcion} / KM {registro.Kilometro}";
+
+		// Va la SEVERIDAD, no la prioridad de sincronización. Antes iba la prioridad rotulada
+		// como severidad, y la prioridad solo tiene dos valores: Advertencia e Información se
+		// leían "Normal". La prioridad sigue existiendo y sigue ordenando la cola; lo que no
+		// hace es hacerse pasar por otra cosa.
+		TextoDatos =
+			$"{clase} / {registro.SeveridadLegible} / {registro.Descripcion} / KM {registro.Kilometro}";
 
 		(TextoEstado, ColorFondoEstado, ColorTextoEstado) = registro.Estado switch
 		{
@@ -45,7 +50,7 @@ public sealed class RegistroColaVista
 	/// </remarks>
 	public string ReferenciaPrincipal => Registro.ReferenciaPrincipal;
 
-	/// <summary>Línea de datos: clase, prioridad, descripción y kilómetro.</summary>
+	/// <summary>Línea de datos: clase, severidad, descripción y kilómetro.</summary>
 	public string TextoDatos { get; }
 
 	public string TextoEstado { get; }
