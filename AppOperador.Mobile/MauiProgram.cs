@@ -176,6 +176,11 @@ public static class MauiProgram
 		// Después del canal: el cierre recibe el cliente de Jacob si está registrado, y se
 		// queda con el cierre puramente local si no lo está (JTT-1390).
 		servicios.AddSingleton<CerrarSesionMovil>();
+
+		// Único para toda la app: dos instancias escucharían el mismo evento de enlace y
+		// dispararían dos tandas por cada reconexión (JTT-1406). Va después del canal porque
+		// necesita el sincronizador, que se registra en los dos caminos.
+		servicios.AddSingleton<SincronizacionAutomatica>();
 	}
 
 	/// <summary>

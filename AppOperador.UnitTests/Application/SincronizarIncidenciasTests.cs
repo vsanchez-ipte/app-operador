@@ -412,6 +412,84 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Equal(0, resultado.OmitidosPorCorregir);
 	}
 
+	// ── Una sola tanda a la vez (JTT-1406 CA 6) ───────────────────────────────────────
+
+	[Fact]
+	public async Task MientrasCorreUnaTanda_laSegundaNoEntra()
+	{
+		// Desde JTT-1406 hay tres disparadores que no se conocen entre sí: el botón, la
+		// revalidación de sesión y la recuperación del enlace. Recuperar la señal justo cuando
+		// el operador pulsa «Sincronizar» deja de ser raro: es lo que hace quien está esperando.
+		_cola.Encolar(Pendiente());
+		_jacob.Pausa = new TaskCompletionSource();
+
+		var sincronizador = Crear();
+		var primera = sincronizador.EjecutarAsync();
+		await _jacob.LlegoLaPrimera.Task;
+
+		var segunda = await sincronizador.EjecutarAsync();
+
+		Assert.Equal(MotivoNoSincroniza.YaEnCurso, segunda.MotivoBloqueo);
+		Assert.Equal(0, segunda.Intentados);
+
+		// Y lo que importa de verdad: la segunda no volvió a mandar el mismo registro.
+		Assert.Single(_jacob.Recibidos);
+
+		_jacob.Pausa.SetResult();
+		var resultadoPrimera = await primera;
+		Assert.Equal(1, resultadoPrimera.Confirmados);
+	}
+
+	[Fact]
+	public async Task CuandoLaTandaTermina_laSiguienteSiEntra()
+	{
+		// El cerrojo se suelta pase lo que pase. Si no, un solo envío dejaría la app sin
+		// sincronizar hasta reiniciarla, que es mucho peor que el defecto que viene a evitar.
+		_cola.Encolar(Pendiente());
+		var sincronizador = Crear();
+
+		await sincronizador.EjecutarAsync();
+		var segunda = await sincronizador.EjecutarAsync();
+
+		Assert.Null(segunda.MotivoBloqueo);
+	}
+
+	[Fact]
+	public async Task SiLaTandaRevienta_elCerrojoIgualSeSuelta()
+	{
+		_cola.Encolar(Pendiente());
+		_jacob.LanzaExcepcion = true;
+		var sincronizador = Crear();
+
+		await sincronizador.EjecutarAsync();
+		_jacob.LanzaExcepcion = false;
+		var segunda = await sincronizador.EjecutarAsync();
+
+		Assert.NotEqual(MotivoNoSincroniza.YaEnCurso, segunda.MotivoBloqueo);
+	}
+
+	[Fact]
+	public async Task ElEnvioInmediatoNoSeCuelaMientrasCorreLaTanda()
+	{
+		// Comparten cerrojo porque pueden tocar el mismo registro: el que el operador acaba de
+		// guardar puede ser justo uno de los que la tanda está recorriendo. No se pierde nada,
+		// sale con la tanda o en la siguiente.
+		_cola.Encolar(Pendiente());
+		_jacob.Pausa = new TaskCompletionSource();
+
+		var sincronizador = Crear();
+		var tanda = sincronizador.EjecutarAsync();
+		await _jacob.LlegoLaPrimera.Task;
+
+		var inmediato = await sincronizador.EnviarUnaAsync("LOC-000001");
+
+		Assert.Equal(MotivoNoSincroniza.YaEnCurso, inmediato.MotivoBloqueo);
+		Assert.Single(_jacob.Recibidos);
+
+		_jacob.Pausa.SetResult();
+		await tanda;
+	}
+
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
 	private static ResultadoEnvio Aceptada(string folio) =>
@@ -476,25 +554,44 @@ public sealed class SincronizarIncidenciasTests
 		/// <summary>Simula que el cliente revienta en vez de contestar.</summary>
 		public bool LanzaExcepcion { get; set; }
 
+		/// <summary>
+		/// Deja la petición colgada hasta que la prueba la suelte.
+		/// </summary>
+		/// <remarks>
+		/// Sirve para tener una tanda <b>a medio correr</b> y comprobar qué pasa si llega otra
+		/// (JTT-1406 CA 6). Sin esto no hay forma de solapar dos: los dobles contestan al
+		/// instante y la primera termina antes de que la segunda empiece.
+		/// </remarks>
+		public TaskCompletionSource? Pausa { get; set; }
+
+		/// <summary>Se completa en cuanto Jacob recibe la primera petición.</summary>
+		public TaskCompletionSource LlegoLaPrimera { get; } = new();
+
 		public JacobFalso Responde(ResultadoEnvio resultado)
 		{
 			_programados.Enqueue(resultado);
 			return this;
 		}
 
-		public Task<ResultadoEnvio> RegistrarAsync(
+		public async Task<ResultadoEnvio> RegistrarAsync(
 			EnvioIncidencia incidencia, string accessToken, CancellationToken c = default)
 		{
 			Recibidos.Add(incidencia);
+			LlegoLaPrimera.TrySetResult();
+
+			if (Pausa is not null)
+			{
+				await Pausa.Task;
+			}
 
 			if (LanzaExcepcion)
 			{
 				throw new HttpRequestException("La conexión se cortó a media petición.");
 			}
 
-			return Task.FromResult(_programados.Count > 0
+			return _programados.Count > 0
 				? _programados.Dequeue()
-				: Aceptada("INC-APK-2026-0001"));
+				: Aceptada("INC-APK-2026-0001");
 		}
 	}
 

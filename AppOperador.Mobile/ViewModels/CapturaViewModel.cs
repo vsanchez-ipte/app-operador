@@ -754,6 +754,11 @@ public sealed partial class CapturaViewModel : ObservableObject
 					$"{claveLocal} guardada sin conexión. Se enviará al recuperar la señal.",
 				MotivoNoSincroniza.SinSesion =>
 					$"{claveLocal} guardada. La sesión expiró: vuelva a ingresar para enviarla.",
+				// Había una tanda corriendo, así que esta no se envió por su cuenta: sale con
+				// las demás. Se nombra aparte porque, sin esta rama, caería en la del permiso y
+				// le diría al operador que no está autorizado cuando sí lo está (JTT-1406 CA 6).
+				MotivoNoSincroniza.YaEnCurso =>
+					$"{claveLocal} guardada. Se enviará con la sincronización en curso.",
 				_ => $"{claveLocal} guardada. Su cuenta no tiene autorizado sincronizar.",
 			};
 		}

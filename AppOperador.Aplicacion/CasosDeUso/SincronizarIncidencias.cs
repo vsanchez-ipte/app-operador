@@ -34,6 +34,27 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	private readonly IRepositorioEvidencias _evidencias;
 	private readonly IEvidenciasJacobClient _clienteEvidencias;
 
+	/// <summary>
+	/// Deja pasar una sola sincronización a la vez (JTT-1406 CA 6).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Hay tres disparadores y ninguno sabe de los otros:</b> el botón de la pantalla de Cola,
+	/// la revalidación de sesión y —desde esta historia— la recuperación del enlace. Solapar dos
+	/// tandas no duplicaría incidencias, porque el alta es idempotente por <c>uuid</c>, pero sí
+	/// haría que las dos leyeran la misma cola y se pisaran las transiciones de estado: la
+	/// segunda podría devolver a <c>Pendiente</c> un registro que la primera acaba de poner en
+	/// <c>Enviando</c>, y contarlo dos veces en el aviso.
+	/// </para>
+	/// <para>
+	/// <b>Se toma sin esperar y se rechaza el intento tardío, en vez de encolarlo.</b> Encolarlo
+	/// dejaría al operador mirando un botón ocupado para que después corriera una tanda sobre una
+	/// cola que la primera ya vació. Nada se pierde: lo pendiente lo está atendiendo la tanda que
+	/// ya corre, y lo que llegue después sale en la siguiente.
+	/// </para>
+	/// </remarks>
+	private readonly SemaphoreSlim _unaTandaALaVez = new(1, 1);
+
 	public SincronizarIncidencias(
 		ISyncQueueService cola,
 		IIncidenciasJacobClient jacob,
@@ -63,6 +84,24 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	/// </summary>
 	/// <inheritdoc />
 	public async Task<ResultadoSincronizacion> EjecutarAsync(CancellationToken cancelacion = default)
+	{
+		if (!await _unaTandaALaVez.WaitAsync(0, cancelacion))
+		{
+			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
+		}
+
+		try
+		{
+			return await EjecutarTandaAsync(cancelacion);
+		}
+		finally
+		{
+			_unaTandaALaVez.Release();
+		}
+	}
+
+	/// <summary>Recorre la cola. Ya con la exclusión tomada.</summary>
+	private async Task<ResultadoSincronizacion> EjecutarTandaAsync(CancellationToken cancelacion)
 	{
 		var bloqueo = await ComprobarCondicionesAsync(cancelacion);
 		if (bloqueo is not null)
@@ -151,6 +190,31 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	public async Task<ResultadoSincronizacion> EnviarUnaAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
+	{
+		// Comparte la exclusión con la tanda completa, y no una propia: el registro que el
+		// operador acaba de guardar puede ser justo uno de los que la tanda está recorriendo.
+		// Con dos cerrojos distintos, los dos caminos escribirían su estado a la vez.
+		if (!await _unaTandaALaVez.WaitAsync(0, cancelacion))
+		{
+			// Se queda como Pendiente y sale en la tanda que ya corre o en la siguiente. Para el
+			// operador es lo mismo que no haber tenido enlace: guardada y en camino.
+			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
+		}
+
+		try
+		{
+			return await EnviarSoloEsaAsync(claveLocal, cancelacion);
+		}
+		finally
+		{
+			_unaTandaALaVez.Release();
+		}
+	}
+
+	/// <summary>Envía un registro concreto. Ya con la exclusión tomada.</summary>
+	private async Task<ResultadoSincronizacion> EnviarSoloEsaAsync(
+		string claveLocal,
+		CancellationToken cancelacion)
 	{
 		// Las mismas compuertas que el envío de la cola: capturar no autoriza más que
 		// sincronizar, y sin enlace tampoco hay a dónde mandar.

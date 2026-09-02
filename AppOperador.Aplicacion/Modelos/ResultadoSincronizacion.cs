@@ -52,4 +52,14 @@ public enum MotivoNoSincroniza
 
 	/// <summary>La sesión no autoriza sincronizar.</summary>
 	SinPermiso = 3,
+
+	/// <summary>
+	/// Ya hay una sincronización en marcha (JTT-1406 CA 6).
+	/// </summary>
+	/// <remarks>
+	/// <b>No es un fallo y nada se pierde:</b> lo pendiente lo está atendiendo la tanda que ya
+	/// corre. Se distingue de los demás motivos porque el operador no tiene nada que hacer al
+	/// respecto —ni buscar señal, ni volver a ingresar, ni pedir permisos—, solo esperar.
+	/// </remarks>
+	YaEnCurso = 4,
 }

@@ -17,6 +17,9 @@ public sealed partial class ColaViewModel : ObservableObject
 	private readonly ISyncQueueService _cola;
 	private readonly ISincronizadorIncidencias _sincronizador;
 	private readonly CapacidadesDeLaSesion _capacidades;
+	private readonly SincronizacionAutomatica _sincronizacionAutomatica;
+
+	private bool _escuchandoLaSincronizacionAutomatica;
 
 	[ObservableProperty]
 	public partial int Pendientes { get; set; }
@@ -40,12 +43,77 @@ public sealed partial class ColaViewModel : ObservableObject
 		ISyncQueueService cola,
 		ISincronizadorIncidencias sincronizador,
 		CapacidadesDeLaSesion capacidades,
-		EstadoEnlaceViewModel enlace)
+		EstadoEnlaceViewModel enlace,
+		SincronizacionAutomatica sincronizacionAutomatica)
 	{
 		_cola = cola;
 		_sincronizador = sincronizador;
 		_capacidades = capacidades;
+		_sincronizacionAutomatica = sincronizacionAutomatica;
 		Enlace = enlace;
+	}
+
+	/// <summary>
+	/// Empieza a atender los envíos que ocurren solos (JTT-1406).
+	/// </summary>
+	/// <remarks>
+	/// <b>Lo llama la página al aparecer, y no el constructor</b>: este ViewModel es transitorio
+	/// y cada visita a la pantalla crea uno nuevo. Suscribir en el constructor dejaría vivos a
+	/// todos los anteriores, colgados de un servicio que dura lo que la aplicación. Además, el
+	/// refresco solo tiene sentido mientras la lista se está viendo.
+	/// </remarks>
+	public void Escuchar()
+	{
+		if (_escuchandoLaSincronizacionAutomatica)
+		{
+			return;
+		}
+
+		_sincronizacionAutomatica.SincronizacionTerminada += AlTerminarUnEnvioAutomatico;
+		_escuchandoLaSincronizacionAutomatica = true;
+	}
+
+	/// <summary>Deja de atenderlos. Lo llama la página al desaparecer.</summary>
+	public void DejarDeEscuchar()
+	{
+		if (!_escuchandoLaSincronizacionAutomatica)
+		{
+			return;
+		}
+
+		_sincronizacionAutomatica.SincronizacionTerminada -= AlTerminarUnEnvioAutomatico;
+		_escuchandoLaSincronizacionAutomatica = false;
+	}
+
+	/// <summary>
+	/// Repinta la cola cuando el envío ocurrió sin que el operador lo pidiera.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Sin esto, recuperar la señal con la pantalla abierta enviaría los registros y la lista
+	/// seguiría enseñándolos como pendientes hasta que alguien saliera y volviera a entrar. El
+	/// operador leería que no salió nada cuando ya está en el CCO.
+	/// </para>
+	/// <para>
+	/// Llega desde el hilo en el que corrió la sincronización, no del principal, así que la
+	/// actualización de la lista se marshalea: tocar la colección enlazada desde otro hilo hace
+	/// fallar el pintado.
+	/// </para>
+	/// </remarks>
+	private void AlTerminarUnEnvioAutomatico(object? origen, ResultadoSincronizacion resultado)
+	{
+		MainThread.BeginInvokeOnMainThread(async () =>
+		{
+			// Solo se avisa de lo que cambió algo. Una tanda automática que no encontró nada que
+			// enviar es el caso corriente —el enlace va y viene todo el día— y anunciarla
+			// llenaría la pantalla de mensajes que el operador no pidió.
+			if (resultado.Confirmados > 0)
+			{
+				MensajeSincronizacion = TextoDe(resultado);
+			}
+
+			await ActualizarAsync();
+		});
 	}
 
 	/// <summary>Indica si la sesión autoriza ver la cola (JTT-1385 CA 3 y 4).</summary>
@@ -189,6 +257,10 @@ public sealed partial class ColaViewModel : ObservableObject
 			"Sin enlace con el CCO. Lo capturado se conserva y se enviará al recuperar la señal.",
 		MotivoNoSincroniza.SinSesion =>
 			"La sesión expiró. Vuelva a ingresar para sincronizar.",
+		// No es un fallo: el envío ya está corriendo, disparado por la reconexión o por un
+		// toque anterior. Decir «no se pudo» mandaría a pulsar otra vez algo que ya funciona.
+		MotivoNoSincroniza.YaEnCurso =>
+			"El envío ya está en marcha. Espere a que termine.",
 		// Nada se intentó, pero eso NO significa que no haya nada. Decir «no hay pendientes»
 		// con tres en la lista de arriba es contradecirse en la misma pantalla, y deja al
 		// operador sin saber si el botón funcionó.
