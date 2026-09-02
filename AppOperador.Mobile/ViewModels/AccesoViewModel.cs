@@ -59,6 +59,16 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string DetalleAjustesNoAbrieron =
 		"No se pudo abrir la configuración del dispositivo. Ábrala manualmente y vuelva a la app.";
 
+	// Qué se está haciendo mientras el operador espera. Van uno por paso y no un «Cargando…»
+	// común: el acceso son hasta tres esperas seguidas contra el servidor, y cada una puede
+	// tardar lo que dure el tiempo de espera del cliente. Decirle cuál va es la diferencia
+	// entre esperar y creer que la app se colgó.
+	private const string PasoComprobandoEnlace = "Comprobando el enlace con Jacob CCO…";
+	private const string PasoComprobandoUbicacion = "Comprobando la ubicación del dispositivo…";
+	private const string PasoValidandoCredenciales = "Validando sus credenciales con Jacob CCO…";
+	private const string PasoAbriendoSesion = "Abriendo la sesión con la unidad elegida…";
+	private const string PasoReanudandoOffline = "Reanudando la última sesión guardada…";
+
 	private const string AccionPermitir = "Permitir ubicación";
 	private const string AccionAjustesApp = "Abrir configuración de la app";
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
@@ -95,6 +105,25 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
+
+	/// <summary>
+	/// Qué está haciendo la pantalla ahora mismo, o <see langword="null"/> si no espera nada.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Sin esto la pantalla parece colgada.</b> <see cref="Ocupado"/> solo apagaba los
+	/// botones: el operador pulsaba «Iniciar sesión», todo se ponía gris y no ocurría nada
+	/// visible durante lo que tardara el servidor —hasta veinte segundos por llamada, y el
+	/// acceso real hace dos seguidas—. No había ningún indicador de actividad en la aplicación.
+	/// </para>
+	/// <para>
+	/// Va en el mismo bloque que <see cref="Ocupado"/> en cada camino, y se limpia en el mismo
+	/// <c>finally</c>: si los dos se separaran, quedaría un texto anunciando un trabajo que ya
+	/// terminó, que es peor que no decir nada.
+	/// </para>
+	/// </remarks>
+	[ObservableProperty]
+	public partial string? PasoEnCurso { get; set; }
 
 	/// <summary>
 	/// Explicación del estado de ubicación encontrado. Acompaña al literal de JTT-279, que
@@ -165,6 +194,9 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// <summary>Indica si hay un botón de ubicación que ofrecer.</summary>
 	public bool HayAccionUbicacion => !string.IsNullOrEmpty(TextoAccionUbicacion);
 
+	/// <summary>Indica si hay que mostrar el indicador de actividad y su texto.</summary>
+	public bool HayPasoEnCurso => !string.IsNullOrEmpty(PasoEnCurso);
+
 	/// <summary>Estado de comunicación con Jacob CCO, visible en la pantalla.</summary>
 	public string TextoEstadoEnlace => _conectividad.HayEnlace ? "Enlace CCO activo" : MensajeSinComunicacion;
 
@@ -209,7 +241,21 @@ public sealed partial class AccesoViewModel : ObservableObject
 		// El indicador de enlace de esta pantalla debe reflejar el estado real, no el último
 		// que se conociera (JTT-1391 CA 6). Sin sesión la sonda no puede autenticarse, así
 		// que lo que se comprueba aquí es la red.
-		await _conectividad.ComprobarAsync();
+		//
+		// Se anuncia porque es la primera espera que encuentra el operador y ocurre sola, al
+		// llegar a la pantalla: sin aviso, la app se abre y se queda quieta sin explicación.
+		Ocupado = true;
+		PasoEnCurso = PasoComprobandoEnlace;
+		try
+		{
+			await _conectividad.ComprobarAsync();
+		}
+		finally
+		{
+			PasoEnCurso = null;
+			Ocupado = false;
+		}
+
 		OnPropertyChanged(nameof(TextoEstadoEnlace));
 	}
 
@@ -303,12 +349,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 			// confirmarla. No se vuelve a preautenticar: el desafío sigue vigente.
 			if (EnSeleccionDeUnidad)
 			{
+				PasoEnCurso = PasoAbriendoSesion;
 				await AbrirSesionAsync();
 				return;
 			}
 
 			if (_accesoJacob is not null)
 			{
+				PasoEnCurso = PasoValidandoCredenciales;
 				await IdentificarAsync();
 				return;
 			}
@@ -318,11 +366,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 				return;
 			}
 
+			PasoEnCurso = PasoValidandoCredenciales;
 			var resultado = await _autenticacion.IngresarAsync(Usuario, Contrasena, UnidadSeleccionada);
 			await ProcesarResultadoAsync(resultado);
 		}
 		finally
 		{
+			PasoEnCurso = null;
 			Ocupado = false;
 		}
 	}
@@ -451,6 +501,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 			// Con el canal real, la reanudación consulta la sesión que quedó guardada y mide
 			// su vigencia sin fiarse del reloj (JTT-1383). Sin canal, sigue el simulador.
+			PasoEnCurso = PasoReanudandoOffline;
 			var resultado = _reanudarOffline is not null
 				? await _reanudarOffline.ReanudarAsync()
 				: await _autenticacion.ContinuarSinConexionAsync();
@@ -459,6 +510,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		}
 		finally
 		{
+			PasoEnCurso = null;
 			Ocupado = false;
 		}
 	}
@@ -517,8 +569,16 @@ public sealed partial class AccesoViewModel : ObservableObject
 	}
 
 	/// <summary>Comprueba el prerrequisito y deja la pantalla contando lo que encontró.</summary>
+	/// <remarks>
+	/// El paso se anuncia aquí y no en cada quien la llama, porque los dos caminos de acceso
+	/// —en línea y sin conexión— pasan por ella y esperarían lo mismo sin explicación. Puede
+	/// tardar: si el permiso no está concedido, esta llamada abre el diálogo del sistema y no
+	/// vuelve hasta que el operador conteste.
+	/// </remarks>
 	private async Task<bool> UbicacionAutorizadaAsync()
 	{
+		PasoEnCurso = PasoComprobandoUbicacion;
+
 		var resultado = await _ubicacion.ExigirAsync();
 		AplicarUbicacion(resultado);
 
@@ -630,6 +690,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 			MensajeError = null;
 		}
 	}
+
+	partial void OnPasoEnCursoChanged(string? value) => OnPropertyChanged(nameof(HayPasoEnCurso));
 
 	partial void OnDetalleUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayDetalleUbicacion));
 
