@@ -1,4 +1,5 @@
 ﻿using AppOperador.Domain.Enums;
+using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -34,6 +35,13 @@ namespace AppOperador.Aplicacion.Modelos;
 /// Código con el que se rechazó el último intento, o <see langword="null"/> si no ha fallado.
 /// Es lo que decide si el registro va a salir solo o necesita que alguien lo corrija.
 /// </param>
+/// <param name="Intentos">
+/// Envíos ya intentados sobre el registro. Junto con <paramref name="UltimoIntentoUtc"/> es lo que
+/// permite decir <b>cuándo</b> va a reintentarse, y no solo que se reintentará.
+/// </param>
+/// <param name="UltimoIntentoUtc">
+/// Cuándo se intentó por última vez, o <see langword="null"/> si nunca se intentó.
+/// </param>
 /// <param name="UltimoErrorMensaje">
 /// Lo que dijo Jacob al rechazarlo, o el motivo del fallo local.
 /// <para>
@@ -52,7 +60,9 @@ public sealed record RegistroCola(
 	string? FolioCentral = null,
 	string? Severidad = null,
 	string? UltimoErrorCodigo = null,
-	string? UltimoErrorMensaje = null)
+	string? UltimoErrorMensaje = null,
+	int Intentos = 0,
+	DateTime? UltimoIntentoUtc = null)
 {
 	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
 	/// <remarks>
@@ -123,6 +133,37 @@ public sealed record RegistroCola(
 		// y el único en que esperar no sirve de nada.
 		? $"El CCO la rechazó: {Detalle} Corríjala: no saldrá sola."
 		: $"No llegó al CCO: {Detalle}";
+
+	/// <summary>
+	/// Si este registro tiene un reintento programado que se va a disparar solo.
+	/// </summary>
+	/// <remarks>
+	/// <b>Solo los fallos técnicos.</b> Un rechazo funcional no se reintenta hasta que alguien
+	/// corrija el registro, así que anunciarle una hora al operador sería prometer algo que no va
+	/// a pasar. Lo que ese caso necesita ya lo dice <see cref="MotivoFallo"/>.
+	/// </remarks>
+	public bool HayReintentoProgramado =>
+		Estado == EstadoSincronizacion.Fallido
+		&& !CodigosErrorJacob.EsFuncional(UltimoErrorCodigo)
+		&& UltimoIntentoUtc is not null;
+
+	/// <summary>
+	/// Cuándo toca el próximo intento, en UTC, o <see langword="null"/> si no hay ninguno.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>La espera no es fija: crece con cada fallo</b> —1, 2, 4, 8, 16 minutos, con tope de 30—.
+	/// Decir «se reintentará en un minuto» sería falso a partir del segundo fallo, y es
+	/// justamente cuando el operador se pregunta si la aplicación sigue intentando algo.
+	/// </para>
+	/// <para>
+	/// Se publica el <b>instante</b> y no un texto: cómo se presenta —hora local, formato— es de
+	/// la vista. Lo que se decide aquí es cuándo, que es donde hay pruebas.
+	/// </para>
+	/// </remarks>
+	public DateTime? ReintentoUtc => HayReintentoProgramado
+		? UltimoIntentoUtc!.Value + ReglaEsperaReintento.Para(Intentos)
+		: null;
 
 	/// <summary>
 	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.

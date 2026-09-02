@@ -197,6 +197,80 @@ public class RegistroColaTests
 			registro.MotivoFallo);
 	}
 
+	// ── Cuando toca el proximo intento ────────────────────────────────────────────────
+
+	[Theory]
+	[InlineData(1, 1)]
+	[InlineData(2, 2)]
+	[InlineData(3, 4)]
+	[InlineData(4, 8)]
+	[InlineData(5, 16)]
+	[InlineData(6, 30)]
+	[InlineData(12, 30)]
+	public void LaHoraDelReintentoSigueLaEsperaCreciente(int intentos, int minutosEsperados)
+	{
+		// "Se reintentara en un minuto" seria falso a partir del segundo fallo, y es justo cuando
+		// el operador se pregunta si la aplicacion sigue intentando algo.
+		var ultimoIntento = new DateTime(2026, 9, 1, 17, 0, 0, DateTimeKind.Utc);
+		var registro = Tecnica(intentos, ultimoIntento);
+
+		Assert.Equal(ultimoIntento.AddMinutes(minutosEsperados), registro.ReintentoUtc);
+	}
+
+	[Fact]
+	public void UnRechazoFuncionalNoAnunciaReintento()
+	{
+		// No se reintenta hasta que alguien lo corrija: darle una hora seria prometer algo que no
+		// va a pasar.
+		var registro = Fallida("appincidencias.nota.requerida", "Falta la nota.") with
+		{
+			Intentos = 1,
+			UltimoIntentoUtc = new DateTime(2026, 9, 1, 17, 0, 0, DateTimeKind.Utc),
+		};
+
+		Assert.False(registro.HayReintentoProgramado);
+		Assert.Null(registro.ReintentoUtc);
+	}
+
+	[Theory]
+	[InlineData(EstadoSincronizacion.Pendiente)]
+	[InlineData(EstadoSincronizacion.Sincronizado)]
+	[InlineData(EstadoSincronizacion.Enviando)]
+	[InlineData(EstadoSincronizacion.Borrador)]
+	public void SoloLosFallidosAnuncianReintento(EstadoSincronizacion estado)
+	{
+		// Un pendiente no espera nada: sale en el instante en que vuelve el enlace.
+		var registro = Registro(null, estado) with
+		{
+			Intentos = 2,
+			UltimoIntentoUtc = new DateTime(2026, 9, 1, 17, 0, 0, DateTimeKind.Utc),
+		};
+
+		Assert.False(registro.HayReintentoProgramado);
+	}
+
+	[Fact]
+	public void SinFechaDeUltimoIntentoNoSeInventaUnaHora()
+	{
+		// Pasa con lo guardado antes de que se registrara la fecha. Callar es mejor que anunciar
+		// una hora calculada sobre un dato que no existe.
+		var registro = Fallida(CodigosErrorJacob.ErrorTecnico, "No respondio.") with
+		{
+			Intentos = 1,
+			UltimoIntentoUtc = null,
+		};
+
+		Assert.False(registro.HayReintentoProgramado);
+		Assert.Null(registro.ReintentoUtc);
+	}
+
+	private static RegistroCola Tecnica(int intentos, DateTime ultimoIntentoUtc) =>
+		Fallida(CodigosErrorJacob.ErrorTecnico, "No respondio.") with
+		{
+			Intentos = intentos,
+			UltimoIntentoUtc = ultimoIntentoUtc,
+		};
+
 	private static RegistroCola Fallida(string? codigo, string? mensaje) =>
 		Registro(null, EstadoSincronizacion.Fallido) with
 		{

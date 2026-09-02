@@ -37,7 +37,12 @@ internal static class MapeoIncidencia
 		fila.FolioCentral,
 		fila.SeveridadNombre,
 		fila.UltimoErrorCodigo,
-		ultimoErrorMensaje);
+		ultimoErrorMensaje,
+		fila.Intentos,
+		// El último cambio de estado de un registro fallido ES su último intento: el envío es lo
+		// único que lo mueve. Es la misma columna de la que sale la espera al decidir el reintento,
+		// así que la hora que se muestra y la que se aplica no pueden discrepar.
+		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc));
 
 	/// <summary>
 	/// Describe el contenido del registro: solo el tipo de incidencia.

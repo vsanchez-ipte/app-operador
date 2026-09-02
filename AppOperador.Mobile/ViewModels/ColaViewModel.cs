@@ -21,6 +21,19 @@ public sealed partial class ColaViewModel : ObservableObject
 
 	private bool _escuchandoLaSincronizacionAutomatica;
 
+	/// <summary>
+	/// Cada cuánto se comprueba si a algún registro ya le tocó su reintento.
+	/// </summary>
+	/// <remarks>
+	/// <b>Espaciado a propósito.</b> La tarjeta muestra la hora del reintento y no una cuenta
+	/// atrás, así que no hay nada que repintar cada segundo: esto solo mira si venció alguno. La
+	/// espera más corta es de un minuto, de modo que medio minuto de resolución basta para que el
+	/// envío ocurra cuando la pantalla dice que va a ocurrir.
+	/// </remarks>
+	private static readonly TimeSpan CadaCuantoSeRevisaElReintento = TimeSpan.FromSeconds(30);
+
+	private IDispatcherTimer? _relojDeReintentos;
+
 	[ObservableProperty]
 	public partial int Pendientes { get; set; }
 
@@ -71,6 +84,96 @@ public sealed partial class ColaViewModel : ObservableObject
 
 		_sincronizacionAutomatica.SincronizacionTerminada += AlTerminarUnEnvioAutomatico;
 		_escuchandoLaSincronizacionAutomatica = true;
+
+		IniciarRelojDeReintentos();
+	}
+
+	/// <summary>
+	/// Arranca la comprobación de reintentos vencidos.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Sin esto la hora que muestra la tarjeta sería una promesa vacía.</b> Los disparadores
+	/// del envío son el botón, la revalidación de sesión y la recuperación del enlace; con señal
+	/// estable, ninguno de los tres ocurre, así que la espera de un registro fallido vence y ahí
+	/// se queda. Un aviso que dice «Reintento a las 17:42» y a las 17:42 no hace nada es peor que
+	/// no decir nada.
+	/// </para>
+	/// <para>
+	/// <b>Solo corre mientras la pantalla está a la vista</b>, y hay que decirlo: fuera de aquí el
+	/// reintento sigue dependiendo de que vuelva el enlace.
+	/// </para>
+	/// </remarks>
+	private void IniciarRelojDeReintentos()
+	{
+		// En algún destino puede no haber despachador todavía; sin él, la pantalla sigue
+		// funcionando y solo se pierde el disparo por vencimiento.
+		_relojDeReintentos ??= Application.Current?.Dispatcher.CreateTimer();
+		if (_relojDeReintentos is null)
+		{
+			return;
+		}
+
+		_relojDeReintentos.Interval = CadaCuantoSeRevisaElReintento;
+		_relojDeReintentos.Tick -= AlTocarRevisarReintentos;
+		_relojDeReintentos.Tick += AlTocarRevisarReintentos;
+		_relojDeReintentos.Start();
+	}
+
+	/// <summary>
+	/// Envía lo que ya cumplió su espera, si hay enlace.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Se comprueba primero en la lista que ya está en memoria, sin tocar la base: la inmensa
+	/// mayoría de las veces no hay nada vencido y no tiene sentido pagar una consulta cada medio
+	/// minuto.
+	/// </para>
+	/// <para>
+	/// Sin enlace no se intenta. El sincronizador lo comprobaría igual, pero dejaría una línea en
+	/// la bitácora en cada vuelta: media hora sin señal la llenaría de ruido idéntico.
+	/// </para>
+	/// </remarks>
+	private async void AlTocarRevisarReintentos(object? origen, EventArgs argumentos)
+	{
+		if (Ocupado || !Enlace.HayEnlace || !HayAlgunReintentoVencido())
+		{
+			return;
+		}
+
+		Ocupado = true;
+		try
+		{
+			var resultado = await _sincronizador.EjecutarAsync();
+
+			// Solo se avisa de lo que cambió algo, igual que con el envío automático: el operador
+			// no pidió esta sincronización y anunciarla cada vez llenaría la pantalla.
+			if (resultado.Confirmados > 0)
+			{
+				MensajeSincronizacion = TextoDe(resultado);
+			}
+
+			await ActualizarAsync();
+		}
+		catch (Exception)
+		{
+			// Lo dispara un temporizador y nadie espera el resultado: una excepción que se
+			// escapara de aquí no tendría quién la recogiera. El registro conserva su estado y
+			// al operador le queda el botón.
+		}
+		finally
+		{
+			Ocupado = false;
+		}
+	}
+
+	/// <summary>Indica si algún registro de la lista ya cumplió su espera de reintento.</summary>
+	private bool HayAlgunReintentoVencido()
+	{
+		var ahora = DateTime.UtcNow;
+
+		return Registros.Any(r =>
+			r.Registro.ReintentoUtc is { } reintento && reintento <= ahora);
 	}
 
 	/// <summary>Deja de atenderlos. Lo llama la página al desaparecer.</summary>
@@ -83,6 +186,8 @@ public sealed partial class ColaViewModel : ObservableObject
 
 		_sincronizacionAutomatica.SincronizacionTerminada -= AlTerminarUnEnvioAutomatico;
 		_escuchandoLaSincronizacionAutomatica = false;
+
+		_relojDeReintentos?.Stop();
 	}
 
 	/// <summary>

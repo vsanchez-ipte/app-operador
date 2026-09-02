@@ -85,4 +85,39 @@ public sealed class RegistroColaVista
 
 	/// <summary>Si la tarjeta lleva la línea del motivo.</summary>
 	public bool MuestraMotivoFallo => Registro.HayMotivoFallo;
+
+	/// <summary>
+	/// Cuándo va a reintentarse este registro, en hora local.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Se muestra la hora y no una cuenta atrás.</b> Una cuenta atrás obliga a repintar cada
+	/// segundo mientras la pantalla esté abierta; la hora se calcula una vez y no vuelve a
+	/// tocarse. La espera llega a treinta minutos, así que un contador sería además una cifra
+	/// larga cambiando sin parar delante de alguien que solo quiere saber si tiene que hacer algo.
+	/// </para>
+	/// <para>
+	/// <b>En hora local</b>, que es la única que el operador puede comparar con su reloj. El
+	/// instante viaja en UTC, como todo lo demás.
+	/// </para>
+	/// </remarks>
+	public string TextoReintento
+	{
+		get
+		{
+			if (Registro.ReintentoUtc is not { } reintento)
+			{
+				return string.Empty;
+			}
+
+			// Ya venció y sigue ahí: no hay enlace, o la comprobación no ha llegado todavía.
+			// Anunciar una hora pasada haría dudar de si la aplicación sigue intentando algo.
+			return reintento <= DateTime.UtcNow
+				? "Listo para reintentar."
+				: $"Reintento a las {reintento.ToLocalTime():HH:mm}.";
+		}
+	}
+
+	/// <summary>Si la tarjeta lleva la línea del reintento.</summary>
+	public bool MuestraReintento => Registro.HayReintentoProgramado;
 }

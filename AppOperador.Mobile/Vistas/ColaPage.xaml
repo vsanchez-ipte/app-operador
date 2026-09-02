@@ -112,6 +112,16 @@
                                                TextColor="{StaticResource RojoTexto}"
                                                IsVisible="{Binding MuestraMotivoFallo}" />
 
+                                        <!-- Cuando toca el proximo intento. Solo en los fallos
+                                             tecnicos: un rechazo funcional no se reintenta solo,
+                                             y anunciarle una hora seria prometer algo que no va
+                                             a pasar. La espera crece con cada fallo, asi que no
+                                             se puede dar por sabida. -->
+                                        <Label Text="{Binding TextoReintento}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               TextColor="{StaticResource AmbarTexto}"
+                                               IsVisible="{Binding MuestraReintento}" />
+
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
