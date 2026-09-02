@@ -224,6 +224,16 @@
                             IsEnabled="{Binding PuedeAdjuntar}"
                             Command="{Binding AdjuntarDeArchivoCommand}" />
 
+                    <!-- La unica salida cuando el permiso de camara quedo bloqueado: desde la
+                         aplicacion ya no se puede volver a pedir, asi que sin este boton el
+                         operador se queda pulsando foto y video sin que ocurra nada. Solo
+                         aparece en ese caso; una negativa normal se resuelve volviendo a
+                         tocar el boton. -->
+                    <Button Text="Abrir configuración de la aplicación"
+                            Style="{StaticResource BotonSecundario}"
+                            IsVisible="{Binding OfreceAjustesDeCamara}"
+                            Command="{Binding AbrirAjustesDeCamaraCommand}" />
+
                     <!-- Por qué el botón de video está apagado. Va junto a él por lo mismo que
                          el aviso de permiso: un botón visible y muerto sin explicación se lee
                          como que la app está rota. -->

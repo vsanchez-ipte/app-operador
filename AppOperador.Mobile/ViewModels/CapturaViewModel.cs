@@ -930,16 +930,25 @@ public sealed partial class CapturaViewModel : ObservableObject
 
 		if (seleccion.Archivo is not { } archivo)
 		{
-			// Que el dispositivo no pueda abrir la cámara o el selector NO es una respuesta del
-			// operador, y callarlo lo deja pulsando un botón mudo: es lo que pasó el 28-ago.
-			// Cancelar y negar el permiso sí se atienden en silencio, que es lo que pide el CA 4.
-			if (seleccion.NoSePudoAbrir)
+			// Cancelar y negar el permiso por primera vez se atienden en silencio, que es lo que
+			// pide el CA 4. Lo demás no es una decisión del operador y callarlo lo deja pulsando
+			// un botón mudo: es lo que pasó el 28-ago con el manifiesto, y otra vez con el
+			// permiso bloqueado.
+			MensajeError = seleccion.Desenlace switch
 			{
-				MensajeError = MensajeNoSePudoAbrir(origen);
-			}
+				DesenlaceSeleccion.NoSePudoAbrir => MensajeNoSePudoAbrir(origen),
+				DesenlaceSeleccion.PermisoBloqueado => MensajePermisoBloqueado,
+				_ => MensajeError,
+			};
+
+			// La salida solo se ofrece cuando de verdad hace falta: mientras el sistema siga
+			// dispuesto a preguntar, el operador vuelve a tocar el botón y ya está.
+			OfreceAjustesDeCamara = seleccion.Desenlace == DesenlaceSeleccion.PermisoBloqueado;
 
 			return;
 		}
+
+		OfreceAjustesDeCamara = false;
 
 		var uuid = await AsegurarRegistroParaEvidenciaAsync();
 		if (uuid is null)
@@ -1046,6 +1055,31 @@ public sealed partial class CapturaViewModel : ObservableObject
 	/// Textos provisionales: Producto no ha fijado los literales de esta pantalla.
 	/// </para>
 	/// </remarks>
+	/// <summary>
+	/// Aviso de que el permiso de cámara quedó bloqueado.
+	/// </summary>
+	/// <remarks>
+	/// Dice <b>dónde</b> se arregla, no solo que falta: desde la aplicación ya no se puede volver
+	/// a pedir, así que un «no tiene permiso» a secas dejaría al operador sin nada que hacer.
+	/// </remarks>
+	private const string MensajePermisoBloqueado =
+		"La cámara no tiene permiso y el sistema ya no volverá a preguntar. "
+		+ "Actívelo desde la configuración de la aplicación.";
+
+	/// <summary>
+	/// Indica si hay que ofrecer el botón que lleva a la configuración del sistema.
+	/// </summary>
+	/// <remarks>
+	/// Solo cuando el permiso quedó bloqueado. Ofrecerlo siempre convertiría una negativa normal
+	/// —que se resuelve volviendo a tocar el botón— en un trámite.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool OfreceAjustesDeCamara { get; set; }
+
+	/// <summary>Lleva al operador a la configuración del sistema para conceder la cámara.</summary>
+	[RelayCommand]
+	private Task AbrirAjustesDeCamaraAsync() => _selectorEvidencia.AbrirConfiguracionAsync();
+
 	private static string MensajeNoSePudoAbrir(OrigenEvidencia origen) => origen switch
 	{
 		OrigenEvidencia.Camara => "No se pudo abrir la cámara. Adjunte el archivo desde el dispositivo.",

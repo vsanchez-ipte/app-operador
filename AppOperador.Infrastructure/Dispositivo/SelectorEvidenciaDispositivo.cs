@@ -8,16 +8,19 @@ namespace AppOperador.Infrastructure.Dispositivo;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>El permiso lo pide <c>MediaPicker</c> al invocarlo</b>, y eso es exactamente lo que piden
-/// el CA 3 y los criterios 1 a 3 de JTT-1387: el diálogo del sistema sale cuando el operador
-/// toca «tomar foto», no al iniciar sesión. Por eso aquí no hay una comprobación previa como la
-/// que sí tiene la ubicación —donde el permiso es obligatorio para acceder—: aquí negarse es una
-/// respuesta válida y termina en «no se adjunta», no en un aviso de error.
+/// <b>El permiso de cámara se pide al tocar el botón</b>, no al iniciar sesión, que es lo que
+/// piden el CA 3 y los criterios 1 a 3 de JTT-1387. Se pide para los <b>dos</b> orígenes que la
+/// usan —fotografiar y grabar— y de forma explícita, en vez de dejar que lo pida
+/// <c>MediaPicker</c> por dentro: al negarse, aquello lanza una excepción que no dice si el
+/// sistema volverá a preguntar, y esa es justamente la diferencia que hay que contarle al
+/// operador.
 /// </para>
 /// <para>
-/// <b>Cancelar y negar el permiso devuelven lo mismo.</b> Al operador que cambió de idea y al que
-/// dijo que no le pasa lo mismo: no hay archivo. Distinguirlos obligaría a un aviso para el
-/// segundo que el CA 4 no pide y que interrumpiría una captura que puede seguir sin evidencia.
+/// <b>Negarse una vez no se avisa; quedarse sin poder pedirlo, sí.</b> La primera negativa
+/// termina en «no se adjunta» y la incidencia se guarda igual, como pide el CA 4. Pero Android
+/// deja de mostrar el diálogo tras la segunda, y a partir de ahí el botón sería mudo para
+/// siempre: ese caso se distingue y se acompaña de la única salida que queda, la configuración
+/// del sistema.
 /// </para>
 /// <para>
 /// <b>Dónde corre.</b> Se registra en Android, iOS y Mac Catalyst. Compila en <c>net10.0</c>
@@ -63,6 +66,19 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	{
 		cancelacion.ThrowIfCancellationRequested();
 
+		// La cámara se pide antes de invocar al selector, y para los DOS orígenes que la usan:
+		// fotografiar y grabar. MediaPicker la pediría solo, pero al negarse lanza una excepción
+		// que no dice si el sistema volverá a preguntar o si ya dejó de hacerlo, y esa diferencia
+		// es justo la que el operador necesita.
+		if (origen is OrigenEvidencia.Camara or OrigenEvidencia.Video)
+		{
+			var permiso = await PedirCamaraAsync();
+			if (permiso is not null)
+			{
+				return permiso;
+			}
+		}
+
 		try
 		{
 			// Los diálogos del sistema tienen que salir del hilo de interfaz, igual que los de
@@ -93,9 +109,10 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 		}
 		catch (PermissionException)
 		{
-			// El operador dijo que no. El CA 4 lo contempla: no se adjunta y la incidencia se
-			// puede guardar igual.
-			return SeleccionEvidencia.Cancelada;
+			// Red de seguridad: la cámara ya se pidió arriba, pero la galería y el selector de
+			// archivos pueden exigir permisos propios según la versión de Android. Se resuelve
+			// igual, mirando si el sistema todavía va a preguntar.
+			return await SegunSiTodaviaSePuedePedirAsync();
 		}
 		catch (Exception excepcion) when (
 			excepcion is NotSupportedException or NotImplementedException or FeatureNotSupportedException)
@@ -105,6 +122,78 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 			return SeleccionEvidencia.NoDisponible;
 		}
 	}
+
+	/// <inheritdoc />
+	public Task AbrirConfiguracionAsync()
+	{
+		try
+		{
+			// Es la misma pantalla que usa el permiso de ubicación cuando queda bloqueado.
+			AppInfo.Current.ShowSettingsUI();
+		}
+		catch (Exception excepcion) when (
+			excepcion is NotSupportedException or NotImplementedException)
+		{
+			// En escritorio y en las pruebas no hay pantalla de configuración que abrir. No se
+			// propaga: quien llama solo ofrecía una salida, y no poder ofrecerla no es un fallo
+			// que deba tumbar la captura.
+		}
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Pide el permiso de cámara, o devuelve por qué no se puede seguir.
+	/// </summary>
+	/// <returns>
+	/// <see langword="null"/> si se puede continuar, o el desenlace que hay que devolver.
+	/// </returns>
+	/// <remarks>
+	/// <b>Se pide aquí y no antes.</b> El diálogo del sistema sale cuando el operador toca el
+	/// botón, que es lo que piden el CA 3 de JTT-1398 y los criterios 1 a 3 de JTT-1387: pedir la
+	/// cámara al iniciar sesión asusta y no se entiende.
+	/// </remarks>
+	private static async Task<SeleccionEvidencia?> PedirCamaraAsync()
+	{
+		try
+		{
+			var estado = await MainThread.InvokeOnMainThreadAsync(
+				Permissions.RequestAsync<Permissions.Camera>);
+
+			if (estado == PermissionStatus.Granted)
+			{
+				return null;
+			}
+
+			return await SegunSiTodaviaSePuedePedirAsync();
+		}
+		catch (Exception excepcion) when (
+			excepcion is NotSupportedException or NotImplementedException or FeatureNotSupportedException)
+		{
+			// El destino no tiene cámara ni sistema de permisos: escritorio y pruebas.
+			return SeleccionEvidencia.NoDisponible;
+		}
+	}
+
+	/// <summary>
+	/// Distingue una negativa reversible de una definitiva.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Es toda la diferencia para el operador.</b> Mientras el sistema siga dispuesto a
+	/// preguntar, volver a tocar el botón vuelve a mostrar el diálogo y no hay nada que avisar.
+	/// Cuando deja de preguntar —en Android, tras la segunda negativa— el botón se vuelve mudo
+	/// para siempre y la única salida está en la configuración del sistema.
+	/// </para>
+	/// <para>
+	/// Se consulta <b>después</b> de pedir y no antes: antes de la primera petición también
+	/// contesta que no hay que razonar nada, y eso se confundiría con el permiso bloqueado.
+	/// </para>
+	/// </remarks>
+	private static Task<SeleccionEvidencia> SegunSiTodaviaSePuedePedirAsync() =>
+		Task.FromResult(Permissions.ShouldShowRationale<Permissions.Camera>()
+			? SeleccionEvidencia.PermisoNegado
+			: SeleccionEvidencia.PermisoBloqueado);
 
 	/// <summary>
 	/// Abre la galería y se queda con la primera selección.

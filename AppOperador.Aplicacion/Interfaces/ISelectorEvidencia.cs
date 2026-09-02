@@ -47,19 +47,78 @@ public enum OrigenEvidencia
 /// </para>
 /// </remarks>
 /// <param name="Archivo">Lo elegido, o <see langword="null"/> si no hubo nada.</param>
-/// <param name="NoSePudoAbrir">
-/// El sistema no pudo ofrecer la función. <b>No es una respuesta del operador.</b>
-/// </param>
-public sealed record SeleccionEvidencia(ArchivoElegido? Archivo, bool NoSePudoAbrir)
+/// <param name="Desenlace">Qué ocurrió. Ver <see cref="DesenlaceSeleccion"/>.</param>
+public sealed record SeleccionEvidencia(ArchivoElegido? Archivo, DesenlaceSeleccion Desenlace)
 {
-	/// <summary>El operador canceló o negó el permiso. Respuesta válida: no se avisa.</summary>
-	public static readonly SeleccionEvidencia Cancelada = new(null, NoSePudoAbrir: false);
+	/// <summary>El operador cerró el diálogo sin elegir. Respuesta válida: no se avisa.</summary>
+	public static readonly SeleccionEvidencia Cancelada =
+		new(null, DesenlaceSeleccion.Cancelado);
+
+	/// <summary>Negó el permiso, pero el sistema volverá a preguntar. Tampoco se avisa.</summary>
+	public static readonly SeleccionEvidencia PermisoNegado =
+		new(null, DesenlaceSeleccion.PermisoNegado);
+
+	/// <summary>El sistema ya no volverá a preguntar. Hay que decirlo y ofrecer la salida.</summary>
+	public static readonly SeleccionEvidencia PermisoBloqueado =
+		new(null, DesenlaceSeleccion.PermisoBloqueado);
 
 	/// <summary>El dispositivo no pudo abrir la cámara o el selector.</summary>
-	public static readonly SeleccionEvidencia NoDisponible = new(null, NoSePudoAbrir: true);
+	public static readonly SeleccionEvidencia NoDisponible =
+		new(null, DesenlaceSeleccion.NoSePudoAbrir);
 
 	public static SeleccionEvidencia Elegido(ArchivoElegido archivo) =>
-		new(archivo, NoSePudoAbrir: false);
+		new(archivo, DesenlaceSeleccion.Elegido);
+
+	/// <summary>Indica si el sistema no pudo ofrecer la función.</summary>
+	public bool NoSePudoAbrir => Desenlace == DesenlaceSeleccion.NoSePudoAbrir;
+}
+
+/// <summary>
+/// Qué contestó el sistema al pedirle un archivo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Era un booleano y no alcanzaba.</b> Con «canceló» y «negó el permiso» valiendo lo mismo, el
+/// tercer toque en «Capturar foto» no hacía nada: Android deja de mostrar el diálogo tras la
+/// segunda negativa, la llamada falla al instante por falta de permiso, y eso llegaba como
+/// «canceló», que se atiende en silencio a propósito. El operador se quedaba pulsando un botón
+/// muerto sin ninguna forma de salir, porque desde la aplicación ya no se puede volver a pedir.
+/// </para>
+/// <para>
+/// Es la tercera vez que el mismo tipo esconde un defecto por no distinguir lo que hay que
+/// distinguir: primero fue un <see langword="null"/> para todo, después «no se pudo abrir», y
+/// ahora el permiso.
+/// </para>
+/// </remarks>
+public enum DesenlaceSeleccion
+{
+	/// <summary>Hay archivo.</summary>
+	Elegido = 1,
+
+	/// <summary>El operador cerró el diálogo sin elegir nada.</summary>
+	Cancelado = 2,
+
+	/// <summary>
+	/// Negó el permiso, y el sistema volverá a preguntar la próxima vez.
+	/// </summary>
+	/// <remarks>
+	/// Se atiende igual que cancelar, como pide el CA 4 de JTT-1398: decir que no es una
+	/// respuesta válida y la incidencia se guarda sin evidencia. Volver a tocar el botón vuelve a
+	/// mostrar el diálogo, así que el operador no está atrapado.
+	/// </remarks>
+	PermisoNegado = 3,
+
+	/// <summary>
+	/// El sistema ya no va a preguntar más: el permiso solo se concede desde la configuración.
+	/// </summary>
+	/// <remarks>
+	/// <b>Aquí el silencio deja de ser correcto.</b> No es que el operador haya decidido no
+	/// adjuntar: es que ya no puede aunque quiera, y nada en la pantalla se lo dice.
+	/// </remarks>
+	PermisoBloqueado = 4,
+
+	/// <summary>El sistema no pudo ofrecer la función. No es una respuesta del operador.</summary>
+	NoSePudoAbrir = 5,
 }
 
 /// <summary>
@@ -72,10 +131,14 @@ public sealed record SeleccionEvidencia(ArchivoElegido? Archivo, bool NoSePudoAb
 /// no se entiende; pedirla cuando el operador toca «tomar foto» se explica sola.
 /// </para>
 /// <para>
-/// <b>Negarse no es un error.</b> El CA 4 dice que la negativa no impide guardar la incidencia
-/// sin evidencia, así que cancelar el diálogo y rechazar el permiso llegan igual, como
-/// <see cref="SeleccionEvidencia.Cancelada"/>. Quien llama no tiene nada que recuperar, solo que
-/// no adjuntar, y <b>no debe avisar de nada</b>.
+/// <b>Negarse no es un error.</b> El CA 4 dice que la negativa no impide guardar la incidencia sin
+/// evidencia, así que la primera negativa se atiende en silencio, igual que cancelar.
+/// </para>
+/// <para>
+/// <b>Pero dejar de poder no es lo mismo que decir que no.</b> Android deja de mostrar el diálogo
+/// tras la segunda negativa, y a partir de ahí el permiso solo se concede desde la configuración
+/// del sistema. Ese caso llega como <see cref="DesenlaceSeleccion.PermisoBloqueado"/> y <b>sí hay
+/// que decirlo</b>, junto con la salida: sin eso el operador pulsa un botón que nunca responde.
 /// </para>
 /// <para>
 /// <b>Devuelve el archivo donde el sistema lo dejó</b>, no en el espacio privado de la app.
@@ -101,4 +164,14 @@ public interface ISelectorEvidencia
 	Task<SeleccionEvidencia> ElegirAsync(
 		OrigenEvidencia origen,
 		CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Lleva al operador a la pantalla del sistema donde puede conceder el permiso.
+	/// </summary>
+	/// <remarks>
+	/// <b>Es la única salida cuando el permiso quedó bloqueado</b>: desde la aplicación ya no se
+	/// puede volver a pedir. Vive aquí, junto a quien pide el permiso, y no en un servicio aparte:
+	/// quien sabe que hace falta es el mismo que sabe cómo conseguirlo.
+	/// </remarks>
+	Task AbrirConfiguracionAsync();
 }
