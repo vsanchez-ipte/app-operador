@@ -30,6 +30,18 @@ namespace AppOperador.Aplicacion.Modelos;
 /// «Normal». El operador que capturó una Advertencia veía otra cosa en la Cola.
 /// </para>
 /// </param>
+/// <param name="UltimoErrorCodigo">
+/// Código con el que se rechazó el último intento, o <see langword="null"/> si no ha fallado.
+/// Es lo que decide si el registro va a salir solo o necesita que alguien lo corrija.
+/// </param>
+/// <param name="UltimoErrorMensaje">
+/// Lo que dijo Jacob al rechazarlo, o el motivo del fallo local.
+/// <para>
+/// <b>Se propaga en vez de reescribirse</b>, igual que en el aviso del formulario: quien
+/// rechazó sabe por qué mejor que la pantalla. Sin él, la tarjeta solo puede decir que falló,
+/// que es exactamente lo que el operador ya ve en la insignia.
+/// </para>
+/// </param>
 public sealed record RegistroCola(
 	string ClaveLocal,
 	ClaseRegistro Clase,
@@ -38,7 +50,9 @@ public sealed record RegistroCola(
 	string Kilometro,
 	EstadoSincronizacion Estado,
 	string? FolioCentral = null,
-	string? Severidad = null)
+	string? Severidad = null,
+	string? UltimoErrorCodigo = null,
+	string? UltimoErrorMensaje = null)
 {
 	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
 	/// <remarks>
@@ -78,6 +92,64 @@ public sealed record RegistroCola(
 	/// un renglón en blanco por referencia principal.
 	/// </remarks>
 	public bool TieneFolio => !string.IsNullOrWhiteSpace(FolioCentral);
+
+	/// <summary>Si la tarjeta debe explicar por qué este registro no ha salido.</summary>
+	/// <remarks>
+	/// Solo los fallidos. Un pendiente puede arrastrar el código de un intento anterior —al
+	/// recuperar un envío interrumpido vuelve a Pendiente sin borrarlo—, y enseñar ahí un
+	/// rechazo ya superado diría que algo va mal cuando el registro está en camino.
+	/// </remarks>
+	public bool HayMotivoFallo => Estado == EstadoSincronizacion.Fallido;
+
+	/// <summary>
+	/// Por qué no salió este registro, y si va a salir solo (JTT-1401 CA 8 y 9).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>El resumen de arriba cuenta cuántas hay de cada clase; esto dice cuál es cuál.</b> Con
+	/// varias fallidas a la vez, «el CCO las rechazó» no le dice al operador <i>qué</i> corregir
+	/// ni <i>en cuál</i>, y las que solo esperan reintento se confunden con las que no van a
+	/// salir nunca. Es el mismo defecto que ya se corrigió en el aviso del formulario, una
+	/// pantalla más adentro.
+	/// </para>
+	/// <para>
+	/// <b>Vive aquí y no en la vista</b>, como <see cref="SeveridadLegible"/> y
+	/// <see cref="ReferenciaPrincipal"/>: qué se le dice al operador no es una decisión de
+	/// estilo, y en la vista no llega ninguna prueba.
+	/// </para>
+	/// </remarks>
+	public string MotivoFallo => CodigosErrorJacob.EsFuncional(UltimoErrorCodigo)
+		// Solo aquí se añade qué hacer: es el único caso en que el operador tiene que actuar,
+		// y el único en que esperar no sirve de nada.
+		? $"El CCO la rechazó: {Detalle} Corríjala: no saldrá sola."
+		: $"No llegó al CCO: {Detalle}";
+
+	/// <summary>
+	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.
+	/// </summary>
+	/// <remarks>
+	/// <b>El código es el último recurso, pero se muestra.</b> Es feo —
+	/// <c>appincidencias.km.fueradecorredor</c> no está escrito para un operador— y aun así es
+	/// infinitamente más útil que «falló»: es lo que se dicta por radio al CCO y lo que permite
+	/// diagnosticar un dispositivo que vuelve de campo.
+	/// </remarks>
+	private string Detalle
+	{
+		get
+		{
+			if (!string.IsNullOrWhiteSpace(UltimoErrorMensaje))
+			{
+				var mensaje = UltimoErrorMensaje!.Trim();
+				return mensaje.EndsWith('.') ? mensaje : $"{mensaje}.";
+			}
+
+			return string.IsNullOrWhiteSpace(UltimoErrorCodigo)
+				// Puede pasar con lo guardado antes de que se registraran los intentos. Se dice
+				// que no se sabe, en vez de callar y dejar la tarjeta igual que antes.
+				? "no se registró el motivo."
+				: $"código {UltimoErrorCodigo!.Trim()}.";
+		}
+	}
 }
 
 /// <summary>

@@ -4,6 +4,7 @@ using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.ValueObjects;
 using AppOperador.Infrastructure.Sqlite.Entidades;
+using SQLite;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
@@ -69,7 +70,63 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 			.OrderByDescending(i => i.CreadoUtcTicks)
 			.ToListAsync();
 
-		return filas.Select(MapeoIncidencia.ARegistroCola).ToList();
+		var motivos = await ObtenerMotivosDeFalloAsync(conexion, filas);
+
+		return filas
+			.Select(fila => MapeoIncidencia.ARegistroCola(
+				fila, motivos.GetValueOrDefault(fila.Uuid)))
+			.ToList();
+	}
+
+	/// <summary>
+	/// Busca, para cada registro fallido, qué dijo Jacob la última vez.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>El mensaje no está en la incidencia</b>: la fila guarda el código del rechazo —que es
+	/// lo que decide el reintento— pero el texto vive en <c>intento_sincronizacion</c>. Sin esta
+	/// consulta la tarjeta solo puede decir «FALLIDO», que es justo lo que el operador ya ve.
+	/// </para>
+	/// <para>
+	/// <b>Una sola consulta, y solo para los fallidos.</b> Lo demás no tiene nada que explicar, y
+	/// la tabla de intentos crece con cada envío: recorrerla entera para pintar una lista sería
+	/// pagar por todo el historial en cada visita a la pantalla.
+	/// </para>
+	/// </remarks>
+	private static async Task<Dictionary<string, string?>> ObtenerMotivosDeFalloAsync(
+		SQLiteAsyncConnection conexion,
+		IReadOnlyList<IncidenciaLocal> filas)
+	{
+		var fallido = (int)EstadoSincronizacion.Fallido;
+
+		var uuids = filas
+			.Where(f => f.Estado == fallido)
+			.Select(f => f.Uuid)
+			.ToList();
+
+		if (uuids.Count == 0)
+		{
+			return [];
+		}
+
+		var marcadores = string.Join(",", uuids.Select(_ => "?"));
+
+		// Descendente por instante: el primero de cada registro es su intento más reciente.
+		var intentos = await conexion.QueryAsync<IntentoSincronizacion>(
+			$"SELECT * FROM intento_sincronizacion " +
+			$"WHERE exito = 0 AND registro_uuid IN ({marcadores}) " +
+			$"ORDER BY instante_utc_ticks DESC",
+			[.. uuids]);
+
+		var motivos = new Dictionary<string, string?>();
+		foreach (var intento in intentos)
+		{
+			// TryAdd y no indexador: solo interesa el primero que se encuentra de cada uno, que
+			// por el orden de la consulta es el último que ocurrió.
+			motivos.TryAdd(intento.RegistroUuid, intento.Mensaje);
+		}
+
+		return motivos;
 	}
 
 	/// <inheritdoc />

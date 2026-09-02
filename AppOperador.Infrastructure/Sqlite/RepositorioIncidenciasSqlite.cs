@@ -205,7 +205,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			.OrderByDescending(i => i.CreadoUtcTicks)
 			.ToListAsync();
 
-		return filas.Select(MapeoIncidencia.ARegistroCola).ToList();
+		// Lambda y no grupo de métodos: desde que ARegistroCola admite el motivo del fallo, el
+		// grupo encaja también con la sobrecarga indexada de Select y deja de compilar. Los
+		// borradores nunca han fallado —no se envían—, así que no hay motivo que pasarle.
+		return filas.Select(fila => MapeoIncidencia.ARegistroCola(fila)).ToList();
 	}
 
 	/// <inheritdoc />

@@ -120,6 +120,90 @@ public class RegistroColaTests
 		Assert.Equal("Advertencia", registro.SeveridadLegible);
 	}
 
+	// ── Por que no salio ESTE registro ────────────────────────────────────────────────
+
+	[Theory]
+	[InlineData(EstadoSincronizacion.Pendiente)]
+	[InlineData(EstadoSincronizacion.Sincronizado)]
+	[InlineData(EstadoSincronizacion.Enviando)]
+	[InlineData(EstadoSincronizacion.Borrador)]
+	public void SoloLosFallidosExplicanNadaMas(EstadoSincronizacion estado)
+	{
+		// Un pendiente arrastra el codigo del intento anterior: al recuperar un envio
+		// interrumpido vuelve a Pendiente sin borrarlo. Ensenar ahi un rechazo ya superado
+		// diria que algo va mal cuando el registro esta en camino.
+		var registro = Registro(null, estado) with
+		{
+			UltimoErrorCodigo = "appincidencias.km.fueradecorredor",
+			UltimoErrorMensaje = "El kilometro no pertenece al corredor.",
+		};
+
+		Assert.False(registro.HayMotivoFallo);
+	}
+
+	[Fact]
+	public void UnRechazoFuncionalDiceQueHayQueCorregirlo()
+	{
+		// Es el unico caso en que el operador tiene que actuar, y el unico en que esperar no
+		// sirve de nada: reenviarlo daria el mismo rechazo.
+		var registro = Fallida("appincidencias.nota.requerida", "La nota es obligatoria para Otro.");
+
+		Assert.True(registro.HayMotivoFallo);
+		Assert.Equal(
+			"El CCO la rechazó: La nota es obligatoria para Otro. Corríjala: no saldrá sola.",
+			registro.MotivoFallo);
+	}
+
+	[Fact]
+	public void UnFalloTecnicoNoMandaCorregirNada()
+	{
+		// El registro esta bien; lo que fallo fue el camino. Decirle que lo corrija lo mandaria
+		// a revisar una captura correcta.
+		var registro = Fallida(
+			CodigosErrorJacob.ErrorTecnico, "No se pudo completar el envío.");
+
+		Assert.Equal("No llegó al CCO: No se pudo completar el envío.", registro.MotivoFallo);
+	}
+
+	[Fact]
+	public void SinMensaje_seMuestraElCodigo()
+	{
+		// Feo, pero infinitamente mas util que "fallo": es lo que se dicta por radio al CCO.
+		var registro = Fallida("appincidencias.km.fueradecorredor", null);
+
+		Assert.Equal(
+			"El CCO la rechazó: código appincidencias.km.fueradecorredor. Corríjala: no saldrá sola.",
+			registro.MotivoFallo);
+	}
+
+    [Fact]
+    public void SinMensajeNiCodigo_seDiceQueNoSeSabe()
+    {
+        // Pasa con lo guardado antes de que se registraran los intentos. Callar dejaria la
+        // tarjeta igual que antes del arreglo.
+        var registro = Fallida(null, null);
+
+        Assert.Equal("No llegó al CCO: no se registró el motivo.", registro.MotivoFallo);
+    }
+
+	[Fact]
+	public void ElMensajeDeJacobSeCierraConPuntoSiNoLoTrae()
+	{
+		// El motivo se concatena con lo que sigue: sin punto, las dos frases se leen como una.
+		var registro = Fallida("appincidencias.nota.requerida", "  La nota es obligatoria  ");
+
+		Assert.Equal(
+			"El CCO la rechazó: La nota es obligatoria. Corríjala: no saldrá sola.",
+			registro.MotivoFallo);
+	}
+
+	private static RegistroCola Fallida(string? codigo, string? mensaje) =>
+		Registro(null, EstadoSincronizacion.Fallido) with
+		{
+			UltimoErrorCodigo = codigo,
+			UltimoErrorMensaje = mensaje,
+		};
+
 	private static RegistroCola Registro(string? folio, EstadoSincronizacion estado) => new(
 		"LOC-000123",
 		ClaseRegistro.Incidencia,

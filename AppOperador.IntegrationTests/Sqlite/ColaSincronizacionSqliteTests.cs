@@ -211,6 +211,96 @@ public sealed class ColaSincronizacionSqliteTests
 		await reabierta.DisposeAsync();
 	}
 
+	// ── El motivo del fallo llega hasta la tarjeta ────────────────────────────────────
+
+	[Fact]
+	public async Task UnRegistroFallido_llevaElMotivoQueDioJacob()
+	{
+		// Sin esto la tarjeta solo puede decir «FALLIDO», que es justo lo que el operador ya ve
+		// en la insignia. El mensaje no está en la incidencia: vive en intento_sincronizacion.
+		await using var contexto = new ContextoSqlite();
+		await GuardarAsync(contexto, Advertencia);
+
+		var jacob = new JacobControlado().RechazaFuncional();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		Assert.True(registro.HayMotivoFallo);
+		Assert.Equal("appincidencias.nota.requerida", registro.UltimoErrorCodigo);
+		Assert.Equal("Rechazo de prueba.", registro.UltimoErrorMensaje);
+		Assert.Contains("Corríjala: no saldrá sola.", registro.MotivoFallo);
+	}
+
+	[Fact]
+	public async Task UnFalloTecnico_noLeDiceAlOperadorQueCorrijaNada()
+	{
+		await using var contexto = new ContextoSqlite();
+		await GuardarAsync(contexto, Advertencia);
+
+		var jacob = new JacobControlado().RechazaTecnico();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		Assert.Equal("No llegó al CCO: Fallo de prueba.", registro.MotivoFallo);
+	}
+
+	[Fact]
+	public async Task ElMotivoDelFallo_sobreviveAlReinicioDeLaAplicacion()
+	{
+		// Es cuando más falta hace: el operador cierra la app con la cola atorada y al abrirla
+		// necesita seguir sabiendo por qué. Se lee de la tabla de intentos, no de memoria.
+		await using var contexto = new ContextoSqlite();
+		await GuardarAsync(contexto, Advertencia);
+
+		var jacob = new JacobControlado().RechazaFuncional("appincidencias.km.fueradecorredor");
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+
+		var reabierta = contexto.ReabrirBaseDatos();
+		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
+
+		var registro = Assert.Single(await cola.ObtenerRegistrosAsync());
+		Assert.Equal("Rechazo de prueba.", registro.UltimoErrorMensaje);
+
+		await reabierta.DisposeAsync();
+	}
+
+	[Fact]
+	public async Task UnRegistroQueSalioBien_noExplicaNingunFallo()
+	{
+		await using var contexto = new ContextoSqlite();
+		await GuardarAsync(contexto, Advertencia);
+
+		await contexto.CrearSincronizador().EjecutarAsync();
+
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		Assert.False(registro.HayMotivoFallo);
+	}
+
+	[Fact]
+	public async Task ConVariasFallidas_cadaUnaLlevaSuPropioMotivo()
+	{
+		// Es el caso que motivó el arreglo: con tres tarjetas en FALLIDO, el resumen de arriba
+		// dice cuántas hay de cada clase pero no cuál es cuál ni qué corregir en cada una.
+		await using var contexto = new ContextoSqlite();
+		var primera = await GuardarAsync(contexto, Advertencia);
+		var segunda = await GuardarAsync(contexto, Informacion);
+
+		var jacob = new JacobControlado()
+			.Responde(ResultadoEnvio.Rechazada(
+				FamiliaErrorSincronizacion.Funcional, "appincidencias.nota.requerida", "Falta la nota."))
+			.Responde(ResultadoEnvio.Rechazada(
+				FamiliaErrorSincronizacion.Tecnico, CodigosErrorJacob.ErrorTecnico, "No respondió."));
+
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+
+		var registros = await contexto.CrearCola().ObtenerRegistrosAsync();
+		Assert.Equal("Falta la nota.", Buscar(registros, primera).UltimoErrorMensaje);
+		Assert.Equal("No respondió.", Buscar(registros, segunda).UltimoErrorMensaje);
+	}
+
+	private static RegistroCola Buscar(IReadOnlyList<RegistroCola> registros, string clave) =>
+		Assert.Single(registros, r => r.ClaveLocal == clave);
+
 	private static Task<string> GuardarAsync(ContextoSqlite contexto, SeveridadIncidencia severidad) =>
 		contexto.CrearRepositorio().GuardarAsync(
 			Objeto,

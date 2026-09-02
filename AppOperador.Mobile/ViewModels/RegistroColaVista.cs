@@ -73,4 +73,16 @@ public sealed class RegistroColaVista
 
 	/// <summary>Si la tarjeta lleva línea de trazabilidad, que es tanto como decir si ya tiene folio.</summary>
 	public bool MuestraTrazabilidad => Registro.TieneFolio;
+
+	/// <summary>
+	/// Por qué no salió este registro. Solo en los fallidos.
+	/// </summary>
+	/// <remarks>
+	/// El texto lo compone <see cref="RegistroCola.MotivoFallo"/>, no esta clase: qué se le dice
+	/// al operador se decide donde hay pruebas. Aquí solo se muestra.
+	/// </remarks>
+	public string TextoMotivoFallo => Registro.MotivoFallo;
+
+	/// <summary>Si la tarjeta lleva la línea del motivo.</summary>
+	public bool MuestraMotivoFallo => Registro.HayMotivoFallo;
 }

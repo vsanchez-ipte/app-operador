@@ -103,6 +103,15 @@
                                                Style="{StaticResource TextoDato}"
                                                IsVisible="{Binding MuestraTrazabilidad}" />
 
+                                        <!-- Por que no salio ESTE registro. El resumen de arriba
+                                             cuenta cuantas hay de cada clase; con varias fallidas
+                                             a la vez no dice cual es cual ni que corregir. El
+                                             texto lo compone RegistroCola, no esta vista. -->
+                                        <Label Text="{Binding TextoMotivoFallo}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               TextColor="{StaticResource RojoTexto}"
+                                               IsVisible="{Binding MuestraMotivoFallo}" />
+
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
