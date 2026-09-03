@@ -47,6 +47,101 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!--
+		A qué ambiente apunta el paquete. Se elige al compilar y no editando código:
+
+		  dotnet publish AppOperador.Mobile -f net10.0-android -c Release -p:Ambiente=Desarrollo
+
+		Valores admitidos:
+		  · Local      (omisión) API en el equipo de quien desarrolla
+		  · Desarrollo             servidor de desarrollo de IPTE
+		  · QA                     servidor de calidad de IPTE, donde prueba el equipo de QA
+		  · Simulado               sin servidor, recorrido completo contra simuladores
+
+		El nombre se traduce a un símbolo de compilación que lee Configuracion/AmbienteDeCompilacion.cs.
+	-->
+	<PropertyGroup>
+		<Ambiente Condition="'$(Ambiente)' == ''">Local</Ambiente>
+		<DefineConstants Condition="'$(Ambiente)' == 'Desarrollo'">$(DefineConstants);AMBIENTE_DESARROLLO</DefineConstants>
+		<DefineConstants Condition="'$(Ambiente)' == 'QA'">$(DefineConstants);AMBIENTE_QA</DefineConstants>
+		<DefineConstants Condition="'$(Ambiente)' == 'Simulado'">$(DefineConstants);AMBIENTE_SIMULADO</DefineConstants>
+	</PropertyGroup>
+
+	<!--
+		Un ambiente mal escrito compilaría como Local sin avisar, y el paquete saldría
+		apuntando a un servidor que no es el que se pidió. Mejor que reviente aquí.
+	-->
+	<!--
+		Exportacion de la base local a una copia SQLite legible, para revisarla con una
+		herramienta de escritorio:
+
+		  dotnet publish AppOperador.Mobile -f net10.0-android -c Release -p:Ambiente=QA -p:HabilitarExportacionBaseDatos=true
+
+		Es una capacidad de diagnostico y no una funcion del producto. Va en su propia
+		propiedad y no en el ambiente a proposito: derivarla de QA haria que todo paquete de
+		QA pudiera dejar la base en claro sin que nadie lo hubiera pedido. Hay que encenderla
+		a mano, paquete por paquete.
+
+		Encendida, el perfil muestra el boton "Exportar base de datos". Apagada, ni la clase
+		que exporta ni el boton llegan al paquete: el simbolo se apaga tambien en
+		AppOperador.Infrastructure, que es donde vive la implementacion.
+
+		En Debug queda encendida por omision. Las pruebas de integracion cubren la
+		exportacion y se compilan en Debug, asi que apagarla ahi obligaria a pasar la
+		propiedad en cada "dotnet test". En Release siempre hay que pedirla.
+	-->
+	<PropertyGroup>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == '' AND '$(Configuration)' == 'Debug'">true</HabilitarExportacionBaseDatos>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == ''">false</HabilitarExportacionBaseDatos>
+		<DefineConstants Condition="'$(HabilitarExportacionBaseDatos)' == 'true'">$(DefineConstants);EXPORTAR_BASE_DATOS</DefineConstants>
+	</PropertyGroup>
+
+	<Target Name="ValidarAmbiente" BeforeTargets="BeforeBuild">
+		<Error Condition="'$(Ambiente)' != 'Local' AND '$(Ambiente)' != 'Desarrollo' AND '$(Ambiente)' != 'QA' AND '$(Ambiente)' != 'Simulado'"
+		       Text="Ambiente '$(Ambiente)' no reconocido. Use Local, Desarrollo, QA o Simulado." />
+		<!--
+			Un "-p:HabilitarExportacionBaseDatos=1" o "=True " compilaria como apagado sin
+			avisar, y el paquete saldria sin la capacidad que se pidio.
+		-->
+		<Error Condition="'$(HabilitarExportacionBaseDatos)' != 'true' AND '$(HabilitarExportacionBaseDatos)' != 'false'"
+		       Text="HabilitarExportacionBaseDatos '$(HabilitarExportacionBaseDatos)' no es valido. Use true o false." />
+	</Target>
+
+	<!--
+		Nombre del paquete que se entrega: AppOperador-<Ambiente>-<aaaa-MM-dd>[-exportaBD].apk
+
+		El SDK de Android nombra el APK con el identificador de la aplicacion
+		(com.companyname.appoperador.mobile-Signed.apk), que no dice a que ambiente apunta ni
+		cuando se armo. Como los paquetes se entregan por correo o carpeta compartida y se ven
+		identicos entre si, al terminar la publicacion se deja al lado una copia ya nombrada.
+
+		El sufijo "-exportaBD" marca los paquetes que pueden sacar la base de datos en claro.
+		Sin el, dos paquetes del mismo ambiente y el mismo dia se llamarian igual y el segundo
+		sobrescribiria al primero, que es como se acaba entregando el que exporta creyendo que
+		es el normal. Va escrito y no en siglas porque quien revisa una carpeta de paquetes no
+		tiene por que saber que significa "BD".
+
+		El original no se borra: el SDK lo usa para instalar y desplegar desde el IDE.
+	-->
+	<Target Name="NombrarPaqueteEntregable" AfterTargets="Publish"
+	        Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PropertyGroup>
+			<_SufijoExportacion Condition="'$(HabilitarExportacionBaseDatos)' == 'true'">-exportaBD</_SufijoExportacion>
+			<_PaqueteFirmado>$(PublishDir)$(ApplicationId)-Signed.apk</_PaqueteFirmado>
+			<_PaqueteEntregable>$(PublishDir)AppOperador-$(Ambiente)-$([System.DateTime]::Now.ToString('yyyy-MM-dd'))$(_SufijoExportacion).apk</_PaqueteEntregable>
+		</PropertyGroup>
+		<Copy SourceFiles="$(_PaqueteFirmado)" DestinationFiles="$(_PaqueteEntregable)"
+		      Condition="Exists('$(_PaqueteFirmado)')" />
+		<Message Importance="high" Condition="Exists('$(_PaqueteEntregable)')"
+		         Text="Paquete para entregar: $(_PaqueteEntregable)" />
+		<!--
+			Aviso y no Warning: la compilacion con exportacion es legitima y sale limpia, y
+			meterle una advertencia romperia la linea base de cero advertencias del proyecto.
+		-->
+		<Message Importance="high" Condition="Exists('$(_PaqueteEntregable)') AND '$(HabilitarExportacionBaseDatos)' == 'true'"
+		         Text="AVISO: este paquete puede exportar la base local sin cifrar. No dejarlo instalado en un telefono de operacion." />
+	</Target>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

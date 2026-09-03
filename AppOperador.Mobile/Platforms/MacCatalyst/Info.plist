@@ -15,6 +15,9 @@
 	<array>
 		<integer>2</integer>
 	</array>
+	<!-- Misma razón que en Platforms/iOS/Info.plist: sin la descripción no hay diálogo. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>La App Operador necesita la ubicación para validar el acceso y ubicar sus registros de campo en el corredor.</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.lifestyle</string>
 	<key>UIRequiredDeviceCapabilities</key>

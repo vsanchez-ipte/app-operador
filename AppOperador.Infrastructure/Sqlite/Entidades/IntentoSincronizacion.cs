@@ -36,9 +36,26 @@ internal sealed class IntentoSincronizacion
 	[Column("exito")]
 	public bool Exito { get; set; }
 
-	/// <summary>Código HTTP o de error devuelto. Nulo si no hubo respuesta.</summary>
+	/// <summary>
+	/// Código HTTP del intento. <b>Ya no se escribe</b>; se conserva por lo guardado antes.
+	/// </summary>
+	/// <remarks>
+	/// Quitar una columna en SQLite obliga a reconstruir la tabla, y con ella se iría la traza
+	/// de los envíos anteriores. Las filas nuevas la dejan nula y usan
+	/// <see cref="CodigoTexto"/>.
+	/// </remarks>
 	[Column("codigo")]
 	public int? Codigo { get; set; }
+
+	/// <summary>
+	/// Código de error de Jacob, como <c>appincidencias.km.fueradecorredor</c>.
+	/// </summary>
+	/// <remarks>
+	/// Es texto porque el contrato del canal móvil identifica los errores por cadena y no por
+	/// número, y es <b>por el código y nunca por el mensaje</b> como se decide si se reintenta.
+	/// </remarks>
+	[Column("codigo_texto")]
+	public string? CodigoTexto { get; set; }
 
 	/// <summary>Mensaje devuelto o motivo del fallo local.</summary>
 	[Column("mensaje")]

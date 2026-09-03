@@ -16,7 +16,19 @@ public static class ReglaTransicionSincronizacion
 	{
 		[EstadoSincronizacion.Borrador] = [EstadoSincronizacion.Pendiente],
 		[EstadoSincronizacion.Pendiente] = [EstadoSincronizacion.Enviando],
-		[EstadoSincronizacion.Enviando] = [EstadoSincronizacion.Sincronizado, EstadoSincronizacion.Fallido],
+
+		// Enviando vuelve a Pendiente, y esa arista no es un adorno del grafo: es la salida de
+		// un envío que nunca terminó. Sin ella, una incidencia a la que se le cierra la app o
+		// se le acaba la batería a media llamada se queda en Enviando para siempre —no la toma
+		// la cola, no la cuenta el contador y no la reintenta nadie—, sin perderse pero sin
+		// llegar jamás a Jacob. Reenviarla no duplica: el POST es idempotente por uuid.
+		[EstadoSincronizacion.Enviando] =
+		[
+			EstadoSincronizacion.Sincronizado,
+			EstadoSincronizacion.Fallido,
+			EstadoSincronizacion.Pendiente,
+		],
+
 		[EstadoSincronizacion.Fallido] = [EstadoSincronizacion.Pendiente],
 		[EstadoSincronizacion.Sincronizado] = [],
 	};

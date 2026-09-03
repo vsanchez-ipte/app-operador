@@ -4,6 +4,25 @@
 <dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+		Ubicación (JTT-279 PR3, JTT-1380). iOS no muestra el diálogo de permiso si falta esta
+		descripción: la app se cerraría al pedirlo. El texto es el que lee el operador en el
+		diálogo, así que dice para qué se usa, no que se necesita.
+	-->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>La App Operador necesita la ubicación para validar el acceso y ubicar sus registros de campo en el corredor.</string>
+	<!--
+		Evidencia de la incidencia (JTT-1398 CA 2, 3 y 4). Sin estas descripciones iOS no
+		muestra el diálogo: la app se cerraría al pedir el permiso, igual que con la ubicación.
+
+		El texto es el que lee el operador, así que dice PARA QUÉ se usa. Y a diferencia de la
+		ubicación, aquí negarse es una respuesta válida: la evidencia es opcional y la
+		incidencia se guarda igual (CA 4).
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>La App Operador usa la cámara para que pueda adjuntar fotografías a la incidencia que está registrando. Es opcional: puede guardarla sin evidencia.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>La App Operador accede a sus fotografías solo para adjuntar la que usted elija a una incidencia. Es opcional: puede guardarla sin evidencia.</string>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>

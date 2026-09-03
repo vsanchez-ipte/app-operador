@@ -25,7 +25,7 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
 	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
 	/// </remarks>
-	public const int VersionEsquemaActual = 1;
+	public const int VersionEsquemaActual = 9;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -38,12 +38,23 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		SQLiteOpenFlags.FullMutex;
 
 	private readonly SemaphoreSlim _cerrojoInicializacion = new(1, 1);
+	private readonly IDatabaseKeyProvider? _claves;
 	private SQLiteAsyncConnection? _conexion;
+	private string? _clave;
 	private bool _inicializada;
 
-	public BaseDatosLocal(string? rutaArchivo = null)
+	/// <param name="rutaArchivo">
+	/// Archivo de la base. Las pruebas pasan uno temporal para no tocar el del dispositivo.
+	/// </param>
+	/// <param name="claves">
+	/// De dónde sale la clave de cifrado (JTT-1388 CA 2). Sin ella la base se abre en claro,
+	/// que es como corren las pruebas que no verifican el cifrado y el destino de escritorio,
+	/// donde <c>SecureStorage</c> no existe.
+	/// </param>
+	public BaseDatosLocal(string? rutaArchivo = null, IDatabaseKeyProvider? claves = null)
 	{
 		RutaArchivo = rutaArchivo ?? Path.Combine(FileSystem.AppDataDirectory, NombreArchivo);
+		_claves = claves;
 	}
 
 	/// <inheritdoc />
@@ -66,16 +77,29 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 				return;
 			}
 
+			// La clave se resuelve antes de abrir nada: el cifrado se aplica al abrir, no
+			// después. Y antes de eso hay que llevarse los datos de una base en claro, si la hay.
+			_clave = _claves is null ? null : await _claves.ObtenerAsync(cancelacion);
+			CifrarBaseEnClaroSiHace();
+
 			var conexion = AbrirConexion();
+
+			// Va ANTES de crear las tablas, no después: hay cambios que CreateTableAsync no
+			// sabe hacer y que dejarían la tabla mal formada si se aplicaran encima.
+			await PrepararEsquemaAsync(conexion);
 
 			await conexion.CreateTableAsync<IncidenciaLocal>();
 			await conexion.CreateTableAsync<EvidenciaLocal>();
 			await conexion.CreateTableAsync<IntentoSincronizacion>();
 			await conexion.CreateTableAsync<EventoAuditoriaLocal>();
 			await conexion.CreateTableAsync<TipoIncidenciaLocal>();
+			await conexion.CreateTableAsync<SeveridadLocal>();
+			await conexion.CreateTableAsync<AfectacionLocal>();
+			await conexion.CreateTableAsync<CuerpoLocal>();
+			await conexion.CreateTableAsync<CatalogoMetaLocal>();
+			await conexion.CreateTableAsync<SesionLocal>();
 
 			await MigrarAsync(conexion);
-			await SembrarCatalogoAsync(conexion);
 
 			_inicializada = true;
 		}
@@ -106,8 +130,124 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		return AbrirConexion();
 	}
 
+	/// <summary>
+	/// Cifra en el sitio una base que quedó en claro de una versión anterior (JTT-1388).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Una base sin cifrar no se abre con clave</b>, así que al actualizar la app habría dos
+	/// salidas: migrarla o descartarla. Descartarla se llevaría por delante las incidencias
+	/// pendientes de quien tuviera la app instalada, y conservarlas es justo lo que exigen los
+	/// criterios 8 y 11 de esta misma historia. Por eso se migra.
+	/// </para>
+	/// <para>
+	/// El traslado lo hace <c>sqlcipher_export</c>, que copia esquema y datos a una base
+	/// adjunta con su propia clave. Es la vía que documenta SQLCipher para esto; recorrer las
+	/// tablas a mano habría que actualizarlo cada vez que se agregue una.
+	/// </para>
+	/// <para>
+	/// El archivo original se sustituye solo cuando la copia terminó bien. Si algo falla a
+	/// medias, queda la base en claro intacta y el temporal se borra: es preferible arrancar
+	/// otra vez sin cifrar que quedarse sin los pendientes.
+	/// </para>
+	/// <para>
+	/// Queda una rendija que el <c>try</c> no cubre: entre borrar el original y mover el cifrado
+	/// a su sitio son dos llamadas, y si la app muere justo ahí no hay archivo en la ruta de la
+	/// base. El arranque siguiente lo repara adoptando el temporal, que para entonces es la base
+	/// buena. Sin eso se crearía una base nueva y vacía y los pendientes quedarían en un archivo
+	/// huérfano que nadie vuelve a mirar.
+	/// </para>
+	/// </remarks>
+	private void CifrarBaseEnClaroSiHace()
+	{
+		if (_clave is null)
+		{
+			return;
+		}
+
+		var temporal = RutaArchivo + ".cifrando";
+
+		if (!File.Exists(RutaArchivo))
+		{
+			// Solo puede haber temporal sin base si la migración anterior se cortó después de
+			// exportar; es la copia cifrada completa, así que ocupa el lugar del original.
+			if (File.Exists(temporal))
+			{
+				File.Move(temporal, RutaArchivo);
+			}
+
+			return;
+		}
+
+		if (EstaCifrada())
+		{
+			return;
+		}
+
+		File.Delete(temporal);
+
+		try
+		{
+			using (var enClaro = new SQLiteConnection(RutaArchivo, Banderas))
+			{
+				// sqlcipher_export traslada esquema y datos, pero no los pragmas del archivo:
+				// la base cifrada nacería en la versión 0 y MigrarAsync la trataría como si
+				// viniera de antes de la primera versión publicada.
+				var version = enClaro.ExecuteScalar<int>("PRAGMA user_version;");
+
+				// El literal va entre comillas simples y con las internas duplicadas: la clave
+				// es Base64 y no las lleva, pero no se deja abierta la puerta.
+				var claveSql = _clave.Replace("'", "''");
+				enClaro.Execute($"ATTACH DATABASE '{temporal.Replace("'", "''")}' AS cifrada KEY '{claveSql}';");
+				enClaro.ExecuteScalar<string>("SELECT sqlcipher_export('cifrada');");
+				enClaro.Execute($"PRAGMA cifrada.user_version = {version};");
+				enClaro.Execute("DETACH DATABASE cifrada;");
+			}
+
+			File.Delete(RutaArchivo);
+			File.Move(temporal, RutaArchivo);
+		}
+		catch
+		{
+			// Sin cifrar y con los datos es mejor que cifrada y a medias.
+			File.Delete(temporal);
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// Indica si el archivo ya está cifrado.
+	/// </summary>
+	/// <remarks>
+	/// Se comprueba abriéndolo en claro y pidiéndole algo: una base cifrada no se deja leer sin
+	/// clave y responde «file is not a database». No hay una forma más directa, porque SQLCipher
+	/// cifra también la cabecera del archivo, que es lo que permitiría reconocerlo de un vistazo.
+	/// </remarks>
+	private bool EstaCifrada()
+	{
+		try
+		{
+			using var enClaro = new SQLiteConnection(RutaArchivo, SQLiteOpenFlags.ReadOnly);
+			enClaro.ExecuteScalar<int>("PRAGMA user_version;");
+			return false;
+		}
+		catch (SQLiteException)
+		{
+			return true;
+		}
+	}
+
+	/// <summary>
+	/// Abre la conexión, cifrada si hay clave.
+	/// </summary>
+	/// <remarks>
+	/// La clave viaja en la cadena de conexión y SQLCipher la aplica como <c>PRAGMA key</c> al
+	/// abrir. <c>storeDateTimeAsTicks</c> se declara explícito para no depender del valor por
+	/// omisión del paquete, que cambió entre versiones.
+	/// </remarks>
 	private SQLiteAsyncConnection AbrirConexion() =>
-		_conexion ??= new SQLiteAsyncConnection(RutaArchivo, Banderas);
+		_conexion ??= new SQLiteAsyncConnection(
+			new SQLiteConnectionString(RutaArchivo, Banderas, storeDateTimeAsTicks: true, key: _clave));
 
 	/// <summary>
 	/// Lleva el archivo desde la versión que tenga hasta <see cref="VersionEsquemaActual"/>.
@@ -126,35 +266,86 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 			return;
 		}
 
-		// De 0 a 1: primera versión publicada. Las tablas ya quedaron creadas arriba.
+		// De 0 a 1: primera versión publicada.
+		// De 1 a 2: sesión persistida y sello de origen de las incidencias (JTT-1383).
+		// De 2 a 3: permiso con el que se autorizó la captura (JTT-1385 CA 7).
+		// De 3 a 4: catálogo real de Jacob (JTT-1394). Su parte destructiva la hace
+		//           PrepararEsquemaAsync antes de crear las tablas; lo que queda —las columnas
+		//           de severidad y la versión de catálogo en incidencia_local, y las tablas de
+		//           severidades, afectaciones, cuerpos y meta— es aditivo y CreateTableAsync ya
+		//           lo aplicó arriba.
+		//
+		// De 4 a 5: el envío real a Jacob (JTT-1401). Agrega ultimo_error_codigo a
+		//           incidencia_local y codigo_texto a intento_sincronizacion, las dos para
+		//           guardar el código de error del canal móvil, que es cadena y no número.
+		//           Aditivo: CreateTableAsync ya las aplicó arriba.
+		// De 5 a 6: JTT-1395 agrega el kilómetro normalizado y la lectura GPS original
+		//           (latitud, longitud, precisión e instante UTC) a incidencia_local.
+		//           Es aditivo: las filas anteriores quedan con esos campos nulos.
+		//
+		// De 6 a 7: JTT-1398 agrega los límites de evidencia a la fila de metadatos del
+		//           catálogo: formatos admitidos, tamaño máximo y número de archivos. Aditivo.
+		//           Una base anterior queda con las tres columnas en su valor por omisión, y
+		//           eso deja los límites como «desconocidos» hasta la primera descarga del
+		//           catálogo: no se puede adjuntar mientras tanto. Es deliberado —validar con
+		//           números que la app se invente es peor que no admitir adjuntos— y se
+		//           resuelve solo en cuanto haya conexión.
+		//
+		// De 7 a 8: JTT-1398 agrega nombre_original a evidencia_local. Aditivo. La tabla
+		//           existía desde el primer esquema y nadie había escrito en ella, así que no
+		//           hay filas anteriores a las que les falte: la columna nace poblada.
+		//
+		// De 8 a 9: JTT-1398 agrega ultimo_error_codigo a evidencia_local, por lo mismo que en
+		//           incidencia_local: en memoria, cerrar la app convertiria cada rechazo
+		//           funcional en un reintento indefinido a la manana siguiente. Aditivo.
+		//
+		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
+		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
+		// capturaron, igual que pasó con el permiso al pasar de 2 a 3.
+		//
+		// Las que ya habían fallado quedan sin último código de error, así que se tratan como
+		// técnicas y se reintentan una vez. Es lo correcto: no se sabe por qué fallaron, y un
+		// reintento las reclasifica con el código real en vez de dejarlas paradas para siempre.
 		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
 	}
 
 	/// <summary>
-	/// Siembra el catálogo de tipos si la tabla está vacía.
+	/// Aplica los cambios de esquema que <c>CreateTableAsync</c> no sabe hacer.
 	/// </summary>
 	/// <remarks>
-	/// Provisional: el catálogo autorizado lo entregará Jacob (JTT-1347). Mientras tanto
-	/// se usan los tipos de la maqueta para que la captura funcione sin conexión.
-	/// Solo siembra cuando la tabla está vacía, así una sincronización futura de
-	/// catálogos no se pisa con estos valores.
+	/// <para>
+	/// <c>CreateTableAsync</c> solo <b>agrega</b> columnas que falten. No cambia una llave
+	/// primaria ni quita columnas, así que aplicarlo sobre una tabla cuya forma cambió deja un
+	/// híbrido de las dos versiones. Este método corre <b>antes</b> para dejar el archivo en un
+	/// estado sobre el que crear sea seguro.
+	/// </para>
+	/// <para>
+	/// Solo toca tablas que son <b>caché reconstruible</b>. Nada de lo que el operador capturó
+	/// se borra aquí: eso lo prohíbe JTT-1388 CA 8.
+	/// </para>
 	/// </remarks>
-	private static async Task SembrarCatalogoAsync(SQLiteAsyncConnection conexion)
+	private static async Task PrepararEsquemaAsync(SQLiteAsyncConnection conexion)
 	{
-		if (await conexion.Table<TipoIncidenciaLocal>().CountAsync() > 0)
+		var version = await conexion.ExecuteScalarAsync<int>("PRAGMA user_version;");
+
+		if (version >= VersionEsquemaActual)
 		{
 			return;
 		}
 
-		await conexion.InsertAllAsync(new[]
+		// De 3 a 4 (JTT-1394): el catálogo de tipos cambió de llave, de una clave de texto
+		// inventada en la maqueta al entero de Jacob. No se puede migrar fila por fila porque
+		// no hay correspondencia: los seis tipos sembrados —OBJETO, VEHICULO, ACCIDENTE,
+		// ANIMAL, SENALAMIENTO, OTRO— no existen en ningún servidor. Se tira la tabla y se
+		// vuelve a crear vacía; la llena la primera descarga del catálogo real.
+		//
+		// Que quede vacía hasta esa descarga es a propósito: un formulario sin tipos avisa de
+		// que falta bajar el catálogo, mientras que uno con seis tipos falsos deja capturar
+		// incidencias que Jacob va a rechazar.
+		if (version < 4)
 		{
-			new TipoIncidenciaLocal { Clave = "OBJETO", Nombre = "Objeto en camino", Orden = 1 },
-			new TipoIncidenciaLocal { Clave = "VEHICULO", Nombre = "Vehiculo detenido", Orden = 2 },
-			new TipoIncidenciaLocal { Clave = "ACCIDENTE", Nombre = "Accidente", Orden = 3 },
-			new TipoIncidenciaLocal { Clave = "ANIMAL", Nombre = "Animal en camino", Orden = 4 },
-			new TipoIncidenciaLocal { Clave = "SENALAMIENTO", Nombre = "Senalamiento danado", Orden = 5 },
-			new TipoIncidenciaLocal { Clave = "OTRO", Nombre = "Otro", ExigeDescripcion = true, Orden = 6 },
-		});
+			await conexion.ExecuteAsync("DROP TABLE IF EXISTS catalogo_tipo_incidencia;");
+		}
 	}
 
 	public async ValueTask DisposeAsync()

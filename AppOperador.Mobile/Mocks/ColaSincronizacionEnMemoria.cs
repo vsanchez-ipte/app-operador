@@ -1,7 +1,6 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
-using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Mobile.Mocks;
 
@@ -9,34 +8,30 @@ namespace AppOperador.Mobile.Mocks;
 /// Cola de sincronización simulada.
 /// </summary>
 /// <remarks>
-/// Respeta el grafo de estados del dominio: recorre
-/// <c>Pendiente → Enviando → Sincronizado</c> apoyándose en
-/// <see cref="ReglaTransicionSincronizacion"/> en lugar de asignar estados a mano, y los
-/// borradores nunca entran al envío. Al sincronizar asigna un folio central
-/// <c>INC-####</c>, que antes no existía.
+/// Lista lo guardado y cuenta pendientes; <b>no participa en el envío</b>. La orquestación
+/// vive en <c>SincronizarIncidencias</c> desde JTT-1401, y el recorrido simulado se elimina
+/// completo en rama propia: basta con que compile.
 /// </remarks>
 public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 {
 	private readonly AlmacenRegistrosEnMemoria _almacen;
-	private readonly IConnectivityService _conectividad;
-	private readonly IAuditLog _bitacora;
-
-	private int _folio = 9_959;
+	private readonly ISessionStore _sesiones;
 
 	public ColaSincronizacionEnMemoria(
 		AlmacenRegistrosEnMemoria almacen,
-		IConnectivityService conectividad,
-		IAuditLog bitacora)
+		ISessionStore sesiones)
 	{
 		_almacen = almacen;
-		_conectividad = conectividad;
-		_bitacora = bitacora;
+		_sesiones = sesiones;
 	}
+
+	/// <summary>Operador de la sesión abierta. Sin sesión, la cola se ve vacía.</summary>
+	private string? OperadorActual => _sesiones.Actual?.Operador;
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerRegistrosAsync(CancellationToken cancelacion = default)
 	{
 		// Los borradores se listan aparte, en la pantalla de Captura.
-		IReadOnlyList<RegistroCola> registros = _almacen.Todos()
+		IReadOnlyList<RegistroCola> registros = _almacen.Todos(OperadorActual)
 			.Where(r => r.Estado != EstadoSincronizacion.Borrador)
 			.ToList();
 
@@ -44,48 +39,40 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 	}
 
 	public Task<int> ContarPendientesAsync(CancellationToken cancelacion = default) =>
-		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente));
+		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente, OperadorActual));
 
-	public async Task<int> SincronizarAsync(CancellationToken cancelacion = default)
-	{
-		if (!_conectividad.HayEnlace)
-		{
-			await _bitacora.RegistrarAsync(NivelAuditoria.Advertencia, "Sync omitido: sin enlace con CCO.", cancelacion);
-			return 0;
-		}
+	// El recorrido simulado no puede morirse a media llamada, así que no hay nada que
+	// recuperar. Se implementa para cumplir el contrato y no para probar la regla.
+	public Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default) =>
+		Task.FromResult(0);
 
-		// Las críticas primero; entre iguales, las más antiguas antes, para que las
-		// normales no se queden esperando indefinidamente.
-		var porEnviar = _almacen.Todos()
-			.Where(r => r.Estado == EstadoSincronizacion.Pendiente)
-			.OrderByDescending(r => r.Prioridad == SyncPriority.Critica)
-			.Reverse()
-			.ToList();
+	// ── Envío (JTT-1401) ──────────────────────────────────────────────────────────────
+	//
+	// Sin implementar a propósito. El recorrido simulado se elimina completo en rama propia
+	// —decisión del 21-ago—: nadie lo prueba y basta con que compile. Lo que vale para estos
+	// criterios es ColaSincronizacionSqlite con SincronizarIncidencias encima, que sí tienen
+	// pruebas. Una cola vacía de enviables es la respuesta honesta de un almacén que no
+	// participa en el envío.
 
-		var confirmados = 0;
-		foreach (var registro in porEnviar)
-		{
-			if (!ReglaTransicionSincronizacion.EsTransicionValida(registro.Estado, EstadoSincronizacion.Enviando))
-			{
-				continue;
-			}
+	public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<IReadOnlyList<IncidenciaEnviable>>([]);
 
-			// El folio central solo existe a partir de la confirmación de Jacob.
-			var sincronizado = registro with
-			{
-				Estado = EstadoSincronizacion.Sincronizado,
-				FolioCentral = registro.Clase == ClaseRegistro.Incidencia ? $"INC-{++_folio}" : null,
-			};
+	public Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<IncidenciaEnviable?>(null);
 
-			_almacen.Reemplazar(sincronizado);
-			confirmados++;
-		}
+	public Task ActualizarEnvioAsync(
+		ActualizacionEnvio actualizacion,
+		CancellationToken cancelacion = default) =>
+		Task.CompletedTask;
 
-		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
-			$"Sync intentado: {confirmados}/{porEnviar.Count} registros creados en Incidencias.",
-			cancelacion);
-
-		return confirmados;
-	}
+	public Task RegistrarIntentoAsync(
+		string uuid,
+		bool exito,
+		string? codigo,
+		string? mensaje,
+		CancellationToken cancelacion = default) =>
+		Task.CompletedTask;
 }

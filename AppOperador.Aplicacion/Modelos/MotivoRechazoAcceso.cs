@@ -24,4 +24,68 @@ public enum MotivoRechazoAcceso
 
 	/// <summary>No se pudo alcanzar a Jacob CCO para validar por primera vez.</summary>
 	SinComunicacion = 5,
+
+	/// <summary>La cuenta está desactivada (<c>appoperador.cuenta.inactiva</c>).</summary>
+	/// <remarks>
+	/// JTT-279 no fijó texto para este caso; queda pendiente de acordar con Producto.
+	/// </remarks>
+	CuentaInactiva = 6,
+
+	/// <summary>
+	/// Bloqueo temporal tras varios intentos fallidos (<c>appoperador.cuenta.bloqueada</c>).
+	/// </summary>
+	/// <remarks>
+	/// El API devuelve los segundos restantes dentro de <c>mensajeError</c>. JTT-1378 solo
+	/// recibe y distingue el caso; la cuenta regresiva es de una historia posterior.
+	/// </remarks>
+	CuentaBloqueada = 7,
+
+	/// <summary>
+	/// El operador no tiene unidades activas asignadas (<c>appoperador.sin.vehiculos</c>).
+	/// </summary>
+	/// <remarks>JTT-279 tampoco fijó texto para este caso.</remarks>
+	SinUnidades = 8,
+
+	/// <summary>
+	/// Jacob respondió algo que la app no sabe interpretar: código desconocido, cuerpo que
+	/// no es un <c>Envelope</c>, <c>401</c> sin cuerpo o error interno del API.
+	/// </summary>
+	/// <remarks>
+	/// Existe para no confundir un fallo del servicio con un rechazo de credenciales: son
+	/// situaciones distintas y el operador debe poder distinguirlas.
+	/// </remarks>
+	ErrorDelServicio = 9,
+
+	/// <summary>
+	/// El desafío del acceso ya no sirve: no existe, venció o se consumió
+	/// (<c>appoperador.desafio.noexiste</c>, <c>.expirado</c>, <c>.consumido</c>).
+	/// </summary>
+	/// <remarks>
+	/// Los tres códigos se unifican a propósito: la salida del operador es la misma —volver
+	/// a autenticarse— y distinguirlos solo le diría al atacante en qué falló. El desafío
+	/// dura cinco minutos y es de un solo uso.
+	/// </remarks>
+	DesafioNoValido = 10,
+
+	/// <summary>
+	/// La unidad elegida ya no está disponible para el operador
+	/// (<c>appoperador.vehiculo.noautorizado</c>).
+	/// </summary>
+	/// <remarks>
+	/// El backend revalida la unidad al crear la sesión (JTT-1381 CA 7), así que puede
+	/// haberse desactivado o reasignado entre la preautenticación y el ingreso. Hay que
+	/// refrescar la lista, no reintentar con la misma.
+	/// </remarks>
+	UnidadNoAutorizada = 11,
+
+	/// <summary>
+	/// Jacob ya no reconoce la sesión: se revocó o dejó de ser válida
+	/// (<c>appoperador.sesion.revocada</c>, <c>appoperador.sesion.invalida</c>).
+	/// </summary>
+	/// <remarks>
+	/// Aparece al revalidar tras recuperar el enlace (JTT-1383 CA 11). No es un fallo de
+	/// red: la sesión existió y el servidor la dio de baja, así que reintentar no sirve y
+	/// hay que autenticarse otra vez.
+	/// </remarks>
+	SesionRevocada = 12,
 }

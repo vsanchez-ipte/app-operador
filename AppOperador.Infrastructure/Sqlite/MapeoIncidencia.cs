@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Modelos;
+﻿using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 using AppOperador.Infrastructure.Sqlite.Entidades;
 
@@ -16,14 +16,33 @@ internal static class MapeoIncidencia
 	/// <summary>
 	/// Convierte una fila en el elemento que lista la pantalla de Cola.
 	/// </summary>
-	public static RegistroCola ARegistroCola(IncidenciaLocal fila) => new(
+	/// <param name="ultimoErrorMensaje">
+	/// Lo que dijo Jacob en el último intento fallido, si se conoce.
+	/// <para>
+	/// <b>Viene de fuera porque no está en esta fila</b>: la incidencia guarda el código del
+	/// rechazo, pero el mensaje vive en <c>intento_sincronizacion</c>, que es una tabla aparte.
+	/// Quien la consulta es la cola, que sabe qué registros va a listar y puede pedirlos de una
+	/// sola vez.
+	/// </para>
+	/// </param>
+	public static RegistroCola ARegistroCola(
+		IncidenciaLocal fila,
+		string? ultimoErrorMensaje = null) => new(
 		fila.ClaveLocal,
 		ClaseRegistro.Incidencia,
 		(SyncPriority)fila.Prioridad,
 		Describir(fila),
 		fila.Kilometro ?? string.Empty,
 		(EstadoSincronizacion)fila.Estado,
-		fila.FolioCentral);
+		fila.FolioCentral,
+		fila.SeveridadNombre,
+		fila.UltimoErrorCodigo,
+		ultimoErrorMensaje,
+		fila.Intentos,
+		// El último cambio de estado de un registro fallido ES su último intento: el envío es lo
+		// único que lo mueve. Es la misma columna de la que sale la espera al decidir el reintento,
+		// así que la hora que se muestra y la que se aplica no pueden discrepar.
+		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc));
 
 	/// <summary>
 	/// Describe el contenido del registro: solo el tipo de incidencia.

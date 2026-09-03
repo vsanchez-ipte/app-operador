@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <!--
     Cola local de registros pendientes (JTT-290) y su sincronización (JTT-291).
 -->
@@ -12,6 +12,25 @@
 
     <ScrollView>
         <VerticalStackLayout Padding="14" Spacing="12">
+
+            <!--
+                Aviso permanente de modo offline (JTT-1383 CA 7 y 8). El literal es el que
+                fija JTT-279 y no se reformula. El boton fuerza la revalidacion sin esperar
+                a que el sistema note el cambio de enlace.
+            -->
+            <Border IsVisible="{Binding Enlace.EnModoOffline}" Style="{StaticResource Tarjeta}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                        <Label Text="{Binding Enlace.Texto}" FontAttributes="Bold"
+                               TextColor="{StaticResource AmbarTexto}" />
+                        <Label Text="{Binding Enlace.Detalle}" Style="{StaticResource TextoSecundario}"
+                               IsVisible="{Binding Enlace.HayDetalle}" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="1" Text="Reintentar" Style="{StaticResource BotonSecundario}"
+                            Command="{Binding Enlace.ReintentarCommand}"
+                            IsEnabled="{Binding Enlace.PuedeReintentar}" />
+                </Grid>
+            </Border>
 
             <Border Style="{StaticResource Tarjeta}">
                 <VerticalStackLayout Spacing="12">
@@ -29,6 +48,14 @@
                             Style="{StaticResource BotonPrimario}"
                             Command="{Binding SincronizarCommand}"
                             IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+
+                    <!-- Qué pasó en la última sincronización (JTT-1401 CA 10). Va JUNTO al
+                         botón: sin esto, pulsar sin enlace no produce ningún cambio visible y
+                         el operador no distingue un botón que no respondió de una cola que no
+                         tenía nada que enviar, así que acaba pulsando en bucle. -->
+                    <Label Text="{Binding MensajeSincronizacion}"
+                           Style="{StaticResource TextoSecundario}"
+                           IsVisible="{Binding HayMensajeSincronizacion}" />
 
                 </VerticalStackLayout>
             </Border>
@@ -49,8 +76,11 @@
                                     <VerticalStackLayout Spacing="4">
 
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <!-- Clave local: existe desde la captura y nunca cambia -->
-                                            <Label Grid.Column="0" Text="{Binding ClaveLocal}"
+                                            <!-- Referencia principal (JTT-1403 CA 1): el folio en
+                                                 cuanto Jacob confirma, y la clave local mientras
+                                                 no. Cual de los dos es lo decide RegistroCola, no
+                                                 esta vista. -->
+                                            <Label Grid.Column="0" Text="{Binding ReferenciaPrincipal}"
                                                    FontAttributes="Bold" FontSize="14"
                                                    TextColor="{StaticResource TextoTitulo}" />
 
@@ -66,10 +96,31 @@
 
                                         <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
 
-                                        <!-- El folio central solo aparece cuando Jacob confirmó el registro -->
-                                        <Label Text="{Binding TextoFolio}"
+                                        <!-- Trazabilidad (JTT-1403 CA 2): con el folio arriba, la
+                                             clave local baja aqui en vez de desaparecer. Es la
+                                             unica referencia comun con la base del dispositivo. -->
+                                        <Label Text="{Binding TextoTrazabilidad}"
                                                Style="{StaticResource TextoDato}"
-                                               IsVisible="{Binding MuestraFolio}" />
+                                               IsVisible="{Binding MuestraTrazabilidad}" />
+
+                                        <!-- Por que no salio ESTE registro. El resumen de arriba
+                                             cuenta cuantas hay de cada clase; con varias fallidas
+                                             a la vez no dice cual es cual ni que corregir. El
+                                             texto lo compone RegistroCola, no esta vista. -->
+                                        <Label Text="{Binding TextoMotivoFallo}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               TextColor="{StaticResource RojoTexto}"
+                                               IsVisible="{Binding MuestraMotivoFallo}" />
+
+                                        <!-- Cuando toca el proximo intento. Solo en los fallos
+                                             tecnicos: un rechazo funcional no se reintenta solo,
+                                             y anunciarle una hora seria prometer algo que no va
+                                             a pasar. La espera crece con cada fallo, asi que no
+                                             se puede dar por sabida. -->
+                                        <Label Text="{Binding TextoReintento}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               TextColor="{StaticResource AmbarTexto}"
+                                               IsVisible="{Binding MuestraReintento}" />
 
                                     </VerticalStackLayout>
                                 </Border>

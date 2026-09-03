@@ -35,16 +35,22 @@
                     <Border Style="{StaticResource Tarjeta}">
                         <VerticalStackLayout Spacing="14">
 
-                            <VerticalStackLayout>
-                                <Label Text="USUARIO" Style="{StaticResource EtiquetaCampo}" />
+                            <!--
+                                Contra Jacob CCO la credencial es el CORREO, no un nombre de
+                                usuario: el API autentica por email y esa decisión está cerrada.
+                                La etiqueta cambia con el modo para no pedir un dato equivocado.
+                            -->
+                            <VerticalStackLayout IsVisible="{Binding MostrarCredenciales}">
+                                <Label Text="{Binding EtiquetaUsuario}" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Entry Style="{StaticResource CampoTexto}"
-                                           Placeholder="usuario.campo"
+                                           Placeholder="{Binding EjemploUsuario}"
+                                           Keyboard="{Binding TecladoUsuario}"
                                            Text="{Binding Usuario}" />
                                 </Border>
                             </VerticalStackLayout>
 
-                            <VerticalStackLayout>
+                            <VerticalStackLayout IsVisible="{Binding MostrarCredenciales}">
                                 <Label Text="CONTRASEÑA" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Entry Style="{StaticResource CampoTexto}"
@@ -53,8 +59,15 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <!-- Selección del catálogo: JTT-279 no admite texto libre -->
-                            <VerticalStackLayout>
+                            <!--
+                                Selección del catálogo: JTT-279 no admite texto libre y
+                                JTT-1381 exige que el ID salga del catálogo, nunca del
+                                teclado. Contra el simulador se ve desde el principio, como
+                                en la maqueta; contra el API real aparece en el segundo paso,
+                                cuando la preautenticación ya devolvió las unidades reales
+                                del operador.
+                            -->
+                            <VerticalStackLayout IsVisible="{Binding MostrarSelectorUnidad}">
                                 <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
                                     <Picker Style="{StaticResource CampoLista}"
@@ -68,9 +81,54 @@
                                    Style="{StaticResource MensajeError}"
                                    IsVisible="{Binding HayError}" />
 
+                            <!--
+                                Ubicación (JTT-1380). El literal de arriba lo fija JTT-279 y
+                                es igual para los seis estados; estos dos elementos son los
+                                que distinguen cuál se encontró y qué puede hacer el operador.
+                                Sin ellos, "Active la ubicación..." no dice si hay que
+                                conceder un permiso, desbloquearlo o encender el GPS.
+                            -->
+                            <Label Text="{Binding DetalleUbicacion}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   IsVisible="{Binding HayDetalleUbicacion}" />
+
+                            <Button Text="{Binding TextoAccionUbicacion}"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding EjecutarAccionUbicacionCommand}"
+                                    IsVisible="{Binding HayAccionUbicacion}"
+                                    IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
+
+                            <!-- Confirmación de la preautenticación. No muestra el desafío. -->
+                            <Label Text="{Binding MensajeAviso}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   TextColor="{StaticResource VerdeTexto}"
+                                   FontAttributes="Bold"
+                                   IsVisible="{Binding HayAviso}" />
+
+                            <!--
+                                Actividad en curso. Los botones deshabilitados no bastan: sin
+                                esto, pulsar "Iniciar sesion" apagaba la pantalla y no ocurria
+                                nada visible durante lo que tardara el servidor, hasta veinte
+                                segundos por llamada y con dos llamadas seguidas en el acceso
+                                real. El texto nombra el paso porque son varias esperas
+                                distintas y "Cargando..." no dice en cual va.
+                            -->
+                            <HorizontalStackLayout Spacing="10"
+                                                   HorizontalOptions="Center"
+                                                   IsVisible="{Binding HayPasoEnCurso}">
+                                <ActivityIndicator IsRunning="{Binding HayPasoEnCurso}"
+                                                   Color="{StaticResource Vino}"
+                                                   HeightRequest="18"
+                                                   WidthRequest="18"
+                                                   VerticalOptions="Center" />
+                                <Label Text="{Binding PasoEnCurso}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Button Grid.Column="0"
-                                        Text="Iniciar sesion"
+                                        Text="{Binding TextoBotonAcceso}"
                                         Style="{StaticResource BotonPrimario}"
                                         Command="{Binding IngresarCommand}"
                                         IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
@@ -80,6 +138,17 @@
                                         Command="{Binding ContinuarSinConexionCommand}"
                                         IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
                             </Grid>
+
+                            <!--
+                                Salida del segundo paso. Sin ella la pantalla es un callejón
+                                sin salida: el desafío vence a los cinco minutos y el operador
+                                tendría que cerrar la app para reintentar.
+                            -->
+                            <Button Text="Cambiar de cuenta"
+                                    Style="{StaticResource BotonSecundario}"
+                                    Command="{Binding VolverACredencialesCommand}"
+                                    IsVisible="{Binding EnSeleccionDeUnidad}"
+                                    IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
                         </VerticalStackLayout>
                     </Border>

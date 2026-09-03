@@ -1,6 +1,86 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"></application>
+	<!--
+		networkSecurityConfig habilita HTTP en claro únicamente contra el API de desarrollo
+		(ver Resources/xml/network_security_config.xml). Sin esto, Android bloquea la
+		llamada a http://10.0.2.2:5231 antes de que salga del dispositivo.
+	-->
+	<!--
+		allowBackup="false" y las reglas de extracción cierran las dos vías por las que los datos
+		locales saldrían del dispositivo (JTT-1388 CA 7 y 11): el respaldo automático en la nube y,
+		desde Android 12, la transferencia directa a un equipo nuevo.
+
+		Venía en "true" por la plantilla. Con la base cifrada eso es peor que inútil: la clave vive
+		en el KeyStore y el KeyStore no se respalda, así que lo restaurado sería una base ilegible.
+		Y mientras "la eliminación de la app puede eliminar la cola local" (CA 11), un respaldo la
+		devolvería al reinstalar.
+	-->
+	<application android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:networkSecurityConfig="@xml/network_security_config"></application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
+	<!--
+		Ubicación (JTT-279 PR3, JTT-1380). Sin estas dos declaraciones el sistema niega el
+		permiso sin llegar a mostrar el diálogo, y la app no podría distinguir un rechazo del
+		operador de una declaración que falta.
+
+		Se piden las dos porque el permiso se solicita como "cuando se usa la app": Android
+		exige declarar la aproximada junto con la fina, y a partir de Android 12 el operador
+		puede conceder solo la aproximada. Para este requisito basta: la historia comprueba
+		que la app *pueda* ubicarse, no la precisión de la lectura.
+
+		No se declara ACCESS_BACKGROUND_LOCATION: la app no necesita ubicarse en segundo
+		plano y pedirlo dispara la revisión manual de Google Play.
+	-->
+	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+	<!--
+		Evidencia de la incidencia (JTT-1398 CA 2, 3 y 4).
+
+		CAMERA se pide al usar la función, no al iniciar sesión: lo exigen el CA 3 de esta
+		historia y los criterios 1 a 3 de JTT-1387. Lo pide MediaPicker al invocarlo.
+
+		android:required="false" en la cámara porque la evidencia es OPCIONAL: un dispositivo
+		sin cámara tiene que poder instalar la app y capturar incidencias sin foto. Con
+		required="true", Google Play lo dejaría fuera del catálogo de instalación.
+
+		NO se declaran READ_EXTERNAL_STORAGE ni READ_MEDIA_IMAGES: el selector del sistema
+		devuelve el archivo ya autorizado por el propio diálogo, así que pedir acceso a toda
+		la galería sería más de lo necesario. Es el CA 6 de JTT-1387.
+	-->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
+
+	<!--
+		Visibilidad de paquetes (Android 11+, y aquí targetSdk 36).
+
+		SIN ESTE BLOQUE LOS TRES BOTONES DE EVIDENCIA NO HACEN NADA. Desde Android 11 una app
+		solo "ve" las demás que declara, así que resolver el intent de la cámara devuelve vacío
+		y MediaPicker responde null **sin lanzar ninguna excepción**: para el código es
+		indistinguible de que el operador cancelara, y en pantalla no ocurre absolutamente nada.
+
+		Se declara un intent por cada cosa que se lanza: tomar la foto, grabar el video y abrir
+		el selector de archivos. Es lo mínimo: no se usa <package> ni QUERY_ALL_PACKAGES, que
+		dispara la revisión manual de Google Play.
+	-->
+	<queries>
+		<intent>
+			<action android:name="android.media.action.IMAGE_CAPTURE" />
+		</intent>
+		<intent>
+			<action android:name="android.media.action.VIDEO_CAPTURE" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.GET_CONTENT" />
+			<data android:mimeType="*/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.OPEN_DOCUMENT" />
+			<data android:mimeType="*/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.PICK" />
+			<data android:mimeType="image/*" />
+		</intent>
+	</queries>
 </manifest>

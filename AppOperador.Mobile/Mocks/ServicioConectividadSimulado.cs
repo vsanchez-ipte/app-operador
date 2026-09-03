@@ -1,4 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
+using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Mobile.Mocks;
 
@@ -6,10 +7,10 @@ namespace AppOperador.Mobile.Mocks;
 /// Estado de enlace simulado, conmutable a mano desde la interfaz.
 /// </summary>
 /// <remarks>
-/// La maqueta trae un botón "Simular enlace" con el que el desarrollador alterna entre
-/// tener y no tener comunicación con Jacob CCO. Ese botón es de la maqueta, no del
-/// producto: cuando exista el canal móvil real, esta clase se reemplaza por una que
-/// consulte <c>Connectivity.Current</c> y verifique el alcance del API.
+/// Solo se registra con el canal real apagado, para poder demostrar las pantallas sin
+/// servidor. Responde que siempre hay enlace y <see cref="Alternar"/> permite forzar el
+/// modo offline a mano. El estado real lo determina
+/// <c>ServicioConectividadJacob</c> (JTT-1391).
 /// </remarks>
 public sealed class ServicioConectividadSimulado : IConnectivityService
 {
@@ -31,6 +32,18 @@ public sealed class ServicioConectividadSimulado : IConnectivityService
 	}
 
 	public event EventHandler<bool>? EnlaceCambio;
+
+	/// <summary>
+	/// Comprobación simulada: devuelve lo que ya se tenga, sin consultar nada.
+	/// </summary>
+	/// <remarks>
+	/// El modo offline se fuerza a mano con <see cref="Alternar"/>, así que aquí la falta de
+	/// enlace es siempre de transporte: no hay servidor que pueda contestar un error.
+	/// </remarks>
+	public Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default) =>
+		Task.FromResult(HayEnlace
+			? ResultadoSondeo.Alcanzado()
+			: ResultadoSondeo.SinTransporte("Modo offline forzado desde el simulador."));
 
 	/// <summary>Alterna el estado de enlace. Solo existe mientras trabajamos con simuladores.</summary>
 	public void Alternar() => HayEnlace = !HayEnlace;

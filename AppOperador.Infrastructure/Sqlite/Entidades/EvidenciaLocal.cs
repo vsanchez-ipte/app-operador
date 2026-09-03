@@ -30,6 +30,17 @@ internal sealed class EvidenciaLocal
 	[Column("ruta_archivo")]
 	public string RutaArchivo { get; set; } = string.Empty;
 
+	/// <summary>
+	/// Cómo se llamaba el archivo cuando el operador lo eligió.
+	/// </summary>
+	/// <remarks>
+	/// <b>No sirve para encontrarlo</b> —para eso está <see cref="RutaArchivo"/>, que usa el
+	/// UUID— sino para que el operador lo reconozca en la lista de adjuntos. El PO lo pidió
+	/// explícitamente en JTT-289: nombre, tipo y tamaño visibles antes de enviar.
+	/// </remarks>
+	[Column("nombre_original")]
+	public string NombreOriginal { get; set; } = string.Empty;
+
 	/// <summary>Tipo de medio, por ejemplo <c>image/jpeg</c>.</summary>
 	[Column("tipo_medio")]
 	public string TipoMedio { get; set; } = string.Empty;
@@ -50,4 +61,15 @@ internal sealed class EvidenciaLocal
 	/// <summary>Número de envíos intentados.</summary>
 	[Column("intentos")]
 	public int Intentos { get; set; }
+
+	/// <summary>
+	/// Último código de error de Jacob, o vacío si nunca falló.
+	/// </summary>
+	/// <remarks>
+	/// Se persiste por la misma razón que en <c>incidencia_local</c> (JTT-1401): en memoria,
+	/// cerrar la app —algo habitual en campo— convertiría cada rechazo funcional en un reintento
+	/// indefinido a la mañana siguiente.
+	/// </remarks>
+	[Column("ultimo_error_codigo")]
+	public string? UltimoErrorCodigo { get; set; }
 }

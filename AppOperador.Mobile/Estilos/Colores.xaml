@@ -45,6 +45,10 @@
     <!-- Errores junto al campo (por ejemplo, el aviso de GPS no disponible) -->
     <Color x:Key="RojoError">#C0392B</Color>
 
+    <!-- Insignia de "Error de servicio": el servidor contestó, pero con un error (JTT-1386) -->
+    <Color x:Key="RojoFondo">#F8DAD6</Color>
+    <Color x:Key="RojoTexto">#8E2A1E</Color>
+
     <Color x:Key="Blanco">#FFFFFF</Color>
 
     <!--
@@ -56,5 +60,6 @@
     <SolidColorBrush x:Key="VerdeFondoBrocha" Color="{StaticResource VerdeFondo}" />
     <SolidColorBrush x:Key="RosaFondoBrocha" Color="{StaticResource RosaFondo}" />
     <SolidColorBrush x:Key="AmbarFondoBrocha" Color="{StaticResource AmbarFondo}" />
+    <SolidColorBrush x:Key="RojoFondoBrocha" Color="{StaticResource RojoFondo}" />
 
 </ResourceDictionary>

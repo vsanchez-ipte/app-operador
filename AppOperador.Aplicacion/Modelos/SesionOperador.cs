@@ -1,4 +1,5 @@
 using AppOperador.Domain.Reglas;
+using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.Modelos;
 
@@ -16,10 +17,12 @@ public sealed class SesionOperador
 		string rol,
 		string unidadVehicular,
 		VigenciaOffline vigencia,
-		IReadOnlyList<string> permisos,
+		PermisosOperador permisos,
 		string versionAplicacion,
-		DateOnly versionCatalogos)
+		DateOnly versionCatalogos,
+		string sessionId = "")
 	{
+		SessionId = sessionId;
 		Operador = operador;
 		Rol = rol;
 		UnidadVehicular = unidadVehicular;
@@ -28,6 +31,15 @@ public sealed class SesionOperador
 		VersionAplicacion = versionAplicacion;
 		VersionCatalogos = versionCatalogos;
 	}
+
+	/// <summary>
+	/// Identificador de la sesión en Jacob CCO.
+	/// </summary>
+	/// <remarks>
+	/// Sella las incidencias capturadas para saber de qué sesión salieron (JTT-1383 CA 12).
+	/// Vacío en los recorridos simulados, que no crean sesión en el servidor.
+	/// </remarks>
+	public string SessionId { get; }
 
 	/// <summary>Nombre de la cuenta del operador en Jacob CCO.</summary>
 	public string Operador { get; }
@@ -41,8 +53,14 @@ public sealed class SesionOperador
 	/// <summary>Ventana de trabajo sin conexión derivada de la última validación en línea.</summary>
 	public VigenciaOffline Vigencia { get; }
 
-	/// <summary>Permisos efectivos, tal como se muestran en el perfil.</summary>
-	public IReadOnlyList<string> Permisos { get; }
+	/// <summary>
+	/// Permisos efectivos, tal como se muestran en el perfil.
+	/// </summary>
+	/// <remarks>
+	/// Llegan de Jacob y no se pueden alterar desde la app: ver
+	/// <see cref="PermisosOperador"/> (JTT-1379 CA 7).
+	/// </remarks>
+	public PermisosOperador Permisos { get; }
 
 	/// <summary>Versión de la aplicación instalada.</summary>
 	public string VersionAplicacion { get; }

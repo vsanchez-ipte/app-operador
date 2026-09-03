@@ -31,35 +31,69 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!--
+		Exportación de la base a SQLite legible. El interruptor y su porqué están explicados
+		en AppOperador.Mobile.csproj; aquí se repite porque el símbolo tiene que existir
+		también donde vive la implementación, o el APK de Release la seguiría cargando dentro
+		aunque nadie la registrara.
+
+		Al compilar la app, la propiedad se pasa a este proyecto sola: MSBuild propaga las
+		propiedades globales a los proyectos referenciados.
+	-->
+	<PropertyGroup>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == '' AND '$(Configuration)' == 'Debug'">true</HabilitarExportacionBaseDatos>
+		<HabilitarExportacionBaseDatos Condition="'$(HabilitarExportacionBaseDatos)' == ''">false</HabilitarExportacionBaseDatos>
+		<DefineConstants Condition="'$(HabilitarExportacionBaseDatos)' == 'true'">$(DefineConstants);EXPORTAR_BASE_DATOS</DefineConstants>
+
+		<!--
+			En net10.0 va siempre, pase lo que pase con el interruptor. Ese destino no se
+			distribuye: existe solo para que AppOperador.IntegrationTests pueda probar los
+			adaptadores SQLite en el escritorio. Sin esta linea, un "dotnet test -c Release"
+			dejaria al proyecto de pruebas sin la clase que prueba y no compilaria.
+		-->
+		<DefineConstants Condition="'$(TargetFramework)' == 'net10.0' AND '$(HabilitarExportacionBaseDatos)' != 'true'">$(DefineConstants);EXPORTAR_BASE_DATOS</DefineConstants>
+	</PropertyGroup>
+
+	<Target Name="ValidarExportacionBaseDatosInfraestructura" BeforeTargets="BeforeBuild">
+		<Error Condition="'$(HabilitarExportacionBaseDatos)' != 'true' AND '$(HabilitarExportacionBaseDatos)' != 'false'"
+		       Text="HabilitarExportacionBaseDatos '$(HabilitarExportacionBaseDatos)' no es valido. Use true o false." />
+	</Target>
+
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
-		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
-		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
+		<PackageReference Include="sqlite-net-sqlcipher" Version="1.9.172" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
 	</ItemGroup>
 
 	<!--
-		Fijado por NU1903 (GHSA-2m69-gcr7-jv3q): bundle_green 2.1.11 arrastra
-		lib.e_sqlite3 2.1.11, vulnerable. No hay bundle_green 2.1.12, asi que se fija la
-		version parcheada de las librerias nativas directamente.
+		Ya no se fijan versiones de las librerias nativas.
 
-		OJO CON ANDROID. Los dos paquetes NO son intercambiables:
-		  · SQLitePCLRaw.lib.e_sqlite3         -> runtimes/linux-*/native/*.so  (glibc)
-		  · SQLitePCLRaw.lib.e_sqlite3.android -> un .aar con la libreria de Android (Bionic)
+		Hasta JTT-1388 la base iba con bundle_green, que arrastraba lib.e_sqlite3 2.1.11 y
+		con ella la vulnerabilidad GHSA-2m69-gcr7-jv3q; como no existia bundle_green 2.1.12,
+		habia que fijar a mano la version parcheada, y en Android excluir sus assets nativos
+		para que el .so de glibc no desplazara al .aar de Bionic. Sin eso la app compilaba,
+		instalaba y tronaba al abrir la base con "dlopen failed: library libc.so.6 not found".
 
-		Si el primero entra con sus assets nativos en un destino Android, el empaquetador
-		mete el .so de Linux en lib/<abi>/ y descarta el correcto del .aar. La app compila
-		e instala, pero truena al abrir la base con:
-		    dlopen failed: library "libc.so.6" not found
-		Por eso en Android se conserva la referencia (para que la version siga fijada y
-		NU1903 quede resuelto) pero se excluyen sus assets nativos.
+		bundle_e_sqlcipher 2.1.11 usa e_sqlcipher, que no esta afectada: comprobado con
+		"dotnet list package" y sus modificadores vulnerable e include-transitive, que no
+		devuelven nada. El bundle gestiona sus propias librerias por plataforma, asi que el
+		arreglo sobra.
+
+		Si alguna vez se vuelve a fijar una version nativa a mano, releer esta nota antes.
 	-->
-	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
-		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="native;runtime" />
-		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3.android" Version="2.1.12" />
-	</ItemGroup>
 
-	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
-		<PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+	<!--
+		Geometria del corredor (JTT-1395). Va incrustada en el ensamblado, no como MauiAsset,
+		por dos motivos: el destino net10.0 no tiene sistema de archivos de la app y las
+		pruebas de integracion la leen ahi, y un recurso incrustado no se puede perder al
+		empaquetar sin que la compilacion lo note.
+
+		Viaja dentro del paquete porque hoy no hay endpoint que la publique. El dia que lo
+		haya, se cambia la implementacion de IRepositorioGeometriaCorredor y este archivo se
+		queda como respaldo o desaparece; nada mas del codigo lo nombra.
+	-->
+	<ItemGroup>
+	  <EmbeddedResource Include="Dispositivo\corredor-tijuana-tecate.csv" />
 	</ItemGroup>
 
 	<ItemGroup>

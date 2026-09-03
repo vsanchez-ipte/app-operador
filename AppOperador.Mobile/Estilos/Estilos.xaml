@@ -105,7 +105,17 @@
         <Setter Property="Margin" Value="0,6,0,0" />
     </Style>
 
-    <!-- ===== Botones ===== -->
+    <!-- ===== Botones =====
+
+         El botón dice lo que va a hacer, y por eso sus rótulos son de dos palabras
+         («Guardar incidencia», «Guardar borrador», «Continuar offline»). A media
+         pantalla, con relleno de 14 y una sola línea, no cabían: Android recortaba
+         el rótulo a la primera palabra y los dos botones de Captura acababan
+         diciendo «Guardar», que es justo la confusión que el texto largo evita.
+
+         Por eso el relleno baja a 6, el rótulo puede ocupar dos líneas y la altura
+         pasa a ser mínima y no fija: un botón de una línea se ve igual que antes,
+         y uno de dos crece en vez de perder texto. -->
 
     <Style x:Key="BotonPrimario" TargetType="Button">
         <Setter Property="BackgroundColor" Value="{StaticResource Vino}" />
@@ -113,8 +123,9 @@
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontAttributes" Value="Bold" />
         <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="HeightRequest" Value="46" />
-        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="MinimumHeightRequest" Value="46" />
+        <Setter Property="Padding" Value="6,8" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
     </Style>
 
     <Style x:Key="BotonSecundario" TargetType="Button">
@@ -123,8 +134,9 @@
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontAttributes" Value="Bold" />
         <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="HeightRequest" Value="46" />
-        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="MinimumHeightRequest" Value="46" />
+        <Setter Property="Padding" Value="6,8" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
     </Style>
 
     <!-- ===== Insignias de estado ===== -->
@@ -145,6 +157,10 @@
         <Setter Property="Background" Value="{StaticResource AmbarFondoBrocha}" />
     </Style>
 
+    <Style x:Key="InsigniaRoja" TargetType="Border" BasedOn="{StaticResource InsigniaVerde}">
+        <Setter Property="Background" Value="{StaticResource RojoFondoBrocha}" />
+    </Style>
+
     <Style x:Key="TextoInsigniaVerde" TargetType="Label">
         <Setter Property="FontSize" Value="10" />
         <Setter Property="FontAttributes" Value="Bold" />
@@ -158,6 +174,10 @@
 
     <Style x:Key="TextoInsigniaAmbar" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
         <Setter Property="TextColor" Value="{StaticResource AmbarTexto}" />
+    </Style>
+
+    <Style x:Key="TextoInsigniaRoja" TargetType="Label" BasedOn="{StaticResource TextoInsigniaVerde}">
+        <Setter Property="TextColor" Value="{StaticResource RojoTexto}" />
     </Style>
 
     <!-- ===== Indicadores del tablero de Inicio ===== -->
