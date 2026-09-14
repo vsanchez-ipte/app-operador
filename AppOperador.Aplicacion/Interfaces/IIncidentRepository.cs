@@ -83,6 +83,36 @@ public interface IIncidentRepository
 		CancellationToken cancelacion = default);
 
 	/// <summary>
+	/// Carga un registro rechazado por el CCO para corregirlo en el formulario (JTT-291 CA 8).
+	/// </summary>
+	/// <returns>
+	/// <see langword="null"/> si no hay un registro en <c>Fallido</c> con esa clave a nombre del
+	/// operador de la sesión.
+	/// </returns>
+	Task<IncidenciaRechazada?> ObtenerRechazadaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Devuelve a <c>Pendiente</c> un registro rechazado, con los datos corregidos (JTT-291 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// Conserva clave local, identificador y evidencia; reinicia el contador de intentos y
+	/// limpia el último código de error, porque el registro corregido es un envío nuevo para
+	/// el operador. La bitácora de intentos no se toca: lo que pasó, pasó.
+	/// </remarks>
+	/// <returns><see langword="false"/> si no existe o no es del operador de la sesión.</returns>
+	Task<bool> CorregirRechazadaAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps = null,
+		CancellationToken cancelacion = default);
+
+	/// <summary>
 	/// Convierte un borrador en incidencia y la deja en la cola (JTT-1399 CA 8 y 9).
 	/// </summary>
 	/// <remarks>

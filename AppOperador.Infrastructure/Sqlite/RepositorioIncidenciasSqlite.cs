@@ -334,6 +334,132 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return true;
 	}
 
+	/// <inheritdoc />
+	public async Task<IncidenciaRechazada?> ObtenerRechazadaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default)
+	{
+		var fila = await BuscarFallidaPropiaAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return null;
+		}
+
+		return new IncidenciaRechazada(
+			fila.Uuid,
+			fila.ClaveLocal,
+			int.TryParse(fila.TipoClave, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tipoId)
+				? tipoId
+				: null,
+			fila.Kilometro,
+			Guid.TryParse(fila.SeveridadId, out var severidadId) ? severidadId : null,
+			fila.Nota,
+			fila.UltimoErrorCodigo,
+			await UltimoMensajeDeFalloAsync(fila.Uuid, cancelacion));
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> CorregirRechazadaAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps = null,
+		CancellationToken cancelacion = default)
+	{
+		ArgumentNullException.ThrowIfNull(tipo);
+		ArgumentNullException.ThrowIfNull(severidad);
+
+		var fila = await BuscarFallidaPropiaAsync(claveLocal, cancelacion);
+		if (fila is null)
+		{
+			return false;
+		}
+
+		// Los mismos campos que al convertir un borrador: es la misma operación —algo guardado
+		// pasa a la cola— sobre un registro que ya estuvo en ella.
+		fila.TipoClave = tipo.Id.ToString(CultureInfo.InvariantCulture);
+		fila.TipoNombre = tipo.Nombre;
+		fila.Kilometro = kilometro.Valor;
+		fila.FuenteKilometro = (int)fuenteKilometro;
+		fila.KilometroMetros = kilometro.MetrosNormalizados;
+		var lecturaGps = fuenteKilometro == KilometerSource.GPS ? posicionGps : null;
+		fila.GpsLatitud = lecturaGps?.Latitud;
+		fila.GpsLongitud = lecturaGps?.Longitud;
+		fila.GpsPrecisionMetros = lecturaGps?.PrecisionMetros;
+		fila.GpsInstanteUtcTicks = lecturaGps?.InstanteUtc.Ticks;
+		fila.SeveridadId = severidad.Id.ToString();
+		fila.SeveridadNombre = severidad.Nivel;
+		fila.SeveridadOrden = severidad.Orden;
+		fila.Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden);
+		fila.Nota = nota;
+		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
+
+		// Fallido → Pendiente es la única salida que admite el grafo de estados. El contador y
+		// el último código se reinician: para el operador esto es un envío nuevo, y arrastrar
+		// el rechazo anterior a un Pendiente lo haría parecer todavía rechazado. La bitácora de
+		// intentos se conserva tal cual: lo que pasó, pasó.
+		fila.Estado = (int)EstadoSincronizacion.Pendiente;
+		fila.Intentos = 0;
+		fila.UltimoErrorCodigo = null;
+
+		// El catálogo y el permiso se vuelven a sellar, por lo mismo que al convertir: lo que
+		// cuenta es lo vigente cuando el operador confirmó los datos definitivos.
+		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
+		fila.PermisoOrigen = PermisoDeLaSesion();
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		await conexion.UpdateAsync(fila);
+		return true;
+	}
+
+	/// <summary>
+	/// Busca un registro fallido por su clave, exigiendo que sea del operador de la sesión.
+	/// </summary>
+	/// <remarks>
+	/// Misma regla que <see cref="BuscarBorradorPropioAsync"/> (JTT-1388 CA 9): un rechazo del
+	/// turno anterior no lo corrige —ni lo reenvía a su nombre— quien entre después.
+	/// </remarks>
+	private async Task<IncidenciaLocal?> BuscarFallidaPropiaAsync(
+		string claveLocal,
+		CancellationToken cancelacion)
+	{
+		var operador = _sesion.Actual?.Operador;
+		if (operador is null || string.IsNullOrWhiteSpace(claveLocal))
+		{
+			return null;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var fallido = (int)EstadoSincronizacion.Fallido;
+
+		return await conexion.Table<IncidenciaLocal>()
+			.Where(i => i.ClaveLocal == claveLocal
+				&& i.Estado == fallido
+				&& i.Operador == operador)
+			.FirstOrDefaultAsync();
+	}
+
+	/// <summary>
+	/// Lo que dijo Jacob en el último intento fallido del registro, si quedó registrado.
+	/// </summary>
+	/// <remarks>
+	/// Es la misma consulta que hace la Cola para pintar el motivo por tarjeta, acotada a un
+	/// registro: el mensaje no vive en la incidencia sino en la bitácora de intentos.
+	/// </remarks>
+	private async Task<string?> UltimoMensajeDeFalloAsync(string uuid, CancellationToken cancelacion)
+	{
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var ultimo = await conexion.Table<IntentoSincronizacion>()
+			.Where(i => i.RegistroUuid == uuid && !i.Exito)
+			.OrderByDescending(i => i.InstanteUtcTicks)
+			.FirstOrDefaultAsync();
+
+		return ultimo?.Mensaje;
+	}
+
 	/// <summary>
 	/// Busca un borrador por su clave, exigiendo que sea del operador de la sesión.
 	/// </summary>

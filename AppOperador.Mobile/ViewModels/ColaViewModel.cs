@@ -67,6 +67,27 @@ public sealed partial class ColaViewModel : ObservableObject
 	}
 
 	/// <summary>
+	/// Lleva un registro rechazado al formulario para corregirlo y reenviarlo (JTT-291 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// La Cola no corrige nada: navega a la captura con la clave, y es la captura la que carga
+	/// el registro, muestra el motivo del rechazo y lo devuelve a la cola. Aquí solo se decide
+	/// a quién se le ofrece el botón, y eso lo dice <c>RegistroCola.SePuedeCorregir</c>.
+	/// </remarks>
+	[RelayCommand]
+	private async Task CorregirAsync(RegistroColaVista? vista)
+	{
+		if (vista is null || !vista.MuestraCorregir)
+		{
+			return;
+		}
+
+		await Shell.Current.GoToAsync(
+			"//principal/captura",
+			new Dictionary<string, object> { [CapturaViewModel.ParametroCorregir] = vista.ClaveLocal });
+	}
+
+	/// <summary>
 	/// Empieza a atender los envíos que ocurren solos (JTT-1406).
 	/// </summary>
 	/// <remarks>
@@ -400,7 +421,7 @@ public sealed partial class ColaViewModel : ObservableObject
 		MotivoNoSincroniza.SinPermiso =>
 			"Su cuenta no tiene autorizado sincronizar. Solicite el acceso al CCO.",
 		MotivoNoSincroniza.SinEnlaceConJacob =>
-			"Sin enlace con el CCO. Lo capturado se conserva y se enviará al recuperar la señal.",
+			"Sin conexión con CCO. Lo capturado se conserva y se enviará al recuperar la señal.",
 		MotivoNoSincroniza.SinSesion =>
 			"La sesión expiró. Vuelva a ingresar para sincronizar.",
 		// No es un fallo: el envío ya está corriendo, disparado por la reconexión o por un

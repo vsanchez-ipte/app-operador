@@ -42,7 +42,9 @@ internal static class MapeoIncidencia
 		// El último cambio de estado de un registro fallido ES su último intento: el envío es lo
 		// único que lo mueve. Es la misma columna de la que sale la espera al decidir el reintento,
 		// así que la hora que se muestra y la que se aplica no pueden discrepar.
-		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc));
+		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc),
+		// La hora de la tarjeta es la de captura (JTT-290 CA 3), la misma que viaja a Jacob.
+		new DateTime(fila.CreadoUtcTicks, DateTimeKind.Utc));
 
 	/// <summary>
 	/// Describe el contenido del registro: solo el tipo de incidencia.

@@ -331,6 +331,55 @@ public class RegistroColaTests
 			UltimoIntentoUtc = ultimoIntentoUtc,
 		};
 
+	// ---------- Corregir un rechazo (JTT-291 CA 8) ----------
+
+	[Fact]
+	public void UnRechazoFuncionalSePuedeCorregir()
+	{
+		// Es el que no saldrá solo: la tarjeta dice «Corríjala», y tiene que haber dónde.
+		var registro = Fallida("appincidencias.km.fueradecorredor", "Kilometro fuera del corredor.");
+
+		Assert.True(registro.SePuedeCorregir);
+	}
+
+	[Fact]
+	public void UnFalloTecnicoNoOfreceCorregir()
+	{
+		// Se reintenta solo. Ofrecer «Corregir» junto a «se reintentará a las…» diría dos
+		// cosas contrarias en la misma tarjeta.
+		var registro = Fallida(CodigosErrorJacob.ErrorTecnico, "No respondio.");
+
+		Assert.False(registro.SePuedeCorregir);
+	}
+
+	[Theory]
+	[InlineData(EstadoSincronizacion.Pendiente)]
+	[InlineData(EstadoSincronizacion.Enviando)]
+	[InlineData(EstadoSincronizacion.Sincronizado)]
+	[InlineData(EstadoSincronizacion.Borrador)]
+	public void SoloUnFallidoSePuedeCorregir(EstadoSincronizacion estado)
+	{
+		// Un pendiente arrastra el código del intento anterior y aun así no se corrige: está
+		// en camino.
+		var registro = Registro(null, estado) with
+		{
+			UltimoErrorCodigo = "appincidencias.km.fueradecorredor",
+		};
+
+		Assert.False(registro.SePuedeCorregir);
+	}
+
+	// ---------- La hora de captura (JTT-290 CA 3) ----------
+
+	[Fact]
+	public void LaHoraDeCapturaViajaEnElRegistro()
+	{
+		var capturada = new DateTime(2026, 9, 14, 15, 30, 0, DateTimeKind.Utc);
+		var registro = Registro(null, EstadoSincronizacion.Pendiente) with { CapturadaUtc = capturada };
+
+		Assert.Equal(capturada, registro.CapturadaUtc);
+	}
+
 	private static RegistroCola Fallida(string? codigo, string? mensaje) =>
 		Registro(null, EstadoSincronizacion.Fallido) with
 		{

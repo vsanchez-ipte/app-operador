@@ -344,6 +344,108 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.False(convertido);
 	}
 
+	// ---------- Corregir un rechazo (JTT-291 CA 8) ----------
+
+	[Fact]
+	public async Task Rechazada_seAbreConSusDatosYConElMotivoQueDioJacob()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await contexto.CrearSincronizador(new JacobControlado().RechazaFuncional()).EjecutarAsync();
+
+		var rechazada = await contexto.CrearRepositorio().ObtenerRechazadaAsync(clave);
+
+		Assert.NotNull(rechazada);
+		Assert.Equal(clave, rechazada.ClaveLocal);
+		Assert.Equal(Objeto.Id, rechazada.TipoId);
+		Assert.Equal(Advertencia.Id, rechazada.SeveridadId);
+		Assert.Equal("130+200", rechazada.Kilometro);
+		Assert.Equal("nota de prueba", rechazada.Nota);
+		// El motivo no vive en la incidencia sino en la bitácora de intentos: hay que traerlo.
+		Assert.Equal("appincidencias.nota.requerida", rechazada.UltimoErrorCodigo);
+		Assert.Equal("Rechazo de prueba.", rechazada.UltimoErrorMensaje);
+	}
+
+	[Fact]
+	public async Task Corregir_vuelveAPendienteConservandoClaveYUuidYSinArrastrarElRechazo()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		var jacob = new JacobControlado().RechazaFuncional();
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+		var uuidOriginal = Assert.Single(jacob.Recibidos).Uuid;
+
+		var corregida = await repositorio.CorregirRechazadaAsync(
+			clave, Objeto, Kilometer.Crear("131+000"), KilometerSource.Manual, Critica, "nota corregida");
+
+		Assert.True(corregida);
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+		// Misma clave: corregir es cambiar de estado, no crear otro registro.
+		Assert.Equal(clave, registro.ClaveLocal);
+		Assert.Equal(EstadoSincronizacion.Pendiente, registro.Estado);
+		Assert.Equal("131+000", registro.Kilometro);
+		Assert.Equal(SyncPriority.Critica, registro.Prioridad);
+		// Para el operador es un envío nuevo: no arrastra el código del rechazo ni su cuenta.
+		Assert.Null(registro.UltimoErrorCodigo);
+		Assert.Equal(0, registro.Intentos);
+		Assert.False(registro.SePuedeCorregir);
+
+		// Y la siguiente tanda la reenvía CON EL MISMO UUID, que es lo que evita duplicarla si
+		// el rechazo hubiera sido en realidad un alta que Jacob sí registró.
+		await contexto.CrearSincronizador(jacob).EjecutarAsync();
+		Assert.Equal(2, jacob.Recibidos.Count);
+		Assert.Equal(uuidOriginal, jacob.Recibidos[1].Uuid);
+		Assert.Equal(131.000m, jacob.Recibidos[1].Km);
+		Assert.Equal(EstadoSincronizacion.Sincronizado,
+			Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync()).Estado);
+	}
+
+	[Fact]
+	public async Task Corregir_noAlcanzaAUnRegistroQueNoEstaFallido()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = contexto.CrearRepositorio();
+		var clave = await GuardarAsync(contexto, Advertencia);
+
+		// Está Pendiente: reabrirlo para edición podría tocar algo que ya viajó a Jacob.
+		Assert.Null(await repositorio.ObtenerRechazadaAsync(clave));
+		Assert.False(await repositorio.CorregirRechazadaAsync(
+			clave, Objeto, Kilometer.Crear("131+000"), KilometerSource.Manual, Critica, "otra"));
+	}
+
+	[Fact]
+	public async Task Rechazada_deOtroOperadorNoSePuedeAbrirNiCorregir()
+	{
+		await using var contexto = new ContextoSqlite();
+		var clave = await GuardarAsync(contexto, Advertencia);
+		await contexto.CrearSincronizador(new JacobControlado().RechazaFuncional()).EjecutarAsync();
+
+		// Un rechazo del turno anterior no lo corrige —ni lo reenvía a su nombre— quien entre
+		// después (JTT-1388 CA 9).
+		var otro = contexto.CrearRepositorioDe(new SesionFija("otro"));
+
+		Assert.Null(await otro.ObtenerRechazadaAsync(clave));
+		Assert.False(await otro.CorregirRechazadaAsync(
+			clave, Objeto, Kilometer.Crear("131+000"), KilometerSource.Manual, Critica, "ajena"));
+	}
+
+	[Fact]
+	public async Task ElRegistroDeLaCola_traeLaHoraDeCaptura()
+	{
+		// JTT-290 CA 3: la hora que se muestra es la de captura, no la del último cambio.
+		await using var contexto = new ContextoSqlite();
+		var capturada = contexto.Reloj.UtcAhora;
+		await GuardarAsync(contexto, Advertencia);
+		contexto.Reloj.Avanzar(TimeSpan.FromHours(3));
+		await contexto.CrearSincronizador(new JacobControlado().RechazaTecnico()).EjecutarAsync();
+
+		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+
+		Assert.Equal(capturada, registro.CapturadaUtc);
+		Assert.NotEqual(registro.UltimoIntentoUtc, registro.CapturadaUtc);
+	}
+
 	private static Task<string> GuardarAsync(ContextoSqlite contexto, SeveridadIncidencia severidad) =>
 		contexto.CrearRepositorio().GuardarAsync(
 			Objeto,

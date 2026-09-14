@@ -116,4 +116,21 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default) =>
 		Task.FromResult(false);
+
+	// El simulador no rechaza nada, así que no hay nada que corregir.
+	public Task<IncidenciaRechazada?> ObtenerRechazadaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<IncidenciaRechazada?>(null);
+
+	public Task<bool> CorregirRechazadaAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps = null,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
 }

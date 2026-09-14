@@ -42,6 +42,11 @@ namespace AppOperador.Aplicacion.Modelos;
 /// <param name="UltimoIntentoUtc">
 /// Cuándo se intentó por última vez, o <see langword="null"/> si nunca se intentó.
 /// </param>
+/// <param name="CapturadaUtc">
+/// Cuándo capturó el operador (JTT-290 CA 3, «hora»). Es la fecha de captura que viaja a Jacob
+/// y la que el CCO conserva, no la del último cambio de estado: dos incidencias capturadas con
+/// diez minutos de diferencia se distinguen por esto aunque salgan en la misma tanda.
+/// </param>
 /// <param name="UltimoErrorMensaje">
 /// Lo que dijo Jacob al rechazarlo, o el motivo del fallo local.
 /// <para>
@@ -62,7 +67,8 @@ public sealed record RegistroCola(
 	string? UltimoErrorCodigo = null,
 	string? UltimoErrorMensaje = null,
 	int Intentos = 0,
-	DateTime? UltimoIntentoUtc = null)
+	DateTime? UltimoIntentoUtc = null,
+	DateTime? CapturadaUtc = null)
 {
 	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
 	/// <remarks>
@@ -133,6 +139,18 @@ public sealed record RegistroCola(
 		// y el único en que esperar no sirve de nada.
 		? $"El CCO la rechazó: {Detalle} Corríjala: no saldrá sola."
 		: $"No llegó al CCO: {Detalle}";
+
+	/// <summary>
+	/// Indica si el operador puede abrir este registro para corregirlo y reenviarlo
+	/// (JTT-291 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// Solo los rechazos funcionales: son los que no saldrán solos y los que el operador puede
+	/// arreglar. Un fallo técnico se reintenta por su cuenta, y ofrecerle «Corregir» junto a
+	/// «se reintentará a las…» le diría dos cosas contrarias en la misma tarjeta.
+	/// </remarks>
+	public bool SePuedeCorregir =>
+		Estado == EstadoSincronizacion.Fallido && CodigosErrorJacob.EsFuncional(UltimoErrorCodigo);
 
 	/// <summary>
 	/// Si este registro tiene un reintento programado que se va a disparar solo.

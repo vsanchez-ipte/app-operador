@@ -26,6 +26,12 @@ public sealed class RegistroColaVista
 		TextoDatos =
 			$"{clase} / {registro.SeveridadLegible} / {registro.Descripcion} / KM {registro.Kilometro}";
 
+		// La hora de captura (JTT-290 CA 3), en hora local del dispositivo. Con fecha solo
+		// cuando no es de hoy: en una jornada normal todas son de hoy y la fecha estorbaría.
+		TextoHora = registro.CapturadaUtc is { } capturada
+			? FormatearHora(capturada.ToLocalTime())
+			: string.Empty;
+
 		(TextoEstado, ColorFondoEstado, ColorTextoEstado) = registro.Estado switch
 		{
 			EstadoSincronizacion.Sincronizado => ("SINCRONIZADO", "#D8F0E0", "#1E7A46"),
@@ -52,6 +58,14 @@ public sealed class RegistroColaVista
 
 	/// <summary>Línea de datos: clase, severidad, descripción y kilómetro.</summary>
 	public string TextoDatos { get; }
+
+	/// <summary>Cuándo se capturó, o vacío si el registro no lo trae.</summary>
+	public string TextoHora { get; }
+
+	public bool MuestraHora => TextoHora.Length > 0;
+
+	/// <summary>Indica si se ofrece el botón «Corregir» (JTT-291 CA 8).</summary>
+	public bool MuestraCorregir => Registro.SePuedeCorregir;
 
 	public string TextoEstado { get; }
 
@@ -120,4 +134,9 @@ public sealed class RegistroColaVista
 
 	/// <summary>Si la tarjeta lleva la línea del reintento.</summary>
 	public bool MuestraReintento => Registro.HayReintentoProgramado;
+
+	private static string FormatearHora(DateTime local) =>
+		local.Date == DateTime.Now.Date
+			? $"Capturada a las {local:HH:mm}."
+			: $"Capturada el {local:dd/MM/yyyy} a las {local:HH:mm}.";
 }

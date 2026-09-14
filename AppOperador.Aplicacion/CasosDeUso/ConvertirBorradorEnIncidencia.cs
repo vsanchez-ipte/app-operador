@@ -1,5 +1,6 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.Enums;
 using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
@@ -84,24 +85,16 @@ public sealed class ConvertirBorradorEnIncidencia
 		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
-		if (tipo is null)
+		// Las comprobaciones son las mismas que al corregir un rechazado; viven en un solo sitio.
+		if (!FormularioIncidencia.EstaCompleto(tipo, kilometro, severidad, nota, out var kilometroValido, out var motivo))
 		{
-			return ResultadoConversionBorrador.FaltaTipo;
-		}
-
-		if (!Kilometer.IntentarCrear(kilometro, out var kilometroValido))
-		{
-			return ResultadoConversionBorrador.KilometroInvalido;
-		}
-
-		if (severidad is null)
-		{
-			return ResultadoConversionBorrador.FaltaSeveridad;
-		}
-
-		if (!ReglaNotaIncidencia.EsSuficiente(tipo.ExigeDescripcion, nota))
-		{
-			return ResultadoConversionBorrador.NotaInsuficiente;
+			return motivo switch
+			{
+				MotivoFormularioIncompleto.FaltaTipo => ResultadoConversionBorrador.FaltaTipo,
+				MotivoFormularioIncompleto.KilometroInvalido => ResultadoConversionBorrador.KilometroInvalido,
+				MotivoFormularioIncompleto.FaltaSeveridad => ResultadoConversionBorrador.FaltaSeveridad,
+				_ => ResultadoConversionBorrador.NotaInsuficiente,
+			};
 		}
 
 		var convertido = await _incidencias.ConvertirBorradorAsync(

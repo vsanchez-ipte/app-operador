@@ -278,6 +278,7 @@ public static class MauiProgram
 			servicios.AddSingleton<IIncidenciasJacobClient, EnvioIncidenciasSimulado>();
 			servicios.AddSingleton<ActualizarCatalogoLocal>();
 			servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
+			servicios.AddSingleton<CorregirIncidenciaRechazada>();
 			servicios.AddSingleton<ISincronizadorIncidencias, SincronizarIncidencias>();
 			return;
 		}
@@ -318,6 +319,7 @@ public static class MauiProgram
 
 		servicios.AddSingleton<ActualizarCatalogoLocal>();
 		servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
+		servicios.AddSingleton<CorregirIncidenciaRechazada>();
 		servicios.AddSingleton<ISincronizadorIncidencias, SincronizarIncidencias>();
 
 		// Estado de enlace real: red del dispositivo más una sonda autenticada a Jacob. Va

@@ -96,6 +96,13 @@
 
                                         <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
 
+                                        <!-- Cuando se capturo (JTT-290 CA 3). Es la hora de
+                                             captura, la misma que viaja al CCO, y no la del
+                                             ultimo cambio de estado. -->
+                                        <Label Text="{Binding TextoHora}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               IsVisible="{Binding MuestraHora}" />
+
                                         <!-- Trazabilidad (JTT-1403 CA 2): con el folio arriba, la
                                              clave local baja aqui en vez de desaparecer. Es la
                                              unica referencia comun con la base del dispositivo. -->
@@ -121,6 +128,17 @@
                                                Style="{StaticResource TextoSecundario}"
                                                TextColor="{StaticResource AmbarTexto}"
                                                IsVisible="{Binding MuestraReintento}" />
+
+                                        <!-- Corregir un rechazo (JTT-291 CA 8). Solo en los
+                                             rechazos funcionales: son los que no saldran solos
+                                             y los que el operador puede arreglar. Lleva al
+                                             formulario con el registro cargado. -->
+                                        <Button Text="Corregir y reenviar"
+                                                Style="{StaticResource BotonSecundario}"
+                                                HorizontalOptions="End"
+                                                IsVisible="{Binding MuestraCorregir}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ColaViewModel}}, Path=CorregirCommand}"
+                                                CommandParameter="{Binding .}" />
 
                                     </VerticalStackLayout>
                                 </Border>
