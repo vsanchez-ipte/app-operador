@@ -162,6 +162,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// dejan de crear y pasan a actuar sobre él: guardar actualiza en vez de duplicar, y
 	/// registrar convierte en vez de crear una segunda incidencia con los mismos datos.
 	/// </remarks>
+
 	[ObservableProperty]
 	public partial string? BorradorEnEdicion { get; set; }
 
@@ -521,6 +522,9 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 		if (TipoSeleccionado is null)
 		{
+			// Con el formulario recién limpiado tras guardar, un segundo toque llega aquí: se
+			// dice, en vez de callar y dejar al operador creyendo que no pasó nada.
+			MensajeError = MensajeBorradorSinTipo;
 			return;
 		}
 
@@ -548,6 +552,17 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			posicionGps: FuenteKilometro == KilometerSource.GPS ? _posicionGps : null);
 
 		LimpiarFormulario();
+
+		// El tipo también, para que el formulario quede como en una captura nueva: si se
+		// quedara, un segundo toque con el GPS activo volvería a guardar el mismo hecho.
+		TipoSeleccionado = null;
+
+		// El kilómetro también se limpia y se vuelve a pedir al GPS. Si se quedaba el manual
+		// anterior, dos toques seguidos de «Guardar» creaban dos incidencias del mismo hecho: el
+		// 14-sep salieron tres seguidas así, con el formulario aparentemente igual.
+		Kilometro = string.Empty;
+		await RecalcularUbicacionAsync();
+
 		await RecargarBorradoresAsync();
 		await IntentarEnviarRecienGuardadaAsync(clave);
 	}
