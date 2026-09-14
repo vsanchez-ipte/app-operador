@@ -24,7 +24,10 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 {
 	// Textos fijados por JTT-280.
 	private const string MensajeKilometroInvalido = "Capture un KM válido";
-	private const string MensajeDescripcionRequerida = "Describa la incidencia de tipo Otro";
+	// Con el nombre del tipo, no con «Otro» fijo: el 14-sep el líder retiró el tipo «Otro» y
+	// pasó la descripción obligatoria a «Desconocido» (ya en Dev y QA). Quién exige descripción
+	// lo dice el catálogo; el aviso nombra al que esté seleccionado.
+	private const string FormatoDescripcionRequerida = "Describa la incidencia de tipo {0}";
 
 	/// <summary>
 	/// Se muestra cuando todavía no se ha descargado el catálogo (JTT-1394 CA 2).
@@ -631,7 +634,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		var nota = Nota.Trim();
 		if (!ReglaNotaIncidencia.EsSuficiente(TipoSeleccionado.ExigeDescripcion, nota))
 		{
-			SenalarError(CampoCaptura.Nota, MensajeDescripcionRequerida);
+			SenalarError(CampoCaptura.Nota, MensajeDescripcionRequerida());
 			return;
 		}
 
@@ -974,21 +977,24 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// El kilómetro y la nota reutilizan los literales del guardado normal: es el mismo defecto
 	/// y el operador no tiene por qué leer dos redacciones distintas del mismo problema.
 	/// </remarks>
-	private static string MensajeDe(ResultadoCorreccionRechazada motivo) => motivo switch
+	private string MensajeDescripcionRequerida() =>
+		string.Format(FormatoDescripcionRequerida, TipoSeleccionado?.Nombre ?? "seleccionado");
+
+	private string MensajeDe(ResultadoCorreccionRechazada motivo) => motivo switch
 	{
 		ResultadoCorreccionRechazada.FaltaTipo => MensajeBorradorSinTipo,
 		ResultadoCorreccionRechazada.FaltaSeveridad => MensajeBorradorSinSeveridad,
 		ResultadoCorreccionRechazada.KilometroInvalido => MensajeKilometroInvalido,
-		ResultadoCorreccionRechazada.NotaInsuficiente => MensajeDescripcionRequerida,
+		ResultadoCorreccionRechazada.NotaInsuficiente => MensajeDescripcionRequerida(),
 		_ => MensajeRechazadaNoEncontrada,
 	};
 
-	private static string MensajeDe(ResultadoConversionBorrador motivo) => motivo switch
+	private string MensajeDe(ResultadoConversionBorrador motivo) => motivo switch
 	{
 		ResultadoConversionBorrador.FaltaTipo => MensajeBorradorSinTipo,
 		ResultadoConversionBorrador.FaltaSeveridad => MensajeBorradorSinSeveridad,
 		ResultadoConversionBorrador.KilometroInvalido => MensajeKilometroInvalido,
-		ResultadoConversionBorrador.NotaInsuficiente => MensajeDescripcionRequerida,
+		ResultadoConversionBorrador.NotaInsuficiente => MensajeDescripcionRequerida(),
 		_ => MensajeBorradorNoEncontrado,
 	};
 
