@@ -155,6 +155,30 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!--
+                Copia del token, para que QA pueda autorizarse en Swagger. Solo aparece en
+                paquetes compilados con -p:HabilitarCopiaToken=true; vale lo mismo que arriba
+                sobre PuedeCopiarToken y el XAML.
+
+                Va en su propia tarjeta y no junto a la exportacion porque son dos
+                interruptores distintos: un paquete puede traer una capacidad y no la otra, y
+                una sola tarjeta con un boton escondido se leeria como que estan juntas.
+            -->
+            <Border IsVisible="{Binding PuedeCopiarToken}" Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Token de sesion" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Style="{StaticResource TextoSecundario}"
+                           Text="Copia el token de esta sesion para pegarlo en el boton Authorize de Swagger. Es la CREDENCIAL de la sesion: quien la tenga puede actuar como este operador hasta que la sesion termine." />
+
+                    <Button Text="Copiar token de sesion"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding CopiarTokenCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
         </VerticalStackLayout>
     </ScrollView>
 

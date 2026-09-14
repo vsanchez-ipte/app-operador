@@ -9,6 +9,9 @@ using CommunityToolkit.Mvvm.Input;
 using AppOperador.Mobile.Configuracion;
 using CommunityToolkit.Maui.Storage;
 #endif
+#if COPIAR_TOKEN
+using Microsoft.Maui.ApplicationModel.DataTransfer;
+#endif
 
 namespace AppOperador.Mobile.ViewModels;
 
@@ -25,6 +28,10 @@ public sealed partial class PerfilViewModel : ObservableObject
 #if EXPORTAR_BASE_DATOS
 	private readonly IExportadorBaseDatos _exportador;
 #endif
+#if COPIAR_TOKEN
+	private readonly ITokenProvider _tokens;
+	private readonly ITokenClaims _claims;
+#endif
 
 	public PerfilViewModel(
 		ISessionStore sesiones,
@@ -37,6 +44,11 @@ public sealed partial class PerfilViewModel : ObservableObject
 		,
 		IExportadorBaseDatos exportador
 #endif
+#if COPIAR_TOKEN
+		,
+		ITokenProvider tokens,
+		ITokenClaims claims
+#endif
 		)
 	{
 		Enlace = enlace;
@@ -47,6 +59,10 @@ public sealed partial class PerfilViewModel : ObservableObject
 		_cierre = cierre;
 #if EXPORTAR_BASE_DATOS
 		_exportador = exportador;
+#endif
+#if COPIAR_TOKEN
+		_tokens = tokens;
+		_claims = claims;
 #endif
 	}
 
@@ -240,5 +256,130 @@ public sealed partial class PerfilViewModel : ObservableObject
 	/// </summary>
 	[RelayCommand]
 	private Task ExportarBaseDatosAsync() => Task.CompletedTask;
+#endif
+
+	/// <summary>
+	/// Indica si este paquete puede copiar el token de la sesión.
+	/// </summary>
+	/// <remarks>
+	/// Vale lo mismo que en <see cref="PuedeExportarBaseDatos"/>: la propiedad existe en los
+	/// dos casos porque el XAML no se preprocesa y la vista compila sus enlaces contra este
+	/// tipo.
+	/// </remarks>
+#if COPIAR_TOKEN
+	public bool PuedeCopiarToken => true;
+#else
+	public bool PuedeCopiarToken => false;
+#endif
+
+#if COPIAR_TOKEN
+	/// <summary>
+	/// Deja el token de la sesión donde QA pueda recogerlo, para autorizarse en Swagger.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Por qué hace falta.</b> <c>POST /ITS/AppLogin/Preauth</c> no acepta la contraseña en
+	/// claro: la espera cifrada con RSA-OAEP-SHA256 y en Base64. Desde Swagger no hay forma de
+	/// producir eso a mano, así que sin esto los endpoints del canal móvil solo se pueden
+	/// probar desde la app. La app ya cifra y ya tiene un token de una sesión válida; lo único
+	/// que faltaba era poder sacarlo del teléfono.
+	/// </para>
+	/// <para>
+	/// <b>Se avisa antes de copiar.</b> Lo que se entrega es la credencial de la sesión: quien
+	/// la tenga puede actuar como este operador contra Jacob hasta que la sesión termine. Por
+	/// eso también queda anotado en la bitácora, con nivel de advertencia.
+	/// </para>
+	/// <para>
+	/// Después se dice qué módulos trae firmados el token. No es adorno: si falta
+	/// <c>APP_OPERADOR_CAPTURA</c>, todos los <c>POST</c> del recorrido responden
+	/// <c>appincidencias.permiso.revocado</c>, y sin este aviso eso se descubre a la mitad de
+	/// la prueba y parece un fallo del servidor.
+	/// </para>
+	/// <para>
+	/// <b>El token no se registra en ningún lado</b>, ni en la bitácora ni en un log: por eso
+	/// el mensaje habla de los módulos y no del token (JTT-1378 §7).
+	/// </para>
+	/// </remarks>
+	[RelayCommand]
+	private async Task CopiarTokenAsync()
+	{
+		var token = await _tokens.ObtenerAsync();
+
+		if (string.IsNullOrWhiteSpace(token))
+		{
+			// Pasa con la sesión cerrada y en los paquetes simulados, que no hablan con Jacob
+			// y por lo tanto no tienen ningún token que dar.
+			await Shell.Current.DisplayAlertAsync(
+				"Sin token",
+				"Esta sesión no tiene token guardado. Ingrese contra el servidor y vuelva a intentarlo.",
+				"Entendido");
+			return;
+		}
+
+		var confirmado = await Shell.Current.DisplayAlertAsync(
+			"Copiar token de sesión",
+			"El token es la credencial de esta sesión: quien lo tenga puede actuar como este " +
+			"operador hasta que la sesión termine. Se copia para pegarlo en el botón Authorize " +
+			"de Swagger.",
+			"Copiar",
+			"Cancelar");
+
+		if (!confirmado)
+		{
+			return;
+		}
+
+		try
+		{
+			await Clipboard.Default.SetTextAsync(token);
+
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				"Se copió el token de la sesión al portapapeles.");
+
+			var modulos = _claims.ModulosDe(token);
+			var hayCaptura = modulos.Contains(
+				ReglaCapacidades.PermisoCapturaIncidencias, StringComparer.OrdinalIgnoreCase);
+
+			var alcance = hayCaptura
+				? "Alcanza para el recorrido completo, incluidos los POST de incidencias."
+				: $"Falta {ReglaCapacidades.PermisoCapturaIncidencias}: los POST van a responder " +
+				  "appincidencias.permiso.revocado.";
+
+			// Compartir es la única salida desde un teléfono físico, donde el portapapeles no
+			// llega a la computadora en la que corre Swagger. En el emulador basta con copiar.
+			var compartir = await Shell.Current.DisplayAlertAsync(
+				"Token copiado",
+				$"Módulos que firma el token: {(modulos.Count == 0 ? "ninguno" : string.Join(", ", modulos))}\n\n" +
+				$"{alcance}\n\n" +
+				"Si Swagger corre en otra computadora, compártalo por un medio de la empresa.",
+				"Compartir",
+				"Listo");
+
+			if (compartir)
+			{
+				await Share.Default.RequestAsync(new ShareTextRequest(token, "Token de sesión"));
+			}
+
+			await ActualizarAsync();
+		}
+		catch (Exception error)
+		{
+			// Se atrapa todo por lo mismo que en la exportación: esto cuelga de un botón, y lo
+			// que falle —el portapapeles del sistema, la hoja de compartir— no debe tumbar la
+			// app. El mensaje sale tal cual para poder reportarlo; el token no aparece en él.
+			await Shell.Current.DisplayAlertAsync(
+				"No se pudo copiar",
+				$"El token no salió de la app: {error.Message}",
+				"Entendido");
+		}
+	}
+#else
+	/// <summary>
+	/// Existe para que la vista compile en los paquetes sin copia de token, donde el botón que
+	/// la invoca nunca se muestra.
+	/// </summary>
+	[RelayCommand]
+	private Task CopiarTokenAsync() => Task.CompletedTask;
 #endif
 }
