@@ -148,6 +148,18 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	public partial string? AvisoGps { get; set; }
 
 	/// <summary>
+	/// Indica que se está pidiendo una lectura nueva al GPS. Enciende el indicador junto al KM.
+	/// </summary>
+	/// <remarks>
+	/// La lectura tarda hasta diez segundos a propósito —una posición vieja en un vehículo en
+	/// marcha son kilómetros de error—, pero eso no tiene por qué detener la pantalla: el
+	/// operador ya puede elegir tipo y severidad, escribir la nota, o teclear el KM si lo
+	/// sabe. Lo que se espera es un campo, no la captura.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool BuscandoUbicacion { get; set; }
+
+	/// <summary>
 	/// Origen del kilómetro: GPS mientras la lectura sea válida, Manual en cuanto el
 	/// operador lo escriba a mano.
 	/// </summary>
@@ -303,6 +315,9 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// <summary>Carga catálogos e intenta situar al operador por GPS.</summary>
 	public async Task InicializarAsync()
 	{
+		// La capa de carga cubre solo lo local —catálogo, borradores, evidencias: milisegundos—.
+		// El GPS se pide después, con la pantalla ya usable y su propio aviso junto al KM: es
+		// lo único que tarda, y esperarlo con toda la pantalla tapada desesperaba al operador.
 		Cargando = true;
 		try
 		{
@@ -311,6 +326,15 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		finally
 		{
 			Cargando = false;
+		}
+
+		await RecalcularUbicacionAsync();
+
+		// Ahora sí, con la ubicación ya recalculada, se repone lo que llegó desde la Cola.
+		if (_claveACorregir is { } clave)
+		{
+			_claveACorregir = null;
+			await AbrirRechazadaAsync(clave);
 		}
 	}
 
@@ -322,19 +346,11 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		// pantalla no estaba a la vista (JTT-1385 CA 3).
 		NotificarAutorizacion();
 
-		await RecalcularUbicacionAsync();
 		await RecargarBorradoresAsync();
 
 		// Aunque todavía no haya registro: hacen falta los límites para saber si el botón de
 		// adjuntar va encendido antes de que exista nada que adjuntar.
 		await RecargarEvidenciasAsync();
-
-		// Ahora sí, con la ubicación ya recalculada, se repone lo que llegó desde la Cola.
-		if (_claveACorregir is { } clave)
-		{
-			_claveACorregir = null;
-			await AbrirRechazadaAsync(clave);
-		}
 	}
 
 	/// <inheritdoc />
@@ -415,7 +431,28 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	[RelayCommand]
 	private async Task RecalcularUbicacionAsync()
 	{
-		var resultado = await _obtenerKilometro.EjecutarAsync();
+		BuscandoUbicacion = true;
+		AvisoGps = null;
+		var tecleadoAntes = Kilometro;
+		ResultadoKilometroPorUbicacion resultado;
+		try
+		{
+			resultado = await _obtenerKilometro.EjecutarAsync();
+		}
+		finally
+		{
+			BuscandoUbicacion = false;
+		}
+
+		// Mientras el GPS fijaba, el operador pudo teclear el KM porque lo sabe. Eso vale más
+		// que la lectura: no se pisa, y la fuente sigue siendo manual.
+		if (FuenteKilometro == KilometerSource.Manual
+			&& !string.IsNullOrWhiteSpace(Kilometro)
+			&& Kilometro != tecleadoAntes)
+		{
+			return;
+		}
+
 		if (!resultado.HayKilometro)
 		{
 			var teniaKilometroGps = FuenteKilometro == KilometerSource.GPS;

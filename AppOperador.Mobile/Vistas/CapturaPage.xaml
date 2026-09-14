@@ -86,10 +86,27 @@
                                Style="{StaticResource TextoSecundario}"
                                IsVisible="{Binding HayAvisoGps}"
                                VerticalOptions="Center" />
+
+                        <!-- La lectura del GPS tarda hasta diez segundos y no detiene la
+                             pantalla: se avisa aqui, junto al KM, que es el unico campo que
+                             espera. -->
+                        <HorizontalStackLayout Grid.Column="0" Spacing="8"
+                                               IsVisible="{Binding BuscandoUbicacion}"
+                                               VerticalOptions="Center">
+                            <ActivityIndicator IsRunning="{Binding BuscandoUbicacion}"
+                                               Color="{StaticResource Vino}"
+                                               HeightRequest="16" WidthRequest="16"
+                                               VerticalOptions="Center" />
+                            <Label Text="Obteniendo la ubicación…"
+                                   Style="{StaticResource TextoSecundario}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+
                         <Button Grid.Column="1"
                                 Text="Recalcular ubicación"
                                 Style="{StaticResource BotonSecundario}"
-                                Command="{Binding RecalcularUbicacionCommand}" />
+                                Command="{Binding RecalcularUbicacionCommand}"
+                                IsEnabled="{Binding BuscandoUbicacion, Converter={StaticResource InvertirBooleano}}" />
                     </Grid>
 
                     <VerticalStackLayout>
