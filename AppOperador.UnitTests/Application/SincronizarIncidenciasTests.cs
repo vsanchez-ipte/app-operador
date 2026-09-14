@@ -801,6 +801,10 @@ public sealed class SincronizarIncidenciasTests
 			Task.FromResult<IReadOnlyList<EvidenciaAdjunta>>(
 				[.. Pendientes.Where(e => e.IncidenciaUuid == incidenciaUuid)]);
 
+		public Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
+			string operador, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
+
 		public Task ActualizarEnvioAsync(
 			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
 		{

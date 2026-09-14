@@ -64,4 +64,16 @@ public interface IRepositorioEvidencias
 		EstadoSincronizacion estado,
 		string? codigoError,
 		CancellationToken cancelacion = default);
+	/// <summary>
+	/// Evidencias del operador que el CCO todavía no confirmó, con la clave local de su
+	/// incidencia (JTT-292 CA 4 y 6).
+	/// </summary>
+	/// <remarks>
+	/// El operador se recibe y no se deduce: este repositorio no conoce la sesión, y la
+	/// evidencia tampoco lleva operador —lo hereda de su incidencia—. Todo lo que no esté
+	/// <c>Sincronizado</c> cuenta, incluido lo fallido.
+	/// </remarks>
+	Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
+		string operador,
+		CancellationToken cancelacion = default);
 }

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Aplicacion.Servicios;
 using AppOperador.Domain.ValueObjects;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -39,7 +40,9 @@ public sealed partial class PerfilViewModel : ObservableObject
 		IAuditLog bitacora,
 		IClock reloj,
 		CerrarSesionMovil cierre,
-		EstadoEnlaceViewModel enlace
+		EstadoEnlaceViewModel enlace,
+		CapacidadesDeLaSesion capacidades,
+		ConsultarAlmacenamientoLocal almacenamiento
 #if EXPORTAR_BASE_DATOS
 		,
 		IExportadorBaseDatos exportador
@@ -57,6 +60,8 @@ public sealed partial class PerfilViewModel : ObservableObject
 		_bitacora = bitacora;
 		_reloj = reloj;
 		_cierre = cierre;
+		_capacidades = capacidades;
+		_almacenamiento = almacenamiento;
 #if EXPORTAR_BASE_DATOS
 		_exportador = exportador;
 #endif
@@ -66,8 +71,25 @@ public sealed partial class PerfilViewModel : ObservableObject
 #endif
 	}
 
+	private readonly CapacidadesDeLaSesion _capacidades;
+	private readonly ConsultarAlmacenamientoLocal _almacenamiento;
+
+	// Literal de JTT-292 CA 5. Se muestra en lugar de VIGENTE cuando la ventana venció o cuando
+	// la sesión no respalda ninguna capacidad: en los dos casos la app ya bloquea las acciones
+	// nuevas (JTT-1384, JTT-1385), y esta insignia es donde el operador viene a ver por qué.
+	private const string TextoPermisosVencidos = "Permisos vencidos o no validados";
+
 	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
 	public EstadoEnlaceViewModel Enlace { get; }
+
+	/// <summary>Lo que hay en el dispositivo: espacio y evidencia sin confirmar (JTT-292 CA 4 y 6).</summary>
+	public AlmacenamientoLocal Almacenamiento { get; private set; } = AlmacenamientoLocal.Vacio;
+
+	/// <summary>Evidencias pendientes, una línea por archivo, para la lista del perfil.</summary>
+	public ObservableCollection<EvidenciaPendienteVista> EvidenciasPendientes { get; } = [];
+
+	/// <summary>Las cuatro capacidades que nombra JTT-292 CA 2, con su estado.</summary>
+	public ObservableCollection<CapacidadVista> Capacidades { get; } = [];
 
 	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
 	public ObservableCollection<EventoAuditoriaVista> Eventos { get; } = [];
@@ -89,9 +111,37 @@ public sealed partial class PerfilViewModel : ObservableObject
 	/// (JTT-1384). Antes se recalculaba aquí contra el reloj del dispositivo, que es
 	/// justamente la medición que el resto de la app dejó de usar por manipulable.
 	/// </remarks>
-	public string EstadoVigencia => _sesiones.Actual is null ? "SIN SESIÓN" : "VIGENTE";
+	public string EstadoVigencia => _sesiones.Actual is null
+		? "SIN SESIÓN"
+		: SesionRespaldaAlgo ? "VIGENTE" : TextoPermisosVencidos;
 
 	public bool VigenciaActiva => EstadoVigencia == "VIGENTE";
+
+	/// <summary>
+	/// Si la sesión sigue en su ventana y respalda al menos una capacidad (JTT-292 CA 5).
+	/// </summary>
+	private bool SesionRespaldaAlgo =>
+		_sesiones.Actual is { } sesion
+		&& sesion.Vigencia.EstaVigenteEn(_reloj.UtcAhora)
+		&& (_capacidades.Puede(CapacidadOperador.RegistrarIncidencia)
+			|| _capacidades.Puede(CapacidadOperador.AdjuntarEvidencia)
+			|| _capacidades.Puede(CapacidadOperador.Sincronizar)
+			|| _capacidades.Puede(CapacidadOperador.ConsultarCola));
+
+	/// <summary>Porcentaje de espacio libre, o un guion si el sistema no lo dio (JTT-292 CA 4).</summary>
+	public string EspacioLibre => Almacenamiento.Espacio.PorcentajeLibre is { } porcentaje
+		? $"{porcentaje} % libre"
+		: "-";
+
+	/// <summary>Cuántas evidencias esperan al CCO, y cuánto pesan (JTT-292 CA 4 y 6).</summary>
+	public string TextoEvidenciasPendientes => Almacenamiento.CuantasPendientes switch
+	{
+		0 => "Ninguna pendiente de enviar",
+		1 => $"1 pendiente de enviar ({TamanoLegible(Almacenamiento.BytesPendientes)})",
+		var n => $"{n} pendientes de enviar ({TamanoLegible(Almacenamiento.BytesPendientes)})",
+	};
+
+	public bool HayEvidenciasPendientes => Almacenamiento.CuantasPendientes > 0;
 
 	/// <summary>
 	/// Hora local de expiración de la ventana offline.
@@ -124,11 +174,31 @@ public sealed partial class PerfilViewModel : ObservableObject
 			Eventos.Add(new EventoAuditoriaVista(evento));
 		}
 
+		Almacenamiento = await _almacenamiento.EjecutarAsync();
+		EvidenciasPendientes.Clear();
+		foreach (var pendiente in Almacenamiento.EvidenciasPendientes)
+		{
+			EvidenciasPendientes.Add(new EvidenciaPendienteVista(pendiente));
+		}
+
+		// Las cuatro que nombra el criterio, con el nombre que usa el operador y no el del
+		// enum. «Operación offline» no es un permiso del servidor: es que la ventana siga
+		// abierta, así que se lee de la vigencia.
+		Capacidades.Clear();
+		Capacidades.Add(new CapacidadVista("Captura", _capacidades.Puede(CapacidadOperador.RegistrarIncidencia)));
+		Capacidades.Add(new CapacidadVista("Evidencia", _capacidades.Puede(CapacidadOperador.AdjuntarEvidencia)));
+		Capacidades.Add(new CapacidadVista("Sincronización", _capacidades.Puede(CapacidadOperador.Sincronizar)));
+		Capacidades.Add(new CapacidadVista(
+			"Operación offline",
+			_sesiones.Actual is { } sesion && sesion.Vigencia.EstaVigenteEn(_reloj.UtcAhora)));
+
 		foreach (var propiedad in new[]
 		{
 			nameof(Operador), nameof(UnidadVehicular), nameof(VersionAplicacion),
 			nameof(VersionCatalogos), nameof(EstadoVigencia), nameof(VigenciaActiva),
 			nameof(HoraExpiracion), nameof(Modo), nameof(Permisos),
+			nameof(Almacenamiento), nameof(EspacioLibre), nameof(TextoEvidenciasPendientes),
+			nameof(HayEvidenciasPendientes),
 		})
 		{
 			OnPropertyChanged(propiedad);
@@ -382,4 +452,42 @@ public sealed partial class PerfilViewModel : ObservableObject
 	[RelayCommand]
 	private Task CopiarTokenAsync() => Task.CompletedTask;
 #endif
+
+	private static string TamanoLegible(long bytes) => bytes switch
+	{
+		< 1024 => $"{bytes} B",
+		< 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+		_ => $"{bytes / (1024.0 * 1024.0):0.#} MB",
+	};
+}
+
+/// <summary>Una capacidad del operador y si la sesión la respalda (JTT-292 CA 2).</summary>
+public sealed record CapacidadVista(string Nombre, bool Permitida)
+{
+	public string Estado => Permitida ? "SÍ" : "NO";
+}
+
+/// <summary>Una evidencia pendiente, como línea del perfil (JTT-292 CA 6).</summary>
+/// <remarks>
+/// Dice «pendiente de enviar» o «con error» y nunca «enviada»: el criterio pide consultarla sin
+/// presentarla como recibida por el CCO.
+/// </remarks>
+public sealed class EvidenciaPendienteVista
+{
+	public EvidenciaPendienteVista(EvidenciaPendiente pendiente)
+	{
+		Nombre = pendiente.NombreOriginal;
+		Incidencia = pendiente.ClaveLocalIncidencia;
+		Estado = pendiente.Estado == Domain.Enums.EstadoSincronizacion.Fallido
+			? "con error, se reintentará"
+			: "pendiente de enviar";
+	}
+
+	public string Nombre { get; }
+
+	public string Incidencia { get; }
+
+	public string Estado { get; }
+
+	public string Texto => $"{Nombre} · {Incidencia} · {Estado}";
 }

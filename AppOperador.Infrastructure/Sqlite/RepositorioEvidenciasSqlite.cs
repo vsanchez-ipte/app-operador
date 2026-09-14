@@ -129,6 +129,49 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		await conexion.UpdateAsync(fila);
 	}
 
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
+		string operador,
+		CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(operador))
+		{
+			return [];
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+
+		// La evidencia no lleva operador: se cruza con su incidencia, que sí. El estado que se
+		// filtra es el de la EVIDENCIA, no el de la incidencia: una incidencia ya sincronizada
+		// puede tener todavía una foto sin subir, y esa foto sigue pendiente.
+		var filas = await conexion.QueryAsync<FilaEvidenciaPendiente>(
+			"SELECT e.uuid AS Uuid, e.nombre_original AS NombreOriginal, e.tipo_medio AS TipoMime, " +
+			"e.bytes AS Bytes, e.estado AS Estado, i.clave_local AS ClaveLocalIncidencia " +
+			"FROM evidencia_local e " +
+			"INNER JOIN incidencia_local i ON i.uuid = e.incidencia_uuid " +
+			"WHERE i.operador = ? AND e.estado != ? " +
+			"ORDER BY e.creado_utc_ticks",
+			operador,
+			(int)EstadoSincronizacion.Sincronizado);
+
+		return filas
+			.Select(f => new EvidenciaPendiente(
+				f.Uuid, f.NombreOriginal, f.TipoMime, f.Bytes,
+				(EstadoSincronizacion)f.Estado, f.ClaveLocalIncidencia))
+			.ToList();
+	}
+
+	/// <summary>Forma de la fila del cruce evidencia–incidencia. Solo para la consulta de arriba.</summary>
+	private sealed class FilaEvidenciaPendiente
+	{
+		public string Uuid { get; set; } = string.Empty;
+		public string NombreOriginal { get; set; } = string.Empty;
+		public string TipoMime { get; set; } = string.Empty;
+		public long Bytes { get; set; }
+		public int Estado { get; set; }
+		public string ClaveLocalIncidencia { get; set; } = string.Empty;
+	}
+
 	private static EvidenciaAdjunta Convertir(EvidenciaLocal fila) => new(
 		fila.Uuid,
 		fila.IncidenciaUuid,

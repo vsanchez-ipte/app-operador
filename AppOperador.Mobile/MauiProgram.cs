@@ -143,6 +143,7 @@ public static class MauiProgram
 		servicios.AddSingleton<IEspacioDispositivo>(
 			_ => new MedidorEspacioDispositivo(FileSystem.AppDataDirectory));
 		servicios.AddSingleton<AdjuntarEvidencia>();
+		servicios.AddSingleton<ConsultarAlmacenamientoLocal>();
 		servicios.AddSingleton<QuitarEvidencia>();
 		servicios.AddSingleton<ObtenerEvidenciasDeIncidencia>();
 

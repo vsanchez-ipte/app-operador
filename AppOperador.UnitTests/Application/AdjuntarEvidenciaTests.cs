@@ -243,6 +243,10 @@ public sealed class AdjuntarEvidenciaTests
 				[.. Registradas.Where(e => e.IncidenciaUuid == incidenciaUuid
 					&& e.Estado != EstadoSincronizacion.Sincronizado)]);
 
+		public Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
+			string operador, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
+
 		public Task ActualizarEnvioAsync(
 			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
 		{

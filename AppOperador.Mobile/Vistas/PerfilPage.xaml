@@ -84,9 +84,57 @@
                         </BindableLayout.ItemTemplate>
                     </HorizontalStackLayout>
 
+                    <!-- Las cuatro capacidades que nombra JTT-292 CA 2, con su estado. Las
+                         etiquetas de arriba son los modulos del token; esto es lo que el
+                         operador puede hacer hoy con ellos. -->
+                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Capacidades}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CapacidadVista">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Grid.Column="0" Text="{Binding Nombre}" Style="{StaticResource TextoSecundario}" />
+                                    <Label Grid.Column="1" Text="{Binding Estado}"
+                                           FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
                     <Button Text="Cerrar sesion"
                             Style="{StaticResource BotonSecundario}"
                             Command="{Binding CerrarSesionCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Almacenamiento local (JTT-292 CA 4 y 6): espacio libre y evidencia que
+                 todavia no esta en el CCO. Nunca dice "enviada": mientras el CCO no confirme,
+                 el archivo solo existe aqui. -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Almacenamiento local" Style="{StaticResource TituloTarjeta}" />
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="8">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Espacio del dispositivo" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="0" Grid.Column="1" Text="{Binding EspacioLibre}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Evidencias" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="1" Grid.Column="1" Text="{Binding TextoEvidenciasPendientes}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+                    </Grid>
+
+                    <VerticalStackLayout Spacing="4"
+                                         IsVisible="{Binding HayEvidenciasPendientes}"
+                                         BindableLayout.ItemsSource="{Binding EvidenciasPendientes}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EvidenciaPendienteVista">
+                                <Label Text="{Binding Texto}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       LineBreakMode="MiddleTruncation" />
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
 
                 </VerticalStackLayout>
             </Border>

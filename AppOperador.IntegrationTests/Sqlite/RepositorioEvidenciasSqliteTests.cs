@@ -1,4 +1,6 @@
 using AppOperador.Aplicacion.Modelos;
+using AppOperador.Domain.ValueObjects;
+using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Domain.Enums;
 using AppOperador.Infrastructure.Sqlite;
 
@@ -128,5 +130,60 @@ public sealed class RepositorioEvidenciasSqliteTests
 		Assert.Empty(await repositorio.ObtenerDeIncidenciaAsync(Incidencia));
 		Assert.Equal(0, await repositorio.ContarDeIncidenciaAsync(Incidencia));
 		Assert.Null(await repositorio.ObtenerAsync("no-existe"));
+	}
+
+	// ---------- Evidencias pendientes del operador (JTT-292 CA 4 y 6) ----------
+
+	[Fact]
+	public async Task PendientesDelOperador_cruzaConSuIncidenciaYExcluyeLoSincronizadoYLoAjeno()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+
+		// Dos incidencias del operador de la sesión y una de otro operador.
+		var mia = await IncidenciaAsync(contexto, contexto.Sesion);
+		var miaSegunda = await IncidenciaAsync(contexto, contexto.Sesion);
+		var ajena = await IncidenciaAsync(contexto, new SesionFija("otro"));
+
+		await repositorio.AgregarAsync(Evidencia("ev-1", mia.Uuid, "foto-1.jpg"));
+		await repositorio.AgregarAsync(Evidencia("ev-2", mia.Uuid, "foto-2.jpg", EstadoSincronizacion.Fallido));
+		await repositorio.AgregarAsync(Evidencia("ev-3", mia.Uuid, "subida.jpg", EstadoSincronizacion.Sincronizado));
+		await repositorio.AgregarAsync(Evidencia("ev-4", miaSegunda.Uuid, "acta.pdf"));
+		await repositorio.AgregarAsync(Evidencia("ev-5", ajena.Uuid, "de-otro.jpg"));
+
+		var pendientes = await repositorio.ObtenerPendientesDelOperadorAsync("admin");
+
+		// Lo fallido cuenta: mientras el CCO no confirme, solo existe aquí. Lo sincronizado no,
+		// y lo de otro operador tampoco.
+		Assert.Equal(["ev-1", "ev-2", "ev-4"], pendientes.Select(p => p.Uuid).ToArray());
+		Assert.Equal(mia.ClaveLocal, pendientes[0].ClaveLocalIncidencia);
+		Assert.Equal(miaSegunda.ClaveLocal, pendientes[2].ClaveLocalIncidencia);
+		Assert.Equal(EstadoSincronizacion.Fallido, pendientes[1].Estado);
+	}
+
+	[Fact]
+	public async Task PendientesDelOperador_sinOperadorNoDevuelveNada()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		var mia = await IncidenciaAsync(contexto, contexto.Sesion);
+		await repositorio.AgregarAsync(Evidencia("ev-1", mia.Uuid));
+
+		Assert.Empty(await repositorio.ObtenerPendientesDelOperadorAsync(""));
+		Assert.Empty(await repositorio.ObtenerPendientesDelOperadorAsync("nadie"));
+	}
+
+	private static async Task<(string Uuid, string ClaveLocal)> IncidenciaAsync(
+		ContextoSqlite contexto, ISessionStore sesion)
+	{
+		var clave = await contexto.CrearRepositorioDe(sesion).GuardarAsync(
+			new TipoIncidencia(11, "Objeto en camino"),
+			Kilometer.Crear("130+200"),
+			KilometerSource.Manual,
+			new SeveridadIncidencia(Guid.NewGuid(), "Advertencia", 2, "#EDD611"),
+			"nota");
+
+		var enviable = await contexto.CrearColaDe(sesion).ObtenerEnviablePorClaveAsync(clave);
+		return (enviable!.Uuid, clave);
 	}
 }
