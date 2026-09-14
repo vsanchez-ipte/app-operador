@@ -121,7 +121,7 @@ public sealed partial class ColaViewModel : ObservableObject
 	}
 
 	/// <summary>
-	/// Envía lo que ya cumplió su espera, si hay enlace.
+	/// Envía lo que toca —lo que cumplió su espera y lo que quedó a medias—, si hay enlace.
 	/// </summary>
 	/// <remarks>
 	/// <para>
@@ -133,10 +133,14 @@ public sealed partial class ColaViewModel : ObservableObject
 	/// Sin enlace no se intenta. El sincronizador lo comprobaría igual, pero dejaría una línea en
 	/// la bitácora en cada vuelta: media hora sin señal la llenaría de ruido idéntico.
 	/// </para>
+	/// <para>
+	/// <b>El enlace se sondea, no se consulta.</b> Ver las notas de dentro: leer el estado
+	/// guardado dejaba sin cumplir la hora anunciada justo en el caso que la produce.
+	/// </para>
 	/// </remarks>
 	private async void AlTocarRevisarReintentos(object? origen, EventArgs argumentos)
 	{
-		if (Ocupado || !Enlace.HayEnlace || !HayAlgunReintentoVencido())
+		if (Ocupado || !HayAlgoQueIntentar())
 		{
 			return;
 		}
@@ -144,6 +148,25 @@ public sealed partial class ColaViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
+			// Se pregunta de nuevo por el enlace en vez de leer el estado guardado. Cuando lo
+			// que se cayó fue Jacob —el API, el túnel, el CCO reiniciándose— y no la red, el
+			// teléfono nunca perdió la señal: Android no anuncia nada, nadie vuelve a sondear y
+			// el estado guardado se queda en «sin enlace» indefinidamente. El reloj llegaba a la
+			// hora anunciada, leía ese valor viejo y se abstenía, vuelta tras vuelta.
+			//
+			// No es el sondeo periódico que se descartó por batería: solo ocurre si ya hay algo
+			// vencido que de verdad toca enviar. Con la cola limpia —el caso normal— no se
+			// sondea nunca.
+			if (!await Enlace.ComprobarElEnlaceAsync())
+			{
+				// Sin enlace no se envía, pero la lista puede estar enseñando un envío a medias
+				// que en la base ya terminó: la pantalla solo se repinta cuando termina una
+				// tanda, y la del registro recién capturado no pasa por aquí. Sin esto, una
+				// tarjeta se queda en ENVIANDO a la vista aunque el estado guardado sea otro.
+				await ActualizarAsync();
+				return;
+			}
+
 			var resultado = await _sincronizador.EjecutarAsync();
 
 			// Solo se avisa de lo que cambió algo, igual que con el envío automático: el operador
@@ -167,13 +190,20 @@ public sealed partial class ColaViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>Indica si algún registro de la lista ya cumplió su espera de reintento.</summary>
-	private bool HayAlgunReintentoVencido()
+	/// <summary>
+	/// Indica si algún registro de la lista tiene un envío que toca ahora.
+	/// </summary>
+	/// <remarks>
+	/// <b>La decisión es de <see cref="RegistroCola.TocaIntentarlo"/></b>, que es la misma que
+	/// toma la tanda al recorrer la cola y la única que tiene pruebas. Aquí solo se pregunta por
+	/// la lista que ya está pintada, sin tocar la base: la inmensa mayoría de las veces no hay
+	/// nada que intentar y no tiene sentido pagar una consulta cada medio minuto.
+	/// </remarks>
+	private bool HayAlgoQueIntentar()
 	{
 		var ahora = DateTime.UtcNow;
 
-		return Registros.Any(r =>
-			r.Registro.ReintentoUtc is { } reintento && reintento <= ahora);
+		return Registros.Any(r => r.Registro.TocaIntentarlo(ahora));
 	}
 
 	/// <summary>Deja de atenderlos. Lo llama la página al desaparecer.</summary>
@@ -336,6 +366,17 @@ public sealed partial class ColaViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
+			// Se sondea el enlace antes de correr, por lo mismo que el reloj: el estado guardado
+			// puede ser viejo. Con Jacob caído y levantado de nuevo, el dispositivo nunca perdió
+			// la red, así que nadie volvió a sondear y el primer toque del botón contestaba «Sin
+			// enlace con el CCO» teniendo el servidor delante. Hacían falta dos toques: el
+			// primero para nada y el segundo para enviar.
+			//
+			// No se mira lo que devuelve: quien decide es el sincronizador, que exige las tres
+			// condiciones juntas y ya tiene un mensaje para cada una. Esto solo se asegura de que
+			// las decida sobre algo medido ahora.
+			await Enlace.ComprobarElEnlaceAsync();
+
 			var resultado = await _sincronizador.EjecutarAsync();
 			MensajeSincronizacion = TextoDe(resultado);
 			await ActualizarAsync();

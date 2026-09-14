@@ -166,6 +166,36 @@ public sealed record RegistroCola(
 		: null;
 
 	/// <summary>
+	/// Indica si a este registro le toca un envío ahora.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Es la misma decisión que toma la tanda</b> —<c>SincronizarIncidencias.TocaIntentar</c>—,
+	/// vista desde la pantalla. La usa el reloj de la Cola para saber si vale la pena sondear el
+	/// enlace: si las dos no coincidieran, el reloj sondearía para nada, o se abstendría teniendo
+	/// algo que enviar.
+	/// </para>
+	/// <para>
+	/// <b>Enviando cuenta.</b> Un envío que quedó a medias no lo recoge nadie hasta que corre una
+	/// tanda, que es la que lo devuelve a Pendiente. Sin contarlo aquí, un registro atrapado ahí
+	/// no se reintenta hasta que el operador pulse el botón — es lo que se vio en el emulador el
+	/// 4-sep, con una tarjeta en ENVIANDO que no se movía sola.
+	/// </para>
+	/// <para>
+	/// <b>Un rechazo funcional no cuenta.</b> No va a salir hasta que alguien lo corrija, y
+	/// sondear por él cada medio minuto sería gastar batería para siempre. Por eso se pregunta por
+	/// <see cref="ReintentoUtc"/>, que ya excluye lo funcional, y no por el estado a secas.
+	/// </para>
+	/// </remarks>
+	public bool TocaIntentarlo(DateTime ahoraUtc) => Estado switch
+	{
+		EstadoSincronizacion.Pendiente => true,
+		EstadoSincronizacion.Enviando => true,
+		EstadoSincronizacion.Fallido => ReintentoUtc is { } reintento && reintento <= ahoraUtc,
+		_ => false,
+	};
+
+	/// <summary>
 	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.
 	/// </summary>
 	/// <remarks>

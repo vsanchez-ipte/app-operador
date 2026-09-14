@@ -264,6 +264,66 @@ public class RegistroColaTests
 		Assert.Null(registro.ReintentoUtc);
 	}
 
+	[Fact]
+	public void UnPendiente_tocaIntentarlo()
+	{
+		var registro = Registro(folio: null, EstadoSincronizacion.Pendiente);
+
+		Assert.True(registro.TocaIntentarlo(DateTime.UtcNow));
+	}
+
+	[Fact]
+	public void UnEnvioAMedias_tocaIntentarlo()
+	{
+		// Enviando no lo recoge nadie hasta que corre una tanda, que es la que lo devuelve a
+		// Pendiente. Si el reloj de la Cola no lo cuenta, se queda ahi hasta que alguien pulse
+		// el boton: es lo que se vio en el emulador el 4-sep.
+		var registro = Registro(folio: null, EstadoSincronizacion.Enviando);
+
+		Assert.True(registro.TocaIntentarlo(DateTime.UtcNow));
+	}
+
+	[Fact]
+	public void UnFallidoTecnicoConLaEsperaVencida_tocaIntentarlo()
+	{
+		var ahora = new DateTime(2026, 9, 4, 10, 0, 0, DateTimeKind.Utc);
+		var registro = Tecnica(intentos: 1, ultimoIntentoUtc: ahora.AddMinutes(-5));
+
+		Assert.True(registro.TocaIntentarlo(ahora));
+	}
+
+	[Fact]
+	public void UnFallidoTecnicoConLaEsperaCorriendo_noTocaTodavia()
+	{
+		var ahora = new DateTime(2026, 9, 4, 10, 0, 0, DateTimeKind.Utc);
+		var registro = Tecnica(intentos: 1, ultimoIntentoUtc: ahora.AddSeconds(-10));
+
+		Assert.False(registro.TocaIntentarlo(ahora));
+	}
+
+	[Fact]
+	public void UnRechazoFuncional_noTocaNuncaAunqueLleveHorasAhi()
+	{
+		// No va a salir hasta que alguien lo corrija. Contarlo dejaria a la pantalla sondeando
+		// el enlace cada medio minuto, para siempre, por un registro que nunca se va a enviar.
+		var registro = Fallida("appincidencias.km.fueradecorredor", "Kilometro fuera del corredor.")
+			with
+			{
+				Intentos = 3,
+				UltimoIntentoUtc = new DateTime(2026, 9, 4, 6, 0, 0, DateTimeKind.Utc),
+			};
+
+		Assert.False(registro.TocaIntentarlo(new DateTime(2026, 9, 4, 10, 0, 0, DateTimeKind.Utc)));
+	}
+
+	[Fact]
+	public void UnRegistroYaSincronizado_noTocaIntentarlo()
+	{
+		var registro = Registro("INC-APK-2026-0034", EstadoSincronizacion.Sincronizado);
+
+		Assert.False(registro.TocaIntentarlo(DateTime.UtcNow));
+	}
+
 	private static RegistroCola Tecnica(int intentos, DateTime ultimoIntentoUtc) =>
 		Fallida(CodigosErrorJacob.ErrorTecnico, "No respondio.") with
 		{
