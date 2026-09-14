@@ -66,13 +66,13 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	{
 		cancelacion.ThrowIfCancellationRequested();
 
-		// La cámara se pide antes de invocar al selector, y para los DOS orígenes que la usan:
-		// fotografiar y grabar. MediaPicker la pediría solo, pero al negarse lanza una excepción
-		// que no dice si el sistema volverá a preguntar o si ya dejó de hacerlo, y esa diferencia
-		// es justo la que el operador necesita.
+		// Los permisos de captura se piden antes de invocar al selector, y para los DOS orígenes
+		// que los usan: fotografiar y grabar. MediaPicker los pediría solo, pero al negarse lanza
+		// una excepción que no dice si el sistema volverá a preguntar o si ya dejó de hacerlo, y
+		// esa diferencia es justo la que el operador necesita.
 		if (origen is OrigenEvidencia.Camara or OrigenEvidencia.Video)
 		{
-			var permiso = await PedirCamaraAsync();
+			var permiso = await PedirPermisosDeCapturaAsync();
 			if (permiso is not null)
 			{
 				return permiso;
@@ -109,10 +109,18 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 		}
 		catch (PermissionException)
 		{
-			// Red de seguridad: la cámara ya se pidió arriba, pero la galería y el selector de
-			// archivos pueden exigir permisos propios según la versión de Android. Se resuelve
-			// igual, mirando si el sistema todavía va a preguntar.
-			return await SegunSiTodaviaSePuedePedirAsync();
+			// Llegar aquí NO es cosa del operador. Los permisos que la captura exige ya se
+			// pidieron arriba, uno por uno, y la galería y el selector de archivos no exigen
+			// ninguno en ninguna versión de Android (selector de fotos del sistema y
+			// GET_CONTENT). Lo que queda es un permiso que la librería exige y el paquete no
+			// declara, y eso se arregla en el manifiesto, no tocando el botón otra vez.
+			//
+			// Antes se resolvía preguntando si la CÁMARA todavía se podía pedir, y con la cámara
+			// concedida la respuesta era «no» y se contestaba «permiso bloqueado», con botón a la
+			// configuración incluido. Así llegó JTT-1681: en Android 12, MediaPicker exigía
+			// WRITE_EXTERNAL_STORAGE, no estaba declarado, y el operador que acababa de conceder
+			// la cámara leía que no tenía permiso.
+			return SeleccionEvidencia.NoDisponible;
 		}
 		catch (Exception excepcion) when (
 			excepcion is NotSupportedException or NotImplementedException or FeatureNotSupportedException)
@@ -143,29 +151,43 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	}
 
 	/// <summary>
-	/// Pide el permiso de cámara, o devuelve por qué no se puede seguir.
+	/// Pide los permisos que exige capturar con la cámara, o devuelve por qué no se puede seguir.
 	/// </summary>
 	/// <returns>
 	/// <see langword="null"/> si se puede continuar, o el desenlace que hay que devolver.
 	/// </returns>
 	/// <remarks>
+	/// <para>
 	/// <b>Se pide aquí y no antes.</b> El diálogo del sistema sale cuando el operador toca el
 	/// botón, que es lo que piden el CA 3 de JTT-1398 y los criterios 1 a 3 de JTT-1387: pedir la
 	/// cámara al iniciar sesión asusta y no se entiende.
+	/// </para>
+	/// <para>
+	/// <b>Son dos permisos, no uno, y el segundo depende de la versión.</b> Además de la cámara,
+	/// <c>MediaPicker</c> exige <c>StorageWrite</c> en Android 12 y anteriores —en 13+ ese
+	/// permiso ya no existe y lo omite—. Se pide aquí con la misma condición que usa la
+	/// librería, para que una negativa del operador se distinga de una definitiva igual que con
+	/// la cámara, y no llegue como una excepción sin explicación (JTT-1681).
+	/// </para>
 	/// </remarks>
-	private static async Task<SeleccionEvidencia?> PedirCamaraAsync()
+	private static async Task<SeleccionEvidencia?> PedirPermisosDeCapturaAsync()
 	{
 		try
 		{
-			var estado = await MainThread.InvokeOnMainThreadAsync(
-				Permissions.RequestAsync<Permissions.Camera>);
-
-			if (estado == PermissionStatus.Granted)
+			var camara = await PedirAsync<Permissions.Camera>();
+			if (camara is not null)
 			{
-				return null;
+				return camara;
 			}
 
-			return await SegunSiTodaviaSePuedePedirAsync();
+			// Misma condición que MediaPicker.android.cs: por debajo de la 13 exige el permiso
+			// de escritura, y el manifiesto lo declara acotado a esas versiones (maxSdkVersion).
+			if (OperatingSystem.IsAndroid() && !OperatingSystem.IsAndroidVersionAtLeast(33))
+			{
+				return await PedirAsync<Permissions.StorageWrite>();
+			}
+
+			return null;
 		}
 		catch (Exception excepcion) when (
 			excepcion is NotSupportedException or NotImplementedException or FeatureNotSupportedException)
@@ -173,6 +195,20 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 			// El destino no tiene cámara ni sistema de permisos: escritorio y pruebas.
 			return SeleccionEvidencia.NoDisponible;
 		}
+	}
+
+	/// <summary>Pide un permiso y, si no se concede, dice si fue negativa o bloqueo.</summary>
+	/// <returns>
+	/// <see langword="null"/> si se concedió, o el desenlace que hay que devolver.
+	/// </returns>
+	private static async Task<SeleccionEvidencia?> PedirAsync<TPermiso>()
+		where TPermiso : Permissions.BasePermission, new()
+	{
+		var estado = await MainThread.InvokeOnMainThreadAsync(Permissions.RequestAsync<TPermiso>);
+
+		return estado == PermissionStatus.Granted
+			? null
+			: SegunSiTodaviaSePuedePedir<TPermiso>();
 	}
 
 	/// <summary>
@@ -187,13 +223,17 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	/// </para>
 	/// <para>
 	/// Se consulta <b>después</b> de pedir y no antes: antes de la primera petición también
-	/// contesta que no hay que razonar nada, y eso se confundiría con el permiso bloqueado.
+	/// contesta que no hay que razonar nada, y eso se confundiría con el permiso bloqueado. Y se
+	/// consulta <b>por el permiso que se acaba de pedir</b>, no por la cámara a secas: preguntar
+	/// por la cámara cuando lo que faltaba era el almacenamiento fue lo que convirtió un permiso
+	/// sin declarar en un «bloqueado» falso (JTT-1681).
 	/// </para>
 	/// </remarks>
-	private static Task<SeleccionEvidencia> SegunSiTodaviaSePuedePedirAsync() =>
-		Task.FromResult(Permissions.ShouldShowRationale<Permissions.Camera>()
+	private static SeleccionEvidencia SegunSiTodaviaSePuedePedir<TPermiso>()
+		where TPermiso : Permissions.BasePermission, new() =>
+		Permissions.ShouldShowRationale<TPermiso>()
 			? SeleccionEvidencia.PermisoNegado
-			: SeleccionEvidencia.PermisoBloqueado);
+			: SeleccionEvidencia.PermisoBloqueado;
 
 	/// <summary>
 	/// Abre la galería y se queda con la primera selección.

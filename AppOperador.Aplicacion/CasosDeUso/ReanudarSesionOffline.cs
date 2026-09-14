@@ -48,6 +48,44 @@ public sealed class ReanudarSesionOffline
 		_bitacora = bitacora;
 	}
 
+	/// <summary>
+	/// Dice si hay una sesión guardada que se podría reanudar ahora, sin reanudarla.
+	/// </summary>
+	/// <returns>
+	/// La sesión reanudable, o <see langword="null"/> si no hay ninguna guardada, no tiene
+	/// token, sus permisos no cuadran con él o su ventana ya venció.
+	/// </returns>
+	/// <remarks>
+	/// Aplica <b>exactamente las mismas condiciones</b> que <see cref="ReanudarAsync"/>, para que
+	/// la pantalla nunca anuncie una sesión que después no se pueda reanudar. Pero no tiene
+	/// efectos: no publica la sesión, no revoca nada ni escribe en la bitácora. Es lo que la
+	/// pantalla de acceso consulta al abrirse para avisar que la sesión sigue ahí (JTT-1681).
+	/// </remarks>
+	public async Task<SesionReanudable?> ConsultarGuardadaAsync(CancellationToken cancelacion = default)
+	{
+		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
+		if (guardada is null)
+		{
+			return null;
+		}
+
+		var token = await _custodia.ObtenerTokenAsync(cancelacion);
+		if (string.IsNullOrWhiteSpace(token) || !_claims.Respaldan(guardada.Permisos, token))
+		{
+			return null;
+		}
+
+		var transcurso = TranscursoOffline.Medir(
+			guardada.Vigencia.LastValidatedAtUtc,
+			_reloj.UtcAhora,
+			guardada.MonotonicoAlValidar,
+			_monotonico.Transcurrido);
+
+		return guardada.Vigencia.EstaVigenteTras(transcurso)
+			? new SesionReanudable(guardada.Operador, guardada.Vigencia.OfflineUntilUtc)
+			: null;
+	}
+
 	/// <summary>Intenta abrir la app con la sesión guardada.</summary>
 	public async Task<ResultadoAcceso> ReanudarAsync(CancellationToken cancelacion = default)
 	{

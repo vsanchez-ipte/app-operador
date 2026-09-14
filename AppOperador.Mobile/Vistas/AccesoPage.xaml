@@ -126,6 +126,16 @@
                                        VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
+                            <!--
+                                Sesión guardada (JTT-1681). Cuando Android mata el proceso, la
+                                app vuelve a abrirse aquí con la sesión intacta; sin este aviso
+                                el único rastro era el botón de abajo, y con red "Continuar
+                                offline" no se lee como "reanudar mi sesión".
+                            -->
+                            <Label Text="{Binding AvisoSesionGuardada}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   IsVisible="{Binding HaySesionGuardada}" />
+
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Button Grid.Column="0"
                                         Text="{Binding TextoBotonAcceso}"

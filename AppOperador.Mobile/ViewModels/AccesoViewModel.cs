@@ -69,6 +69,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string PasoAbriendoSesion = "Abriendo la sesión con la unidad elegida…";
 	private const string PasoReanudandoOffline = "Reanudando la última sesión guardada…";
 
+	// Aviso de que la sesión sigue ahí. Cuando Android mata el proceso —al revocar un permiso
+	// desde Ajustes, por ejemplo— la app vuelve a abrirse aquí con la sesión intacta, y el único
+	// rastro era el botón «Continuar offline». Con red, nadie lee ahí «reanudar mi sesión»: QA
+	// inició sesión de nuevo y lo reportó como que la app la había cerrado (JTT-1681).
+	private const string FormatoSesionGuardada =
+		"Hay una sesión guardada de {0}, vigente hasta el {1}. «Continuar offline» la reanuda "
+		+ "sin volver a autenticarse.";
+
 	private const string AccionPermitir = "Permitir ubicación";
 	private const string AccionAjustesApp = "Abrir configuración de la app";
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
@@ -102,6 +110,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// </summary>
 	[ObservableProperty]
 	public partial string? MensajeAviso { get; set; }
+
+	/// <summary>
+	/// Aviso de que hay una sesión guardada que «Continuar offline» reanudaría, o
+	/// <see langword="null"/> si no la hay (JTT-1681).
+	/// </summary>
+	[ObservableProperty]
+	public partial string? AvisoSesionGuardada { get; set; }
 
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
@@ -188,6 +203,9 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// <summary>Indica si hay un aviso informativo que mostrar.</summary>
 	public bool HayAviso => !string.IsNullOrEmpty(MensajeAviso);
 
+	/// <summary>Indica si hay una sesión guardada que anunciar.</summary>
+	public bool HaySesionGuardada => !string.IsNullOrEmpty(AvisoSesionGuardada);
+
 	/// <summary>Indica si hay explicación del estado de ubicación que mostrar.</summary>
 	public bool HayDetalleUbicacion => !string.IsNullOrEmpty(DetalleUbicacion);
 
@@ -228,6 +246,10 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MensajeAviso = null;
 
 		await InicializarAsync();
+
+		// Se consulta cada vez que se llega a la pantalla, no una sola: la sesión que había al
+		// abrir la app puede haberse cerrado, y la que no había puede existir tras un acceso.
+		AvisoSesionGuardada = await TextoSesionGuardadaAsync();
 
 		// Si se llegó aquí porque la sesión se cerró sola —ventana vencida, revalidación
 		// negada o permiso retirado— hay que decir por qué. Sin esto el operador aparecería
@@ -507,6 +529,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 				: await _autenticacion.ContinuarSinConexionAsync();
 
 			await ProcesarResultadoAsync(resultado);
+
+			// Si no se pudo reanudar, el aviso ya no es cierto: la ventana pudo vencer entre
+			// que se consultó y que el operador tocó el botón.
+			if (!resultado.Autorizado)
+			{
+				AvisoSesionGuardada = null;
+			}
 		}
 		finally
 		{
@@ -629,6 +658,31 @@ public sealed partial class AccesoViewModel : ObservableObject
 		_ => null,
 	};
 
+	/// <summary>
+	/// Texto del aviso de sesión guardada, o <see langword="null"/> si no hay nada que anunciar.
+	/// </summary>
+	/// <remarks>
+	/// Sin el canal real no hay sesión persistida que consultar, y contra el simulador el aviso
+	/// mentiría. La hora se muestra como en el perfil y en el indicador de enlace, con fecha,
+	/// porque una ventana de ocho horas cruza la medianoche con frecuencia.
+	/// </remarks>
+	private async Task<string?> TextoSesionGuardadaAsync()
+	{
+		if (_reanudarOffline is null)
+		{
+			return null;
+		}
+
+		var guardada = await _reanudarOffline.ConsultarGuardadaAsync();
+
+		return guardada is null
+			? null
+			: string.Format(
+				FormatoSesionGuardada,
+				guardada.Operador,
+				guardada.VenceUtc.ToLocalTime().ToString("dd/MM/yyyy, hh:mm tt"));
+	}
+
 	private async Task ProcesarResultadoAsync(ResultadoAcceso resultado)
 	{
 		if (resultado.Autorizado)
@@ -690,6 +744,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 			MensajeError = null;
 		}
 	}
+
+	partial void OnAvisoSesionGuardadaChanged(string? value) => OnPropertyChanged(nameof(HaySesionGuardada));
 
 	partial void OnPasoEnCursoChanged(string? value) => OnPropertyChanged(nameof(HayPasoEnCurso));
 
