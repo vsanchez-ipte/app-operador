@@ -10,6 +10,7 @@
              Style="{StaticResource PaginaOperador}"
              Title="Captura">
 
+    <Grid>
     <ScrollView>
         <VerticalStackLayout Padding="14" Spacing="12">
 
@@ -395,5 +396,27 @@
 
         </VerticalStackLayout>
     </ScrollView>
+
+        <!-- Capa de carga, centrada y encima de todo. Al entrar a la pestana la pantalla
+             tarda unos segundos en estar lista y sin esto parece que no responde. Va como
+             capa y no dentro del scroll: arriba del todo quedaba escondida. -->
+        <Grid IsVisible="{Binding Cargando}"
+              BackgroundColor="#B3E8DED0"
+              InputTransparent="False">
+            <Border Style="{StaticResource Tarjeta}"
+                    HorizontalOptions="Center" VerticalOptions="Center"
+                    Padding="24,18">
+                <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                    <ActivityIndicator IsRunning="{Binding Cargando}"
+                                       Color="{StaticResource Vino}"
+                                       HeightRequest="36" WidthRequest="36"
+                                       HorizontalOptions="Center" />
+                    <Label Text="Cargando…"
+                           Style="{StaticResource TextoSecundario}"
+                           HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
 
 </ContentPage>

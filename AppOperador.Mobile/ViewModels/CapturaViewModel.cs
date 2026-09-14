@@ -163,6 +163,17 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// registrar convierte en vez de crear una segunda incidencia con los mismos datos.
 	/// </remarks>
 
+	/// <summary>
+	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
+	/// </summary>
+	/// <remarks>
+	/// Va aparte de <c>Ocupado</c> —que apaga botones mientras el operador espera una acción
+	/// suya— porque esto ocurre solo, al entrar, y lo que hay que decir es que la pantalla
+	/// todavía no está lista, no que un botón está trabajando.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool Cargando { get; set; }
+
 	[ObservableProperty]
 	public partial string? BorradorEnEdicion { get; set; }
 
@@ -291,6 +302,19 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 	/// <summary>Carga catálogos e intenta situar al operador por GPS.</summary>
 	public async Task InicializarAsync()
+	{
+		Cargando = true;
+		try
+		{
+			await InicializarCargandoAsync();
+		}
+		finally
+		{
+			Cargando = false;
+		}
+	}
+
+	private async Task InicializarCargandoAsync()
 	{
 		await CargarCatalogoAsync();
 

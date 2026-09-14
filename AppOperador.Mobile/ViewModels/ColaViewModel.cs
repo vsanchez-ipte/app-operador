@@ -41,6 +41,18 @@ public sealed partial class ColaViewModel : ObservableObject
 	public partial bool Ocupado { get; set; }
 
 	/// <summary>
+	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
+	/// </summary>
+	/// <remarks>
+	/// Va aparte de <c>Ocupado</c> —que apaga botones mientras el operador espera una acción
+	/// suya— porque esto ocurre solo, al entrar, y lo que hay que decir es que la pantalla
+	/// todavía no está lista, no que un botón está trabajando.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool Cargando { get; set; }
+
+
+	/// <summary>
 	/// Qué pasó en la última sincronización, o <see langword="null"/> si no se ha pulsado
 	/// (JTT-1401 CA 10).
 	/// </summary>
@@ -348,6 +360,19 @@ public sealed partial class ColaViewModel : ObservableObject
 	/// operación y no deben quedar a la vista de una sesión que ya no vale (CA 4).
 	/// </remarks>
 	public async Task ActualizarAsync()
+	{
+		Cargando = true;
+		try
+		{
+			await ActualizarCargandoAsync();
+		}
+		finally
+		{
+			Cargando = false;
+		}
+	}
+
+	private async Task ActualizarCargandoAsync()
 	{
 		Registros.Clear();
 

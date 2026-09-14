@@ -79,6 +79,18 @@ public sealed partial class PerfilViewModel : ObservableObject
 	// nuevas (JTT-1384, JTT-1385), y esta insignia es donde el operador viene a ver por qué.
 	private const string TextoPermisosVencidos = "Permisos vencidos o no validados";
 
+
+	/// <summary>
+	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
+	/// </summary>
+	/// <remarks>
+	/// Va aparte de <c>Ocupado</c> —que apaga botones mientras el operador espera una acción
+	/// suya— porque esto ocurre solo, al entrar, y lo que hay que decir es que la pantalla
+	/// todavía no está lista, no que un botón está trabajando.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool Cargando { get; set; }
+
 	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
 	public EstadoEnlaceViewModel Enlace { get; }
 
@@ -167,6 +179,19 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 	/// <summary>Refresca los datos de la pantalla.</summary>
 	public async Task ActualizarAsync()
+	{
+		Cargando = true;
+		try
+		{
+			await ActualizarCargandoAsync();
+		}
+		finally
+		{
+			Cargando = false;
+		}
+	}
+
+	private async Task ActualizarCargandoAsync()
 	{
 		Eventos.Clear();
 		foreach (var evento in await _bitacora.ObtenerEventosAsync())
