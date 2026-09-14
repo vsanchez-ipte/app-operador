@@ -144,6 +144,30 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	[ObservableProperty]
 	public partial string? MensajeError { get; set; }
 
+	// Un error por campo, debajo del campo que lo causó (pedido por Víctor el 14-sep al probar):
+	// «Capture un KM válido» al pie del formulario no dice dónde mirar, y con el formulario largo
+	// ni siquiera se ve. Cada uno se apaga solo en cuanto el operador toca ese campo.
+	[ObservableProperty]
+	public partial string? ErrorTipo { get; set; }
+
+	[ObservableProperty]
+	public partial string? ErrorKilometro { get; set; }
+
+	[ObservableProperty]
+	public partial string? ErrorSeveridad { get; set; }
+
+	[ObservableProperty]
+	public partial string? ErrorNota { get; set; }
+
+	/// <summary>
+	/// Avisa a la página qué campo acaba de fallar, para que se desplace hasta él.
+	/// </summary>
+	/// <remarks>
+	/// Es un evento y no una llamada a la vista: el ViewModel no sabe de <c>ScrollView</c> ni
+	/// de elementos con nombre, y así sigue sin saberlo. La página decide cómo llegar ahí.
+	/// </remarks>
+	public event EventHandler<CampoCaptura>? CampoConError;
+
 	[ObservableProperty]
 	public partial string? AvisoGps { get; set; }
 
@@ -277,6 +301,14 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	public bool HayError => !string.IsNullOrEmpty(MensajeError);
 
 	public bool HayAvisoGps => !string.IsNullOrEmpty(AvisoGps);
+
+	public bool HayErrorTipo => !string.IsNullOrEmpty(ErrorTipo);
+
+	public bool HayErrorKilometro => !string.IsNullOrEmpty(ErrorKilometro);
+
+	public bool HayErrorSeveridad => !string.IsNullOrEmpty(ErrorSeveridad);
+
+	public bool HayErrorNota => !string.IsNullOrEmpty(ErrorNota);
 
 	public bool HayBorradores => Borradores.Count > 0;
 
@@ -585,25 +617,26 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		{
 			// Con el formulario recién limpiado tras guardar, un segundo toque llega aquí: se
 			// dice, en vez de callar y dejar al operador creyendo que no pasó nada.
-			MensajeError = MensajeBorradorSinTipo;
+			SenalarError(CampoCaptura.Tipo, MensajeBorradorSinTipo);
 			return;
 		}
 
 		// El value object es la única autoridad sobre el formato del kilómetro.
 		if (!Kilometer.IntentarCrear(Kilometro, out var kilometro))
 		{
-			MensajeError = MensajeKilometroInvalido;
+			SenalarError(CampoCaptura.Kilometro, MensajeKilometroInvalido);
 			return;
 		}
 
 		var nota = Nota.Trim();
 		if (!ReglaNotaIncidencia.EsSuficiente(TipoSeleccionado.ExigeDescripcion, nota))
 		{
-			MensajeError = MensajeDescripcionRequerida;
+			SenalarError(CampoCaptura.Nota, MensajeDescripcionRequerida);
 			return;
 		}
 
 		MensajeError = null;
+		LimpiarErroresDeCampo();
 		var clave = await _incidencias.GuardarAsync(
 			TipoSeleccionado,
 			kilometro,
@@ -682,7 +715,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 		if (resultado != ResultadoConversionBorrador.Convertido)
 		{
-			MensajeError = MensajeDe(resultado);
+			SenalarError(CampoDe(resultado), MensajeDe(resultado));
 
 			// Si ya no existe, el formulario tiene que soltarlo: seguir editando un borrador
 			// que desapareció deja al operador escribiendo sobre nada.
@@ -853,7 +886,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 		if (resultado != ResultadoCorreccionRechazada.Corregida)
 		{
-			MensajeError = MensajeDe(resultado);
+			SenalarError(CampoDe(resultado), MensajeDe(resultado));
 
 			if (resultado == ResultadoCorreccionRechazada.NoEncontrada)
 			{
@@ -1083,7 +1116,78 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 	partial void OnAvisoGpsChanged(string? value) => OnPropertyChanged(nameof(HayAvisoGps));
 
-	partial void OnNotaChanged(string value) => OnPropertyChanged(nameof(ContadorNota));
+	partial void OnNotaChanged(string value)
+	{
+		OnPropertyChanged(nameof(ContadorNota));
+		ErrorNota = null;
+	}
+
+	partial void OnTipoSeleccionadoChanged(TipoIncidencia? value) => ErrorTipo = null;
+
+	partial void OnSeveridadSeleccionadaChanged(SeveridadIncidencia? value) => ErrorSeveridad = null;
+
+	partial void OnErrorTipoChanged(string? value) => OnPropertyChanged(nameof(HayErrorTipo));
+
+	partial void OnErrorKilometroChanged(string? value) => OnPropertyChanged(nameof(HayErrorKilometro));
+
+	partial void OnErrorSeveridadChanged(string? value) => OnPropertyChanged(nameof(HayErrorSeveridad));
+
+	partial void OnErrorNotaChanged(string? value) => OnPropertyChanged(nameof(HayErrorNota));
+
+	/// <summary>Pone el error debajo de su campo, quita el general y pide desplazarse hasta él.</summary>
+	private void SenalarError(CampoCaptura? campo, string mensaje)
+	{
+		LimpiarErroresDeCampo();
+
+		switch (campo)
+		{
+			case CampoCaptura.Tipo:
+				ErrorTipo = mensaje;
+				break;
+			case CampoCaptura.Kilometro:
+				ErrorKilometro = mensaje;
+				break;
+			case CampoCaptura.Severidad:
+				ErrorSeveridad = mensaje;
+				break;
+			case CampoCaptura.Nota:
+				ErrorNota = mensaje;
+				break;
+			default:
+				// Sin campo propio —el borrador o el rechazado ya no existen— va al aviso general.
+				MensajeError = mensaje;
+				return;
+		}
+
+		MensajeError = null;
+		CampoConError?.Invoke(this, campo.Value);
+	}
+
+	private void LimpiarErroresDeCampo()
+	{
+		ErrorTipo = null;
+		ErrorKilometro = null;
+		ErrorSeveridad = null;
+		ErrorNota = null;
+	}
+
+	private static CampoCaptura? CampoDe(ResultadoConversionBorrador resultado) => resultado switch
+	{
+		ResultadoConversionBorrador.FaltaTipo => CampoCaptura.Tipo,
+		ResultadoConversionBorrador.KilometroInvalido => CampoCaptura.Kilometro,
+		ResultadoConversionBorrador.FaltaSeveridad => CampoCaptura.Severidad,
+		ResultadoConversionBorrador.NotaInsuficiente => CampoCaptura.Nota,
+		_ => null,
+	};
+
+	private static CampoCaptura? CampoDe(ResultadoCorreccionRechazada resultado) => resultado switch
+	{
+		ResultadoCorreccionRechazada.FaltaTipo => CampoCaptura.Tipo,
+		ResultadoCorreccionRechazada.KilometroInvalido => CampoCaptura.Kilometro,
+		ResultadoCorreccionRechazada.FaltaSeveridad => CampoCaptura.Severidad,
+		ResultadoCorreccionRechazada.NotaInsuficiente => CampoCaptura.Nota,
+		_ => null,
+	};
 
 	partial void OnFuenteKilometroChanged(KilometerSource value) =>
 		OnPropertyChanged(nameof(EtiquetaKilometro));
@@ -1099,6 +1203,8 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// </remarks>
 	partial void OnKilometroChanged(string value)
 	{
+		ErrorKilometro = null;
+
 		if (_asignandoDesdeGps)
 		{
 			return;
@@ -1195,6 +1301,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			MensajeError = MensajeDe(origen is OrigenEvidencia.Video
 				? ResumenEvidencias.MotivoParaNoAdjuntarVideo
 				: ResumenEvidencias.MotivoParaNoAdjuntar);
+			CampoConError?.Invoke(this, CampoCaptura.Evidencia);
 			return;
 		}
 
@@ -1245,6 +1352,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 				MensajeError = seleccion.Archivos.Count > 1
 					? $"{archivo.NombreOriginal}: {MensajeDe(resultado.Motivo)}"
 					: MensajeDe(resultado.Motivo);
+				CampoConError?.Invoke(this, CampoCaptura.Evidencia);
 				break;
 			}
 		}

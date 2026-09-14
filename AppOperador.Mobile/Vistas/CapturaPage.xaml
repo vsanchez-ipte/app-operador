@@ -11,7 +11,7 @@
              Title="Captura">
 
     <Grid>
-    <ScrollView>
+    <ScrollView x:Name="Desplazable">
         <VerticalStackLayout Padding="14" Spacing="12">
 
             <!--
@@ -38,35 +38,46 @@
 
                     <Label Text="Registro de incidencia" Style="{StaticResource TituloTarjeta}" />
 
-                    <VerticalStackLayout>
+                    <VerticalStackLayout x:Name="CampoTipo">
                         <Label Text="TIPO DE INCIDENCIA" Style="{StaticResource EtiquetaCampo}" />
                         <Border Style="{StaticResource MarcoCampo}">
                             <Picker Style="{StaticResource CampoLista}"
                                     ItemsSource="{Binding Tipos}"
                                     SelectedItem="{Binding TipoSeleccionado}" />
                         </Border>
+                        <!-- Cada error debajo de su campo, y la pagina se desplaza hasta el. -->
+                        <Label Text="{Binding ErrorTipo}"
+                               Style="{StaticResource MensajeError}"
+                               IsVisible="{Binding HayErrorTipo}" />
                     </VerticalStackLayout>
 
                     <!-- Kilómetro y gravedad van lado a lado, como en la maqueta -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
 
-                        <VerticalStackLayout Grid.Column="0">
+                        <VerticalStackLayout Grid.Column="0" x:Name="CampoKilometro">
                             <!-- La etiqueta dice de dónde salió el kilómetro, no las opciones (JTT-1393 CA 6) -->
                             <Label Text="{Binding EtiquetaKilometro}" Style="{StaticResource EtiquetaCampo}" />
                             <Border Style="{StaticResource MarcoCampo}">
-                                <Entry Style="{StaticResource CampoTexto}"
+                                <Entry x:Name="EntradaKilometro"
+                                       Style="{StaticResource CampoTexto}"
                                        Placeholder="Ej. 130+400"
                                        Text="{Binding Kilometro}" />
                             </Border>
+                            <Label Text="{Binding ErrorKilometro}"
+                                   Style="{StaticResource MensajeError}"
+                                   IsVisible="{Binding HayErrorKilometro}" />
                         </VerticalStackLayout>
 
-                        <VerticalStackLayout Grid.Column="1">
+                        <VerticalStackLayout Grid.Column="1" x:Name="CampoSeveridad">
                             <Label Text="SEVERIDAD" Style="{StaticResource EtiquetaCampo}" />
                             <Border Style="{StaticResource MarcoCampo}">
                                 <Picker Style="{StaticResource CampoLista}"
                                         ItemsSource="{Binding Severidades}"
                                         SelectedItem="{Binding SeveridadSeleccionada}" />
                             </Border>
+                            <Label Text="{Binding ErrorSeveridad}"
+                                   Style="{StaticResource MensajeError}"
+                                   IsVisible="{Binding HayErrorSeveridad}" />
                         </VerticalStackLayout>
 
                     </Grid>
@@ -109,7 +120,7 @@
                                 IsEnabled="{Binding BuscandoUbicacion, Converter={StaticResource InvertirBooleano}}" />
                     </Grid>
 
-                    <VerticalStackLayout>
+                    <VerticalStackLayout x:Name="CampoNota">
                         <Label Text="NOTA DEL OPERADOR" Style="{StaticResource EtiquetaCampo}" />
                         <Border Style="{StaticResource MarcoCampo}">
                             <!-- El tope lo pone el ViewModel, que es de donde sale el contador (JTT-1393 CA 7) -->
@@ -123,6 +134,9 @@
                                FontSize="10"
                                HorizontalOptions="End"
                                Margin="0,4,0,0" />
+                        <Label Text="{Binding ErrorNota}"
+                               Style="{StaticResource MensajeError}"
+                               IsVisible="{Binding HayErrorNota}" />
                     </VerticalStackLayout>
 
                     <Label Text="{Binding MensajeError}"
@@ -144,7 +158,7 @@
                          La lista muestra nombre, tipo y tamaño de cada archivo, que son los
                          tres datos que el PO pidió visibles, y deja quitarlos.
                     -->
-                    <Label Text="EVIDENCIA (OPCIONAL)" Style="{StaticResource EtiquetaCampo}" />
+                    <Label x:Name="CampoEvidencia" Text="EVIDENCIA (OPCIONAL)" Style="{StaticResource EtiquetaCampo}" />
 
                     <!-- El visor de la maqueta, ahora con contenido. Antes era decorativo
                          —una elipse sobre un fondo oscuro— y los botones que lo acompañaban
