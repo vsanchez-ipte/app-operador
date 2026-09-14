@@ -33,14 +33,17 @@ public sealed class AdjuntarEvidencia
 	private readonly ICatalogoRepository _catalogo;
 	private readonly IClock _reloj;
 	private readonly IAuditLog _bitacora;
+	private readonly IEspacioDispositivo _espacio;
 
 	public AdjuntarEvidencia(
 		IRepositorioEvidencias evidencias,
 		IAlmacenEvidencias almacen,
 		ICatalogoRepository catalogo,
 		IClock reloj,
-		IAuditLog bitacora)
+		IAuditLog bitacora,
+		IEspacioDispositivo espacio)
 	{
+		_espacio = espacio;
 		_evidencias = evidencias;
 		_almacen = almacen;
 		_catalogo = catalogo;
@@ -73,6 +76,19 @@ public sealed class AdjuntarEvidencia
 		if (motivo != MotivoEvidenciaRechazada.Ninguno)
 		{
 			return ResultadoAdjuntar.Rechazada(motivo);
+		}
+
+		// Con el tamaño real ya conocido, que quepa en el dispositivo (JTT-289 CA 8). Se
+		// comprueba antes de copiar: una copia a medias en un disco lleno deja un archivo
+		// truncado que después se subiría como si estuviera entero.
+		if (!ReglaEspacioParaEvidencia.Cabe(_espacio.Medir().BytesLibres, archivo.Bytes))
+		{
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"Evidencia rechazada por falta de espacio en el dispositivo ({archivo.Bytes} bytes).",
+				cancelacion);
+
+			return ResultadoAdjuntar.Rechazada(MotivoEvidenciaRechazada.SinEspacio);
 		}
 
 		// La identidad se genera aquí y no en la base: es también la clave de idempotencia

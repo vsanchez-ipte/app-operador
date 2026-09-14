@@ -83,29 +83,37 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 		{
 			// Los diálogos del sistema tienen que salir del hilo de interfaz, igual que los de
 			// permisos de ubicación.
-			var resultado = await MainThread.InvokeOnMainThreadAsync(() => origen switch
+			var resultados = await MainThread.InvokeOnMainThreadAsync(() => origen switch
 			{
-				OrigenEvidencia.Camara => MediaPicker.Default.CapturePhotoAsync(),
-				OrigenEvidencia.Video => MediaPicker.Default.CaptureVideoAsync(),
-				OrigenEvidencia.Galeria => PrimeraDeLaGaleriaAsync(),
+				OrigenEvidencia.Camara => UnoAsync(MediaPicker.Default.CapturePhotoAsync()),
+				OrigenEvidencia.Video => UnoAsync(MediaPicker.Default.CaptureVideoAsync()),
+				OrigenEvidencia.Galeria => DeLaGaleriaAsync(),
 				OrigenEvidencia.Archivo => DelSelectorDeArchivosAsync(),
-				_ => Task.FromResult<FileResult?>(null),
+				_ => Task.FromResult<IReadOnlyList<FileResult>>([]),
 			});
 
-			// Un null aquí es el operador cancelando el diálogo del sistema. Ojo: en Android 11+
+			// Vacío aquí es el operador cancelando el diálogo del sistema. Ojo: en Android 11+
 			// también lo era un intent que no se podía resolver, y eso ya no pasa porque el
 			// manifiesto declara el bloque <queries> — ver AndroidManifest.xml.
-			if (resultado is null)
+			if (resultados.Count == 0)
 			{
 				return SeleccionEvidencia.Cancelada;
 			}
 
-			var descrito = await DescribirAsync(resultado, origen, cancelacion);
+			var descritos = new List<ArchivoElegido>(resultados.Count);
+			foreach (var resultado in resultados)
+			{
+				var descrito = await DescribirAsync(resultado, origen, cancelacion);
+				if (descrito is not null)
+				{
+					descritos.Add(descrito);
+				}
+			}
 
-			// El sistema entregó un archivo que no se puede leer. No es del operador.
-			return descrito is null
+			// El sistema entregó archivos que no se pueden leer. No es del operador.
+			return descritos.Count == 0
 				? SeleccionEvidencia.NoDisponible
-				: SeleccionEvidencia.Elegido(descrito);
+				: SeleccionEvidencia.Elegidos(descritos);
 		}
 		catch (PermissionException)
 		{
@@ -235,19 +243,25 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 			? SeleccionEvidencia.PermisoNegado
 			: SeleccionEvidencia.PermisoBloqueado;
 
+	/// <summary>Envuelve una captura única en la forma de lista que usa la selección.</summary>
+	private static async Task<IReadOnlyList<FileResult>> UnoAsync(Task<FileResult?> captura)
+	{
+		var resultado = await captura.ConfigureAwait(false);
+		return resultado is null ? [] : [resultado];
+	}
+
 	/// <summary>
-	/// Abre la galería y se queda con la primera selección.
+	/// Abre la galería y devuelve todo lo que el operador marcó (JTT-289 CA 1).
 	/// </summary>
 	/// <remarks>
-	/// <b>Se usa la API de selección múltiple aunque aquí se tome una sola.</b> La de archivo
-	/// único está obsoleta, y esta es además por donde entrará <b>JTT-289</b>: el PO fijó ocho
-	/// archivos, y elegirlos de uno en uno son ocho recorridos por la galería. Cuando toque,
-	/// será devolver la lista entera en vez del primero.
+	/// El PO fijó ocho archivos por incidencia; elegirlos de uno en uno serían ocho recorridos
+	/// por la galería. No se limita aquí cuántos: el cupo lo aplica quien adjunta, contra el
+	/// catálogo, y avisa en el primero que no quepa.
 	/// </remarks>
-	private static async Task<FileResult?> PrimeraDeLaGaleriaAsync()
+	private static async Task<IReadOnlyList<FileResult>> DeLaGaleriaAsync()
 	{
 		var elegidas = await MediaPicker.Default.PickPhotosAsync().ConfigureAwait(false);
-		return elegidas?.FirstOrDefault();
+		return elegidas?.Where(e => e is not null).Select(e => e!).ToList() ?? [];
 	}
 
 	/// <summary>
@@ -261,10 +275,10 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	/// <c>ReglaEvidenciaAdmisible</c> lo rechaza con el motivo exacto, que además es el mismo
 	/// camino que sigue una fotografía de un formato no admitido.
 	/// </remarks>
-	private static async Task<FileResult?> DelSelectorDeArchivosAsync()
+	private static async Task<IReadOnlyList<FileResult>> DelSelectorDeArchivosAsync()
 	{
-		var elegido = await FilePicker.Default.PickAsync().ConfigureAwait(false);
-		return elegido;
+		var elegidos = await FilePicker.Default.PickMultipleAsync().ConfigureAwait(false);
+		return elegidos?.Where(e => e is not null).Select(e => e!).ToList() ?? [];
 	}
 
 	/// <summary>Lee del archivo lo que hace falta para validarlo, sin cargarlo en memoria.</summary>

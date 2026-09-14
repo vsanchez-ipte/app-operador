@@ -138,6 +138,10 @@ public static class MauiProgram
 		// versión simulada solo serviría para adjuntar archivos falsos que nadie va a probar.
 		servicios.AddSingleton<ISelectorEvidencia, SelectorEvidenciaDispositivo>();
 
+		// El espacio se mide sobre el directorio de datos, que es donde caen la base y las
+		// evidencias (JTT-289 CA 8, JTT-292 CA 4).
+		servicios.AddSingleton<IEspacioDispositivo>(
+			_ => new MedidorEspacioDispositivo(FileSystem.AppDataDirectory));
 		servicios.AddSingleton<AdjuntarEvidencia>();
 		servicios.AddSingleton<QuitarEvidencia>();
 		servicios.AddSingleton<ObtenerEvidenciasDeIncidencia>();

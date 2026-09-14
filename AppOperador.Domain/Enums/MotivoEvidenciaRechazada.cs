@@ -40,4 +40,13 @@ public enum MotivoEvidenciaRechazada
 	/// operador creería que documentó el hecho.
 	/// </remarks>
 	ArchivoVacio = 5,
+
+	/// <summary>No hay espacio libre suficiente en el dispositivo para guardarlo (JTT-289 CA 8).</summary>
+	/// <remarks>
+	/// Se comprueba antes de copiar, no después de fallar la copia: una copia a medias en un
+	/// disco lleno deja un archivo truncado que después se subiría como si estuviera entero.
+	/// Con video se comprueba incluso antes de grabar, porque su tamaño no se conoce hasta el
+	/// final y el operador habría grabado para nada.
+	/// </remarks>
+	SinEspacio = 6,
 }

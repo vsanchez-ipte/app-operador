@@ -46,28 +46,43 @@ public enum OrigenEvidencia
 /// y hay que decírselo, o se queda pulsando un botón que nunca responde.
 /// </para>
 /// </remarks>
-/// <param name="Archivo">Lo elegido, o <see langword="null"/> si no hubo nada.</param>
+/// <param name="Archivos">Lo elegido, en el orden en que se eligió; vacío si no hubo nada.</param>
 /// <param name="Desenlace">Qué ocurrió. Ver <see cref="DesenlaceSeleccion"/>.</param>
-public sealed record SeleccionEvidencia(ArchivoElegido? Archivo, DesenlaceSeleccion Desenlace)
+public sealed record SeleccionEvidencia(IReadOnlyList<ArchivoElegido> Archivos, DesenlaceSeleccion Desenlace)
 {
 	/// <summary>El operador cerró el diálogo sin elegir. Respuesta válida: no se avisa.</summary>
 	public static readonly SeleccionEvidencia Cancelada =
-		new(null, DesenlaceSeleccion.Cancelado);
+		new([], DesenlaceSeleccion.Cancelado);
 
 	/// <summary>Negó el permiso, pero el sistema volverá a preguntar. Tampoco se avisa.</summary>
 	public static readonly SeleccionEvidencia PermisoNegado =
-		new(null, DesenlaceSeleccion.PermisoNegado);
+		new([], DesenlaceSeleccion.PermisoNegado);
 
 	/// <summary>El sistema ya no volverá a preguntar. Hay que decirlo y ofrecer la salida.</summary>
 	public static readonly SeleccionEvidencia PermisoBloqueado =
-		new(null, DesenlaceSeleccion.PermisoBloqueado);
+		new([], DesenlaceSeleccion.PermisoBloqueado);
 
 	/// <summary>El dispositivo no pudo abrir la cámara o el selector.</summary>
 	public static readonly SeleccionEvidencia NoDisponible =
-		new(null, DesenlaceSeleccion.NoSePudoAbrir);
+		new([], DesenlaceSeleccion.NoSePudoAbrir);
 
 	public static SeleccionEvidencia Elegido(ArchivoElegido archivo) =>
-		new(archivo, DesenlaceSeleccion.Elegido);
+		new([archivo], DesenlaceSeleccion.Elegido);
+
+	/// <summary>
+	/// Varios archivos de una sola pasada por el selector (JTT-289 CA 1).
+	/// </summary>
+	/// <remarks>
+	/// La cámara siempre entrega uno; la galería y el selector de archivos pueden entregar
+	/// varios, y elegirlos de uno en uno son tantos recorridos como archivos. <b>El cupo no se
+	/// aplica aquí</b>: quien adjunta comprueba cada uno contra el catálogo, y el primero que
+	/// no quepa detiene la tanda con su motivo.
+	/// </remarks>
+	public static SeleccionEvidencia Elegidos(IReadOnlyList<ArchivoElegido> archivos) =>
+		archivos.Count == 0 ? Cancelada : new(archivos, DesenlaceSeleccion.Elegido);
+
+	/// <summary>El primero de los elegidos, o <see langword="null"/> si no se eligió nada.</summary>
+	public ArchivoElegido? Archivo => Archivos.Count > 0 ? Archivos[0] : null;
 
 	/// <summary>Indica si el sistema no pudo ofrecer la función.</summary>
 	public bool NoSePudoAbrir => Desenlace == DesenlaceSeleccion.NoSePudoAbrir;

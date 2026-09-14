@@ -1,6 +1,7 @@
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
@@ -24,7 +25,8 @@ namespace AppOperador.Aplicacion.CasosDeUso;
 /// <param name="Limites">Lo que el servidor admite. Ver <see cref="LimitesEvidencia"/>.</param>
 public sealed record ResumenEvidencias(
 	IReadOnlyList<EvidenciaAdjunta> Adjuntas,
-	LimitesEvidencia Limites)
+	LimitesEvidencia Limites,
+	long? BytesLibres = null)
 {
 	/// <summary>Resumen de una incidencia que todavía no existe o no tiene evidencias.</summary>
 	public static readonly ResumenEvidencias Vacio = new([], LimitesEvidencia.Desconocidos);
@@ -74,12 +76,23 @@ public sealed record ResumenEvidencias(
 	/// Indica si se puede grabar y adjuntar un video.
 	/// </summary>
 	/// <remarks>
-	/// Son <b>dos condiciones</b>, y por eso no basta con <see cref="PuedeAdjuntar"/>: que quepa
-	/// otro archivo y que el servidor admita algún <c>video/*</c>. Hoy lo segundo es falso, así
-	/// que el botón sale apagado; cuando el catálogo publique video se enciende solo. Grabar un
-	/// video de quince megabytes para que lo rechace el formato es lo que esto evita.
+	/// Son <b>tres condiciones</b>, y por eso no basta con <see cref="PuedeAdjuntar"/>: que quepa
+	/// otro archivo, que el servidor admita algún <c>video/*</c> y que haya espacio para uno del
+	/// tamaño máximo (JTT-289 CA 8). Grabar un video de quince megabytes para que lo rechace el
+	/// formato, o para que no quepa, es lo que esto evita.
 	/// </remarks>
-	public bool PuedeAdjuntarVideo => PuedeAdjuntar && Limites.AdmiteVideo;
+	public bool PuedeAdjuntarVideo => PuedeAdjuntar && Limites.AdmiteVideo && HayEspacioParaVideo;
+
+	/// <summary>
+	/// Si cabe un video del tamaño máximo que admite el servidor (JTT-289 CA 8).
+	/// </summary>
+	/// <remarks>
+	/// Se decide <b>antes de grabar</b>, con el máximo y no con el tamaño real, porque el tamaño
+	/// real no existe hasta que termina la grabación y para entonces el operador ya grabó para
+	/// nada. Una fotografía no pasa por aquí: se comprueba con su tamaño real al adjuntarla.
+	/// </remarks>
+	public bool HayEspacioParaVideo =>
+		ReglaEspacioParaEvidencia.Cabe(BytesLibres, Limites.TamanoMaximoBytes);
 
 	/// <summary>
 	/// Por qué no se puede grabar video, cuando no se puede.
@@ -92,9 +105,11 @@ public sealed record ResumenEvidencias(
 	public MotivoEvidenciaRechazada MotivoParaNoAdjuntarVideo =>
 		MotivoParaNoAdjuntar is not MotivoEvidenciaRechazada.Ninguno
 			? MotivoParaNoAdjuntar
-			: Limites.AdmiteVideo
-				? MotivoEvidenciaRechazada.Ninguno
-				: MotivoEvidenciaRechazada.FormatoNoAdmitido;
+			: !Limites.AdmiteVideo
+				? MotivoEvidenciaRechazada.FormatoNoAdmitido
+				: !HayEspacioParaVideo
+					? MotivoEvidenciaRechazada.SinEspacio
+					: MotivoEvidenciaRechazada.Ninguno;
 }
 
 /// <summary>Arma el resumen de evidencias de una incidencia.</summary>
@@ -102,11 +117,14 @@ public sealed class ObtenerEvidenciasDeIncidencia
 {
 	private readonly IRepositorioEvidencias _evidencias;
 	private readonly ICatalogoRepository _catalogo;
+	private readonly IEspacioDispositivo _espacio;
 
 	public ObtenerEvidenciasDeIncidencia(
 		IRepositorioEvidencias evidencias,
-		ICatalogoRepository catalogo)
+		ICatalogoRepository catalogo,
+		IEspacioDispositivo espacio)
 	{
+		_espacio = espacio;
 		_evidencias = evidencias;
 		_catalogo = catalogo;
 	}
@@ -127,11 +145,13 @@ public sealed class ObtenerEvidenciasDeIncidencia
 
 		if (string.IsNullOrWhiteSpace(incidenciaUuid))
 		{
-			return new ResumenEvidencias([], limites);
+			return new ResumenEvidencias([], limites, _espacio.Medir().BytesLibres);
 		}
 
 		var adjuntas = await _evidencias.ObtenerDeIncidenciaAsync(incidenciaUuid, cancelacion);
 
-		return new ResumenEvidencias(adjuntas, limites);
+		// El espacio se mide aquí y viaja en el resumen, que es donde se decide si cabe un
+		// video: la pantalla no mide nada por su cuenta.
+		return new ResumenEvidencias(adjuntas, limites, _espacio.Medir().BytesLibres);
 	}
 }

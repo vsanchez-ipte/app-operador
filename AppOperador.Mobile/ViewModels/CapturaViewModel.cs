@@ -1065,10 +1065,14 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// responde, y ahí es donde tiene que encontrar la explicación. Sin esto, un botón visible y
 	/// muerto se lee como que la app está rota.
 	/// </remarks>
-	public string AvisoVideo => ResumenEvidencias.Limites.EstanDefinidos
-		&& !ResumenEvidencias.Limites.AdmiteVideo
+	public string AvisoVideo => !ResumenEvidencias.Limites.EstanDefinidos
+		? string.Empty
+		: !ResumenEvidencias.Limites.AdmiteVideo
 			? "El servidor todavía no admite video."
-			: string.Empty;
+			: !ResumenEvidencias.HayEspacioParaVideo
+				// JTT-289 CA 8: se bloquea el video y se dice con qué se puede seguir.
+				? "No hay espacio en el dispositivo para un video. Puede continuar con texto o fotografía."
+				: string.Empty;
 
 	public bool HayAvisoVideo => AvisoVideo.Length > 0;
 
@@ -1120,7 +1124,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 		var seleccion = await _selectorEvidencia.ElegirAsync(origen);
 
-		if (seleccion.Archivo is not { } archivo)
+		if (seleccion.Archivos.Count == 0)
 		{
 			// Cancelar y negar el permiso por primera vez se atienden en silencio, que es lo que
 			// pide el CA 4. Lo demás no es una decisión del operador y callarlo lo deja pulsando
@@ -1148,12 +1152,26 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			return;
 		}
 
-		// BorradorEnEdicion es la clave local del registro: con ella se nombra lo capturado en
-		// vez de dejar el GUID que entrega el sistema.
-		var resultado = await _adjuntarEvidencia.EjecutarAsync(
-			uuid, archivo, RechazadaEnCorreccion ?? BorradorEnEdicion);
+		// Uno por uno y en el orden en que se eligieron (JTT-289 CA 1). El primero que el
+		// catálogo rechace detiene la tanda con su motivo: los anteriores ya quedaron adjuntos y
+		// se ven en la lista, así que el operador sabe exactamente cuál no entró y por qué.
+		//
+		// La clave local es con la que se nombra lo capturado, en vez de dejar el GUID que
+		// entrega el sistema.
+		MensajeError = null;
+		foreach (var archivo in seleccion.Archivos)
+		{
+			var resultado = await _adjuntarEvidencia.EjecutarAsync(
+				uuid, archivo, RechazadaEnCorreccion ?? BorradorEnEdicion);
 
-		MensajeError = resultado.Exito ? null : MensajeDe(resultado.Motivo);
+			if (!resultado.Exito)
+			{
+				MensajeError = seleccion.Archivos.Count > 1
+					? $"{archivo.NombreOriginal}: {MensajeDe(resultado.Motivo)}"
+					: MensajeDe(resultado.Motivo);
+				break;
+			}
+		}
 
 		await RecargarEvidenciasAsync();
 	}
@@ -1287,12 +1305,18 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			"Conéctese una vez para poder adjuntar archivos.",
 		MotivoEvidenciaRechazada.CupoLleno =>
 			$"Ya adjuntó el máximo de {ResumenEvidencias.Limites.MaximoArchivosPorIncidencia} archivos. Quite uno para agregar otro.",
+		// «No se pudo procesar la evidencia» es el literal de JTT-289 CA 7 para formato no
+		// admitido y archivo ilegible; se conserva y se le añade el porqué, que es lo que el
+		// operador necesita para elegir otro archivo.
 		MotivoEvidenciaRechazada.FormatoNoAdmitido =>
-			$"Ese tipo de archivo no se admite. Se admiten: {FormatosLegibles}.",
+			$"No se pudo procesar la evidencia: ese tipo de archivo no se admite. Se admiten: {FormatosLegibles}.",
 		MotivoEvidenciaRechazada.DemasiadoGrande =>
 			$"El archivo pasa de {ResumenEvidencias.Limites.TamanoMaximoMb} MB.",
 		MotivoEvidenciaRechazada.ArchivoVacio =>
-			"El archivo no se pudo leer. Intente tomarlo de nuevo.",
+			"No se pudo procesar la evidencia: el archivo no se pudo leer. Intente tomarlo de nuevo.",
+		MotivoEvidenciaRechazada.SinEspacio =>
+			"No hay espacio suficiente en el dispositivo para guardar esa evidencia. "
+			+ "Puede continuar con la nota, o liberar espacio y volver a intentarlo.",
 		_ => "No se pudo adjuntar el archivo.",
 	};
 }

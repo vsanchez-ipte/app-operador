@@ -3,6 +3,7 @@ using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
@@ -25,9 +26,10 @@ public sealed class AdjuntarEvidenciaTests
 	private readonly EvidenciasFalsas _evidencias = new();
 	private readonly AlmacenFalso _almacen = new();
 	private readonly CatalogoFalso _catalogo = new() { Limites = Limites };
+	private readonly EspacioFalso _espacio = new();
 
 	private AdjuntarEvidencia Crear() =>
-		new(_evidencias, _almacen, _catalogo, new RelojFijo(), new BitacoraNula());
+		new(_evidencias, _almacen, _catalogo, new RelojFijo(), new BitacoraNula(), _espacio);
 
 	private static ArchivoElegido Archivo(
 		string nombre = "IMG_0001.jpg",
@@ -157,6 +159,44 @@ public sealed class AdjuntarEvidenciaTests
 	}
 
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
+
+	// ---------- Espacio en el dispositivo (JTT-289 CA 8) ----------
+
+	[Fact]
+	public async Task SinEspacioParaElArchivo_rechazaAntesDeCopiar()
+	{
+		// Queda menos que el archivo más el margen: copiar dejaría un archivo truncado o la
+		// base local sin sitio para escribir.
+		_espacio.BytesLibres = ReglaEspacioParaEvidencia.MargenSeguridadBytes + 1024;
+
+		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(bytes: 2048));
+
+		Assert.False(resultado.Exito);
+		Assert.Equal(MotivoEvidenciaRechazada.SinEspacio, resultado.Motivo);
+		Assert.Empty(_almacen.Guardados);
+	}
+
+	[Fact]
+	public async Task ConEspacioJusto_adjunta()
+	{
+		_espacio.BytesLibres = ReglaEspacioParaEvidencia.MargenSeguridadBytes + 2048;
+
+		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(bytes: 2048));
+
+		Assert.True(resultado.Exito);
+	}
+
+	[Fact]
+	public async Task ConEspacioDesconocido_noBloquea()
+	{
+		// El sistema puede negarse a medir; castigar al operador por eso sería tratar una
+		// incertidumbre como un disco lleno. La copia sigue teniendo su propia comprobación.
+		_espacio.BytesLibres = null;
+
+		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(bytes: 2048));
+
+		Assert.True(resultado.Exito);
+	}
 
 	private sealed class EvidenciasFalsas : IRepositorioEvidencias
 	{
@@ -298,6 +338,14 @@ public sealed class AdjuntarEvidenciaTests
 			Archivo(nombre: "6441d2f9.jpg", origen: OrigenEvidencia.Camara));
 
 		Assert.Equal("6441d2f9.jpg", resultado.Adjuntada!.NombreOriginal);
+	}
+
+	/// <summary>Espacio del dispositivo controlado desde la prueba; por omisión, de sobra.</summary>
+	private sealed class EspacioFalso : IEspacioDispositivo
+	{
+		public long? BytesLibres { get; set; } = 10L * 1024 * 1024 * 1024;
+
+		public EspacioDispositivo Medir() => new(BytesLibres, 64L * 1024 * 1024 * 1024);
 	}
 
 	private sealed class RelojFijo : IClock

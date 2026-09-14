@@ -1,6 +1,7 @@
 ﻿using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
+using AppOperador.Domain.Reglas;
 using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
@@ -147,5 +148,58 @@ public sealed class ResumenEvidenciasTests
 
 		Assert.False(resumen.PuedeAdjuntarVideo);
 		Assert.Equal(MotivoEvidenciaRechazada.LimitesDesconocidos, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	// ── El video se bloquea sin espacio (JTT-289 CA 8) ───────────────────────────────
+
+	[Fact]
+	public void SinEspacioParaUnVideoDelTamanoMaximo_seApagaElBotonYSeDicePorQue()
+	{
+		// Se decide antes de grabar, con el máximo que admite el servidor: el tamaño real no
+		// existe hasta que termina la grabación, y para entonces el operador ya grabó para nada.
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+		var apenas = ReglaEspacioParaEvidencia.MargenSeguridadBytes + conVideo.TamanoMaximoBytes - 1;
+
+		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: apenas);
+
+		Assert.True(resumen.PuedeAdjuntar);
+		Assert.False(resumen.HayEspacioParaVideo);
+		Assert.False(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.SinEspacio, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	[Fact]
+	public void ConEspacioParaUnVideoDelTamanoMaximo_seEnciende()
+	{
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+		var justo = ReglaEspacioParaEvidencia.MargenSeguridadBytes + conVideo.TamanoMaximoBytes;
+
+		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: justo);
+
+		Assert.True(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(MotivoEvidenciaRechazada.Ninguno, resumen.MotivoParaNoAdjuntarVideo);
+	}
+
+	[Fact]
+	public void ConEspacioDesconocido_elVideoNoSeBloquea()
+	{
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+
+		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: null);
+
+		Assert.True(resumen.PuedeAdjuntarVideo);
+	}
+
+	[Fact]
+	public void SinEspacio_laFotografiaSigueDisponible()
+	{
+		// El CA 8 bloquea el video y deja seguir con texto o fotografía: la foto se comprueba
+		// con su tamaño real al adjuntarla, no antes.
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+
+		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: 0);
+
+		Assert.True(resumen.PuedeAdjuntar);
+		Assert.False(resumen.PuedeAdjuntarVideo);
 	}
 }
