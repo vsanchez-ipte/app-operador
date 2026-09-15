@@ -55,6 +55,12 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	/// </remarks>
 	private readonly SemaphoreSlim _unaTandaALaVez = new(1, 1);
 
+	// Se enciende cuando un envío inmediato encontró la tanda ocupada. La tanda lo mira al
+	// terminar su recorrido y, si está encendido, vuelve a leer la cola: el registro que llegó
+	// a media tanda sale en esta misma sincronización y no en «la siguiente», que con señal
+	// estable podía no ocurrir hasta que alguien tocara el botón.
+	private int _llegoAlgoDuranteLaTanda;
+
 	public SincronizarIncidencias(
 		ISyncQueueService cola,
 		IIncidenciasJacobClient jacob,
@@ -127,18 +133,47 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 				cancelacion);
 		}
 
-		var enviables = await _cola.ObtenerEnviablesAsync(cancelacion);
-
 		// El catálogo se lee una vez por sincronización, no por registro: una consulta por
 		// incidencia sobre una cola larga es gasto puro, y a media tanda no va a cambiar.
 		var catalogos = await _catalogo.ObtenerAsync(cancelacion);
 
-		var confirmados = 0;
-		var intentados = 0;
-		var enEspera = 0;
-		var porCorregir = 0;
-		ResultadoEnvio? ultimoRechazo = null;
+		Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0);
+		var cuenta = new CuentaDeTanda();
 
+		// Dos pasadas como mucho: la segunda solo si un envío inmediato encontró la tanda
+		// ocupada. Lo que llegue durante la segunda espera a la siguiente sincronización, que
+		// es el mismo trato de siempre; el tope es lo que impide que una captura tras otra
+		// mantenga la tanda corriendo sin fin.
+		for (var pasada = 0; pasada < 2; pasada++)
+		{
+			var enviables = await _cola.ObtenerEnviablesAsync(cancelacion);
+			await RecorrerAsync(enviables, catalogos, token, cuenta, cancelacion);
+
+			if (Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0) == 0)
+			{
+				break;
+			}
+		}
+
+		await _bitacora.RegistrarAsync(
+			NivelAuditoria.Info,
+			$"Sync intentado: {cuenta.Confirmados}/{cuenta.Intentados} registros creados en Incidencias.",
+			cancelacion);
+
+		return new ResultadoSincronizacion(
+			cuenta.Confirmados, cuenta.Intentados, null,
+			cuenta.UltimoRechazo?.Familia, cuenta.UltimoRechazo?.Mensaje,
+			cuenta.EnEspera, cuenta.PorCorregir);
+	}
+
+	/// <summary>Recorre una lista de enviables acumulando lo que pasó con cada uno.</summary>
+	private async Task RecorrerAsync(
+		IReadOnlyList<IncidenciaEnviable> enviables,
+		CatalogosOperacion catalogos,
+		string token,
+		CuentaDeTanda cuenta,
+		CancellationToken cancelacion)
+	{
 		foreach (var incidencia in enviables)
 		{
 			cancelacion.ThrowIfCancellationRequested();
@@ -149,17 +184,17 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 				// corrección» son cosas distintas para quien está mirando la cola.
 				if (CodigosErrorJacob.EsFuncional(incidencia.UltimoErrorCodigo))
 				{
-					porCorregir++;
+					cuenta.PorCorregir++;
 				}
 				else
 				{
-					enEspera++;
+					cuenta.EnEspera++;
 				}
 
 				continue;
 			}
 
-			intentados++;
+			cuenta.Intentados++;
 
 			// Cada registro es su propia unidad: se marca, se envía y se resuelve antes de
 			// pasar al siguiente (CA 12). Así una falla no arrastra a las demás (CA 13).
@@ -167,23 +202,23 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			if (envio is { Exito: true })
 			{
-				confirmados++;
+				cuenta.Confirmados++;
 			}
 			else if (envio is not null)
 			{
-				ultimoRechazo = envio;
+				cuenta.UltimoRechazo = envio;
 			}
 		}
+	}
 
-		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
-			$"Sync intentado: {confirmados}/{intentados} registros creados en Incidencias.",
-			cancelacion);
-
-		return new ResultadoSincronizacion(
-			confirmados, intentados, null,
-			ultimoRechazo?.Familia, ultimoRechazo?.Mensaje,
-			enEspera, porCorregir);
+	/// <summary>Lo que va contando una tanda mientras recorre la cola.</summary>
+	private sealed class CuentaDeTanda
+	{
+		public int Confirmados;
+		public int Intentados;
+		public int EnEspera;
+		public int PorCorregir;
+		public ResultadoEnvio? UltimoRechazo;
 	}
 
 	/// <inheritdoc />
@@ -196,8 +231,10 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		// Con dos cerrojos distintos, los dos caminos escribirían su estado a la vez.
 		if (!await _unaTandaALaVez.WaitAsync(0, cancelacion))
 		{
-			// Se queda como Pendiente y sale en la tanda que ya corre o en la siguiente. Para el
+			// Se queda como Pendiente y se le avisa a la tanda que corre, que al terminar su
+			// recorrido vuelve a leer la cola y lo saca en esta misma sincronización. Para el
 			// operador es lo mismo que no haber tenido enlace: guardada y en camino.
+			Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 1);
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
 		}
 

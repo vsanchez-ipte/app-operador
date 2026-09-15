@@ -490,6 +490,42 @@ public sealed class SincronizarIncidenciasTests
 		await tanda;
 	}
 
+	[Fact]
+	public async Task LoQueLlegaAMediaTanda_saleEnLaMismaSincronizacion()
+	{
+		// Antes se le decía al operador «se enviará con la sincronización en curso» y era
+		// falso: la tanda ya había leído la cola y, con señal estable, nada volvía a disparar.
+		// Ahora la tanda, al terminar su recorrido, vuelve a leer la cola si un envío inmediato
+		// la encontró ocupada.
+		_cola.Encolar(Pendiente("uuid-1"));
+		_jacob.Pausa = new TaskCompletionSource();
+
+		var sincronizador = Crear();
+		var tanda = sincronizador.EjecutarAsync();
+		await _jacob.LlegoLaPrimera.Task;
+
+		// Llega una captura nueva mientras la primera está en el aire.
+		_cola.Encolar(Pendiente("uuid-2"));
+		var inmediato = await sincronizador.EnviarUnaAsync("LOC-000001");
+		Assert.Equal(MotivoNoSincroniza.YaEnCurso, inmediato.MotivoBloqueo);
+
+		_jacob.Pausa.SetResult();
+		var resultado = await tanda;
+
+		Assert.Equal(2, resultado.Confirmados);
+		Assert.Equal(["uuid-1", "uuid-2"], _jacob.Recibidos.Select(r => r.Uuid).ToArray());
+	}
+
+	[Fact]
+	public async Task SinNadaNuevoAMediaTanda_noHaySegundaPasada()
+	{
+		_cola.Encolar(Pendiente("uuid-1"));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(1, _cola.LecturasDeEnviables);
+	}
+
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
 	private static ResultadoEnvio Aceptada(string folio) =>
@@ -511,8 +547,22 @@ public sealed class SincronizarIncidenciasTests
 
 		public void Encolar(params IncidenciaEnviable[] incidencias) => _enviables.AddRange(incidencias);
 
-		public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(CancellationToken c = default) =>
-			Task.FromResult<IReadOnlyList<IncidenciaEnviable>>(_enviables);
+		/// <summary>Cuántas veces la tanda leyó la cola; sirve para comprobar la segunda pasada.</summary>
+		public int LecturasDeEnviables { get; private set; }
+
+		// Copia, y sin lo que ya quedó Sincronizado: la tanda recorre la lista mientras una
+		// captura nueva puede encolar, y una segunda pasada no debe volver a mandar lo que la
+		// primera ya confirmó.
+		public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(CancellationToken c = default)
+		{
+			LecturasDeEnviables++;
+			var sincronizados = Actualizaciones
+				.Where(a => a.Estado == EstadoSincronizacion.Sincronizado)
+				.Select(a => a.Uuid)
+				.ToHashSet();
+			return Task.FromResult<IReadOnlyList<IncidenciaEnviable>>(
+				_enviables.Where(i => !sincronizados.Contains(i.Uuid)).ToList());
+		}
 
 		public Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
 			string claveLocal, CancellationToken c = default) =>
