@@ -74,7 +74,10 @@ internal sealed class EventoAuditoriaLocal
 	[Column("sesion_id")]
 	public string? SesionId { get; set; }
 
-	/// <summary>Si había enlace con el CCO. Ver <c>OrigenAuditoria</c>.</summary>
+	/// <summary>
+	/// Si había enlace con el CCO. Ver <c>OrigenAuditoria</c>. Nulo solo en las filas anteriores
+	/// al esquema 10, que es como se reconocen: la migración deja las columnas nuevas en NULL.
+	/// </summary>
 	[Column("origen")]
-	public int Origen { get; set; }
+	public int? Origen { get; set; }
 }

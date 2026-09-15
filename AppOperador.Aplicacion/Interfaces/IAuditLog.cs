@@ -48,4 +48,16 @@ public interface IAuditLog
 		string? motivoCodigo = null,
 		string? operador = null,
 		CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Pone a nombre de <paramref name="operador"/> las líneas que se escribieron a nombre de
+	/// <paramref name="alias"/> cuando aún no había sesión.
+	/// </summary>
+	/// <remarks>
+	/// El acceso escribe a nombre del correo tecleado porque es lo único que sabe; Jacob
+	/// contesta después con el nombre del operador, que es el que lleva la sesión y por el que
+	/// se filtra el perfil. Sin esto, «credenciales validadas» y los intentos fallidos previos
+	/// del mismo correo quedarían guardados pero invisibles para su dueño.
+	/// </remarks>
+	Task AtribuirAsync(string alias, string operador, CancellationToken cancelacion = default);
 }

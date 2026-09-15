@@ -113,6 +113,24 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	/// </summary>
 	public BaseDatosLocal ReabrirBaseDatos() => new(_ruta);
 
+	/// <summary>
+	/// Ejecuta SQL directo sobre el archivo, para preparar filas que la app ya no escribe
+	/// —por ejemplo, las de un esquema anterior—.
+	/// </summary>
+	public async Task EjecutarSqlAsync(string sql, params object[] args)
+	{
+		var conexion = new SQLite.SQLiteAsyncConnection(
+			new SQLite.SQLiteConnectionString(_ruta, storeDateTimeAsTicks: true));
+		try
+		{
+			await conexion.ExecuteAsync(sql, args);
+		}
+		finally
+		{
+			await conexion.CloseAsync();
+		}
+	}
+
 	public async ValueTask DisposeAsync()
 	{
 		await BaseDatos.DisposeAsync();

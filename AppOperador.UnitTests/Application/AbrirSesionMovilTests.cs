@@ -269,6 +269,22 @@ public class AbrirSesionMovilTests
 	}
 
 	[Fact]
+	public async Task Abrir_ConExito_PoneANombreDelOperadorLoQueSeAnotoConElCorreo()
+	{
+		// Las líneas del acceso se escribieron a nombre del correo; el perfil se filtra por el
+		// nombre que Jacob devuelve. Sin esto quedarían guardadas pero invisibles para su dueño.
+		ConDesafioEmitido();
+		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await casoDeUso.AbrirAsync(Unidad);
+
+		await _bitacora.Received(1).AtribuirAsync("op@ipte.com.mx", "Juan Pérez", Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
 	public async Task Abrir_ConRechazo_LoAnotaConElCodigo()
 	{
 		ConDesafioEmitido();

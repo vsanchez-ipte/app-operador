@@ -150,6 +150,14 @@ public sealed class AbrirSesionMovil
 
 		await RegistrarAsync(resultado.Sesion!, cancelacion);
 
+		// Lo que se escribió a nombre del correo —las credenciales validadas y los intentos
+		// fallidos previos— pasa a nombre del operador que Jacob confirmó, que es por el que se
+		// filtra el perfil. Sin esto quedaría guardado pero invisible para su dueño.
+		if (_emailEnCurso is not null)
+		{
+			await _bitacora.AtribuirAsync(_emailEnCurso, resultado.Sesion!.Operador, cancelacion);
+		}
+
 		// Ya con la sesión guardada: las dos líneas salen a nombre del operador que Jacob
 		// confirmó, no del correo tecleado.
 		await _bitacora.RegistrarAsync(

@@ -147,16 +147,17 @@ public sealed class RevalidarSesionMovil
 		ResultadoRevalidacion resultado,
 		CancellationToken cancelacion)
 	{
+		// La línea se escribe antes de revocar, para que lleve la sesión que se está cerrando.
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Rechazo,
+			"Sesión negada por Jacob CCO al revalidar. Los registros pendientes se conservan.",
+			motivoCodigo: resultado.CodigoError, cancelacion: cancelacion);
+
 		await _custodia.RevocarAsync(cancelacion);
 
 		// Para que la pantalla de acceso pueda decir por qué se cerró la sesión, en vez de
 		// aparecer en blanco (JTT-1383 CA 11: «solicita autenticación»).
 		_aviso.Registrar(resultado.Motivo ?? MotivoRechazoAcceso.SesionRevocada);
-
-		await _bitacora.RegistrarAsync(
-			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Rechazo,
-			"Sesión negada por Jacob CCO al revalidar. Los registros pendientes se conservan.",
-			motivoCodigo: resultado.CodigoError, cancelacion: cancelacion);
 
 		return resultado;
 	}

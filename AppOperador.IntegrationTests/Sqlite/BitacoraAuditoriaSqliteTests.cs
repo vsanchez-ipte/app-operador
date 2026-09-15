@@ -102,22 +102,49 @@ public sealed class BitacoraAuditoriaSqliteTests
 	}
 
 	[Fact]
-	public async Task ObtenerEventos_devuelveSoloLoDelOperadorConSesion_yLoAnteriorSinOperador()
+	public async Task ObtenerEventos_devuelveSoloLoDelOperadorConSesion_yLoAnteriorAlEsquema10()
 	{
 		// El Perfil es del operador (D3). Lo del turno anterior sigue guardado, pero no se le
-		// muestra; lo que se escribió antes del esquema 10 no tiene operador y se muestra a todos.
+		// muestra. Lo escrito antes del esquema 10 —sin operador y sin origen— se muestra a
+		// todos como historial previo; una línea nueva que llegue sin operador, a nadie: se
+		// distingue de las viejas porque sí tiene origen.
 		await using var contexto = new ContextoSqlite();
 		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "de admin");
 
 		var otro = new SesionFija("otro");
 		await contexto.CrearBitacoraDe(otro).RegistrarAsync(NivelAuditoria.Info, "de otro");
-		await contexto.CrearBitacoraDe(new SesionSinNadie()).RegistrarAsync(NivelAuditoria.Info, "historial previo");
+		await contexto.CrearBitacoraDe(new SesionSinNadie()).RegistrarAsync(NivelAuditoria.Info, "nueva sin operador");
+
+		// Una fila como las que dejó el esquema anterior: solo instante, nivel y mensaje.
+		await contexto.EjecutarSqlAsync(
+			"INSERT INTO evento_auditoria (instante_utc_ticks, nivel, mensaje) VALUES (?, ?, ?)",
+			contexto.Reloj.UtcAhora.Ticks, (int)NivelAuditoria.Info, "historial previo");
 
 		var deAdmin = (await contexto.Bitacora.ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
 		var deOtro = (await contexto.CrearBitacoraDe(otro).ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
 
 		Assert.Equal(["historial previo", "de admin"], deAdmin);
 		Assert.Equal(["historial previo", "de otro"], deOtro);
+	}
+
+	[Fact]
+	public async Task Atribuir_poneANombreDelOperadorLoQueSeEscribioANombreDelCorreo()
+	{
+		// El acceso escribe a nombre del correo porque es lo único que sabe; al abrir la sesión,
+		// Jacob contesta con el nombre, que es por el que se filtra el perfil.
+		await using var contexto = new ContextoSqlite();
+		var sinSesion = contexto.CrearBitacoraDe(new SesionSinNadie());
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, "primer intento", operador: "op@ipte.com.mx");
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito, "credenciales validadas", operador: "op@ipte.com.mx");
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, "de otro correo", operador: "otra@ipte.com.mx");
+
+		await contexto.Bitacora.AtribuirAsync("op@ipte.com.mx", contexto.Sesion.Actual!.Operador);
+
+		var mensajes = (await contexto.Bitacora.ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
+		Assert.Equal(["credenciales validadas", "primer intento"], mensajes);
 	}
 
 	[Fact]

@@ -204,6 +204,9 @@ public sealed class SincronizacionAutomaticaTests
 			return Task.CompletedTask;
 		}
 
+		public Task AtribuirAsync(string alias, string operador, CancellationToken c = default) =>
+			Task.CompletedTask;
+
 		public Task RegistrarAsync(
 			OperacionAuditada operacion, ResultadoAuditoria resultado, string mensaje,
 			string? motivoCodigo = null, string? operador = null, CancellationToken c = default) =>

@@ -22,8 +22,10 @@ namespace AppOperador.Infrastructure.Sqlite;
 /// ordenar y se guarda solo como sello, igual que en las incidencias—.
 /// </para>
 /// <para>
-/// <b>Se lee lo del operador con sesión</b> más las líneas sin operador —las anteriores a la
-/// versión 10 del esquema—, que se muestran como historial previo. Sin sesión no se lee nada.
+/// <b>Se lee lo del operador con sesión</b> más las líneas anteriores a la versión 10 del
+/// esquema —sin operador y sin origen—, que se muestran como historial previo. Una línea nueva
+/// que llegara sin operador no se le muestra a nadie: se distingue de las viejas porque sí
+/// tiene origen. Sin sesión no se lee nada.
 /// </para>
 /// </remarks>
 public sealed class BitacoraAuditoriaSqlite : IAuditLog
@@ -59,12 +61,16 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			return [];
 		}
 
+		// «operador IS NULL AND origen IS NULL» es lo que reconoce una fila anterior al esquema
+		// 10: la migración deja las columnas nuevas en NULL, y una fila nueva sin operador sí
+		// trae origen. En SQL explícito porque la LINQ de sqlite-net no traduce bien un
+		// «== null» dentro de un OR.
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
-		var filas = await conexion.Table<EventoAuditoriaLocal>()
-			.Where(e => e.Operador == operador || e.Operador == null)
-			.OrderByDescending(e => e.Id)
-			.Take(EventosMaximos)
-			.ToListAsync();
+		var filas = await conexion.QueryAsync<EventoAuditoriaLocal>(
+			"SELECT * FROM evento_auditoria " +
+			"WHERE operador = ? OR (operador IS NULL AND origen IS NULL) " +
+			"ORDER BY id DESC LIMIT ?",
+			operador, EventosMaximos);
 
 		return filas.Select(Convertir).ToList();
 	}
@@ -109,13 +115,28 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			// Con sesión manda la sesión; sin ella —el acceso— vale lo que diga quien registra.
 			Operador = sesion?.Operador ?? operadorSinSesion,
 			Rol = sesion?.Rol,
-			Permiso = sesion?.Permisos.FirstOrDefault(),
+			// Todos los permisos de la sesión, no uno elegido al azar: cuál aplica depende de la
+			// operación, y guardar la lista completa no obliga a adivinarlo.
+			Permiso = sesion is null ? null : string.Join(",", sesion.Permisos),
 			UnidadClave = sesion?.UnidadVehicular,
 			SesionId = sesion?.SessionId,
 			Origen = (int)(_conectividad.HayEnlace ? OrigenAuditoria.Online : OrigenAuditoria.Offline),
 		});
 
 		await RecortarAsync(conexion);
+	}
+
+	/// <inheritdoc />
+	public async Task AtribuirAsync(string alias, string operador, CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(operador) || alias == operador)
+		{
+			return;
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		await conexion.ExecuteAsync(
+			"UPDATE evento_auditoria SET operador = ? WHERE operador = ?", operador, alias);
 	}
 
 	private static EventoAuditoria Convertir(EventoAuditoriaLocal fila) => new(
@@ -132,7 +153,7 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		fila.Permiso,
 		fila.UnidadClave,
 		fila.SesionId,
-		(OrigenAuditoria)fila.Origen,
+		(OrigenAuditoria)(fila.Origen ?? (int)OrigenAuditoria.Desconocido),
 		fila.MonotonicoTicks);
 
 	/// <summary>

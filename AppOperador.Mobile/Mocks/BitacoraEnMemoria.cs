@@ -38,6 +38,9 @@ public sealed class BitacoraEnMemoria : IAuditLog
 		return Task.CompletedTask;
 	}
 
+	public Task AtribuirAsync(string alias, string operador, CancellationToken cancelacion = default) =>
+		Task.CompletedTask;
+
 	public Task RegistrarAsync(
 		OperacionAuditada operacion, ResultadoAuditoria resultado, string mensaje,
 		string? motivoCodigo = null, string? operador = null, CancellationToken cancelacion = default) =>
