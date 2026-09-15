@@ -17,6 +17,15 @@ public sealed class EventoAuditoriaVista
 		HoraLocal = evento.InstanteUtc.ToLocalTime().ToString("HH:mm:ss");
 		Mensaje = evento.Mensaje;
 
+		// Desde dónde ocurrió (JTT-1392 CA 1): con enlace, sin enlace, o nada si la línea es
+		// anterior a que se registrara.
+		TextoOrigen = evento.Origen switch
+		{
+			OrigenAuditoria.Online => "en línea",
+			OrigenAuditoria.Offline => "sin enlace",
+			_ => string.Empty,
+		};
+
 		(TextoNivel, ColorFondoNivel, ColorTextoNivel) = evento.Nivel switch
 		{
 			NivelAuditoria.Advertencia => ("WARN", "#FBE9C8", "#8A6100"),
@@ -26,6 +35,10 @@ public sealed class EventoAuditoriaVista
 
 	/// <summary>Hora local del evento, como la presenta la maqueta.</summary>
 	public string HoraLocal { get; }
+
+	public string TextoOrigen { get; }
+
+	public bool HayOrigen => TextoOrigen.Length > 0;
 
 	public string Mensaje { get; }
 

@@ -723,6 +723,13 @@ public sealed class SincronizarIncidenciasTests
 		public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken c = default) =>
 			Task.CompletedTask;
 
+		public Task RegistrarAsync(
+			OperacionAuditada operacion, ResultadoAuditoria resultado, string mensaje,
+			string? motivoCodigo = null, string? operador = null, CancellationToken c = default) =>
+			RegistrarAsync(
+				resultado == ResultadoAuditoria.Rechazo ? NivelAuditoria.Advertencia : NivelAuditoria.Info,
+				mensaje, c);
+
 		public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<EventoAuditoria>>([]);
 	}

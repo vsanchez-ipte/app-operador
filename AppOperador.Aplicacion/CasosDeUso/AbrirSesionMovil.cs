@@ -48,14 +48,22 @@ public sealed class AbrirSesionMovil
 		CustodiaSesionLocal custodia,
 		DatosDeInstalacion instalacion,
 		IMonotonicClock monotonico,
+		IAuditLog bitacora,
 		ActualizarCatalogoLocal? catalogos = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
 		_instalacion = instalacion;
 		_monotonico = monotonico;
+		_bitacora = bitacora;
 		_catalogos = catalogos;
 	}
+
+	private readonly IAuditLog _bitacora;
+
+	// Con quién se está intentando entrar. Todavía no hay sesión que lo diga, y la bitácora
+	// necesita a quién atribuirle el intento (JTT-1392 CA 1 y 2).
+	private string? _emailEnCurso;
 
 	/// <summary>
 	/// Paso 1: valida credenciales y retiene el desafío para el paso 2.
@@ -77,8 +85,26 @@ public sealed class AbrirSesionMovil
 	{
 		var resultado = await _jacob.PreautenticarAsync(email, contrasena, cancelacion);
 		_desafio = resultado.Exitoso ? resultado.ChallengeId : null;
+		_emailEnCurso = email;
 
 		await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
+
+		// Inicio exitoso, intento fallido y falta de permiso son tres de las operaciones que
+		// JTT-1392 CA 2 pide auditar, y hasta aquí el acceso real no dejaba ninguna línea.
+		if (resultado.Exitoso)
+		{
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito,
+				$"Credenciales validadas por Jacob CCO para {email}.",
+				operador: email, cancelacion: cancelacion);
+		}
+		else
+		{
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo,
+				$"Acceso denegado para {email}: {resultado.Motivo}.",
+				motivoCodigo: resultado.CodigoError, operador: email, cancelacion: cancelacion);
+		}
 
 		return resultado;
 	}
@@ -115,10 +141,24 @@ public sealed class AbrirSesionMovil
 			// El permiso se revalida al crear la sesión, no solo al preautenticar: puede
 			// retirarse entre un paso y el otro.
 			await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.CreacionSesion, ResultadoAuditoria.Rechazo,
+				$"Jacob CCO no abrió la sesión con la unidad {unidad.Clave}: {resultado.Motivo}.",
+				motivoCodigo: resultado.CodigoError, operador: _emailEnCurso, cancelacion: cancelacion);
 			return resultado;
 		}
 
 		await RegistrarAsync(resultado.Sesion!, cancelacion);
+
+		// Ya con la sesión guardada: las dos líneas salen a nombre del operador que Jacob
+		// confirmó, no del correo tecleado.
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.SeleccionUnidad, ResultadoAuditoria.Exito,
+			$"Unidad {unidad.Clave} seleccionada.", cancelacion: cancelacion);
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Exito,
+			"Sesión abierta con Jacob CCO.", cancelacion: cancelacion);
+
 		return resultado;
 	}
 

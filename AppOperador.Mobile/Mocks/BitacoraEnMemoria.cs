@@ -37,4 +37,11 @@ public sealed class BitacoraEnMemoria : IAuditLog
 
 		return Task.CompletedTask;
 	}
+
+	public Task RegistrarAsync(
+		OperacionAuditada operacion, ResultadoAuditoria resultado, string mensaje,
+		string? motivoCodigo = null, string? operador = null, CancellationToken cancelacion = default) =>
+		RegistrarAsync(
+			resultado == ResultadoAuditoria.Rechazo ? NivelAuditoria.Advertencia : NivelAuditoria.Info,
+			mensaje, cancelacion);
 }

@@ -151,16 +151,21 @@
                             <DataTemplate x:DataType="vm:EventoAuditoriaVista">
                                 <Border Style="{StaticResource TarjetaInterna}">
                                     <VerticalStackLayout Spacing="2">
-                                        <Grid ColumnDefinitions="*,Auto">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                             <!-- Se guarda en UTC y se presenta en hora local (DA-10) -->
                                             <Label Grid.Column="0" Text="{Binding HoraLocal}"
                                                    FontAttributes="Bold" FontSize="13"
                                                    TextColor="{StaticResource TextoTitulo}" />
+                                            <!-- Con o sin enlace al ocurrir (JTT-1392 CA 1) -->
+                                            <Label Grid.Column="1" Text="{Binding TextoOrigen}"
+                                                   Style="{StaticResource TextoSecundario}"
+                                                   IsVisible="{Binding HayOrigen}"
+                                                   VerticalOptions="Center" />
                                             <!--
                                                 BackgroundColor y no Background: al enlazar,
                                                 la cadena se convierte a Color pero no a brocha.
                                             -->
-                                            <Border Grid.Column="1"
+                                            <Border Grid.Column="2"
                                                     BackgroundColor="{Binding ColorFondoNivel}"
                                                     Stroke="Transparent" StrokeShape="RoundRectangle 4"
                                                     Padding="8,3" VerticalOptions="Center">

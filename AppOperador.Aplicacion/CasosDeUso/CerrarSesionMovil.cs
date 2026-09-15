@@ -59,16 +59,19 @@ public sealed class CerrarSesionMovil
 		// operador de la sesión, que ya no existe, y siempre daría cero.
 		var pendientes = await ContarPendientesAsync(cancelacion);
 
+		// Se toma antes de revocar: después ya no hay sesión que diga de quién era la línea.
+		var operador = _custodia.Actual?.Operador;
+
 		var avisado = await AvisarAJacobAsync(cancelacion);
 
 		await _custodia.RevocarAsync(cancelacion);
 
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
+			OperacionAuditada.CierreSesion, ResultadoAuditoria.Exito,
 			avisado
 				? $"Sesión cerrada por el operador. Pendientes conservados: {pendientes}."
 				: $"Sesión cerrada sin conexión. Pendientes conservados: {pendientes}.",
-			cancelacion);
+			operador: operador, cancelacion: cancelacion);
 
 		return new ResultadoCierreSesion(avisado, pendientes);
 	}

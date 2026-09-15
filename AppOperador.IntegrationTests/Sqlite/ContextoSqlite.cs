@@ -32,8 +32,19 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		Conectividad = new ConectividadControlada();
 		Sesion = new SesionFija();
 		BaseDatos = new BaseDatosLocal(_ruta);
-		Bitacora = new BitacoraAuditoriaSqlite(BaseDatos, Reloj);
+		Monotonico = new MonotonicoFijo();
+		Bitacora = CrearBitacora(BaseDatos);
 	}
+
+	/// <summary>Bitácora sobre una base dada, con los mismos dobles de reloj, sesión y enlace.</summary>
+	public BitacoraAuditoriaSqlite CrearBitacora(BaseDatosLocal baseDatos) =>
+		new(baseDatos, Reloj, Monotonico, Sesion, Conectividad);
+
+	/// <summary>La misma base, vista desde otra sesión (o desde ninguna).</summary>
+	public BitacoraAuditoriaSqlite CrearBitacoraDe(ISessionStore sesion) =>
+		new(BaseDatos, Reloj, Monotonico, sesion, Conectividad);
+
+	public MonotonicoFijo Monotonico { get; }
 
 	public string Ruta => _ruta;
 
@@ -274,4 +285,9 @@ public sealed class EvidenciasControladas : IEvidenciasJacobClient
 			: ResultadoEnvioEvidencia.Aceptada(
 				new EvidenciaRegistrada(Guid.NewGuid().ToString(), "image/jpeg", "hash", false)));
 	}
+}
+
+public sealed class MonotonicoFijo : IMonotonicClock
+{
+	public TimeSpan Transcurrido { get; set; } = TimeSpan.FromHours(1);
 }

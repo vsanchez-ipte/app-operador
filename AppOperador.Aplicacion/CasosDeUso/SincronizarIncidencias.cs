@@ -154,9 +154,9 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		if (recuperados > 0)
 		{
 			await _bitacora.RegistrarAsync(
-				NivelAuditoria.Advertencia,
+				OperacionAuditada.RecuperacionPendientes, ResultadoAuditoria.Exito,
 				$"Se recuperaron {recuperados} envíos interrumpidos que quedaron en Enviando.",
-				cancelacion);
+				cancelacion: cancelacion);
 		}
 
 		// El catálogo se lee una vez por sincronización, no por registro: una consulta por
@@ -182,9 +182,9 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		}
 
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
+			OperacionAuditada.Sincronizacion, ResultadoAuditoria.Exito,
 			$"Sync intentado: {cuenta.Confirmados}/{cuenta.Intentados} registros creados en Incidencias.",
-			cancelacion);
+			cancelacion: cancelacion);
 
 		return new ResultadoSincronizacion(
 			cuenta.Confirmados, cuenta.Intentados, null,

@@ -126,9 +126,9 @@ public sealed class RevalidarSesionMovil
 		}
 
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
+			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Exito,
 			"Sesión revalidada con Jacob CCO. Ventana offline renovada.",
-			cancelacion);
+			cancelacion: cancelacion);
 
 		await SincronizarAsync(cancelacion);
 
@@ -154,10 +154,9 @@ public sealed class RevalidarSesionMovil
 		_aviso.Registrar(resultado.Motivo ?? MotivoRechazoAcceso.SesionRevocada);
 
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Advertencia,
-			$"Sesión negada por Jacob CCO al revalidar ({resultado.CodigoError ?? "sin código"}). " +
-			"Los registros pendientes se conservan.",
-			cancelacion);
+			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Rechazo,
+			"Sesión negada por Jacob CCO al revalidar. Los registros pendientes se conservan.",
+			motivoCodigo: resultado.CodigoError, cancelacion: cancelacion);
 
 		return resultado;
 	}
