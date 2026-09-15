@@ -173,12 +173,16 @@ public sealed partial class ColaViewModel : ObservableObject
 	/// </remarks>
 	private async void AlTocarRevisarReintentos(object? origen, EventArgs argumentos)
 	{
-		if (Ocupado || !HayAlgoQueIntentar())
+		// No enciende Ocupado: el sondeo puede tardar lo que dure el tiempo de espera del
+		// cliente, y con Jacob caído dejaría el botón apagado casi todo el tiempo. Si el
+		// operador toca «Sincronizar ahora» mientras tanto, el cerrojo del sincronizador
+		// atiende a uno y le dice al otro que ya está en marcha.
+		if (_revisandoReintentos || Ocupado || !HayAlgoQueIntentar())
 		{
 			return;
 		}
 
-		Ocupado = true;
+		_revisandoReintentos = true;
 		try
 		{
 			// Se pregunta de nuevo por el enlace en vez de leer el estado guardado. Cuando lo
@@ -196,7 +200,7 @@ public sealed partial class ColaViewModel : ObservableObject
 				// que en la base ya terminó: la pantalla solo se repinta cuando termina una
 				// tanda, y la del registro recién capturado no pasa por aquí. Sin esto, una
 				// tarjeta se queda en ENVIANDO a la vista aunque el estado guardado sea otro.
-				await ActualizarAsync();
+				await RefrescarAsync();
 				return;
 			}
 
@@ -209,7 +213,7 @@ public sealed partial class ColaViewModel : ObservableObject
 				MensajeSincronizacion = TextoDe(resultado);
 			}
 
-			await ActualizarAsync();
+			await RefrescarAsync();
 		}
 		catch (Exception)
 		{
@@ -219,9 +223,12 @@ public sealed partial class ColaViewModel : ObservableObject
 		}
 		finally
 		{
-			Ocupado = false;
+			_revisandoReintentos = false;
 		}
 	}
+
+	// Evita que dos vueltas del reloj se encimen; no es Ocupado a propósito, ver arriba.
+	private bool _revisandoReintentos;
 
 	/// <summary>
 	/// Indica si algún registro de la lista tiene un envío que toca ahora.
@@ -280,7 +287,15 @@ public sealed partial class ColaViewModel : ObservableObject
 				MensajeSincronizacion = TextoDe(resultado);
 			}
 
-			await ActualizarAsync();
+			try
+			{
+				await RefrescarAsync();
+			}
+			catch (Exception)
+			{
+				// Es un async void sobre el hilo principal: lo que escape de aquí tira la app.
+				// La lista se queda como estaba y el operador conserva el botón.
+			}
 		});
 	}
 
@@ -364,7 +379,7 @@ public sealed partial class ColaViewModel : ObservableObject
 		Cargando = true;
 		try
 		{
-			await ActualizarCargandoAsync();
+			await RefrescarAsync();
 		}
 		finally
 		{
@@ -372,23 +387,32 @@ public sealed partial class ColaViewModel : ObservableObject
 		}
 	}
 
-	private async Task ActualizarCargandoAsync()
+	/// <summary>Vuelve a leer la cola y sustituye la lista de una vez.</summary>
+	/// <remarks>
+	/// Se lee primero y se sustituye después, sin ningún <c>await</c> entre vaciar y llenar: el
+	/// reloj, el envío automático y la página pueden pedir el refresco casi a la vez, y con un
+	/// vaciado seguido de una espera dos refrescos encimados dejaban cada tarjeta dos veces.
+	/// </remarks>
+	private async Task RefrescarAsync()
 	{
-		Registros.Clear();
-
 		if (!PuedeConsultar)
 		{
+			Registros.Clear();
 			Pendientes = 0;
 			NotificarAutorizacion();
 			return;
 		}
 
-		foreach (var registro in await _cola.ObtenerRegistrosAsync())
+		var registros = await _cola.ObtenerRegistrosAsync();
+		var pendientes = await _cola.ContarPendientesAsync();
+
+		Registros.Clear();
+		foreach (var registro in registros)
 		{
 			Registros.Add(new RegistroColaVista(registro));
 		}
 
-		Pendientes = await _cola.ContarPendientesAsync();
+		Pendientes = pendientes;
 		OnPropertyChanged(nameof(HayRegistros));
 		NotificarAutorizacion();
 	}
@@ -425,7 +449,7 @@ public sealed partial class ColaViewModel : ObservableObject
 
 			var resultado = await _sincronizador.EjecutarAsync();
 			MensajeSincronizacion = TextoDe(resultado);
-			await ActualizarAsync();
+			await RefrescarAsync();
 		}
 		finally
 		{

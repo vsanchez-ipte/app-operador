@@ -1323,7 +1323,9 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			{
 				DesenlaceSeleccion.NoSePudoAbrir => MensajeNoSePudoAbrir(origen),
 				DesenlaceSeleccion.PermisoBloqueado => MensajePermisoBloqueado,
-				_ => MensajeError,
+				// Si el aviso anterior era el de permiso bloqueado, se retira: hablaba de un
+				// botón de configuración que ya no se va a mostrar.
+				_ => OfreceAjustesDeCamara ? null : MensajeError,
 			};
 
 			// La salida solo se ofrece cuando de verdad hace falta: mientras el sistema siga
