@@ -517,6 +517,28 @@ public sealed class SincronizarIncidenciasTests
 	}
 
 	[Fact]
+	public async Task LoQueLlegaMientrasOtroEnvioInmediatoTieneElCerrojo_tambienSale()
+	{
+		// Quien tenía el cerrojo no era una tanda sino otro envío inmediato: al soltarlo, corre
+		// una tanda para cumplir lo prometido a la captura que llegó mientras tanto.
+		_cola.Encolar(Pendiente("uuid-1"));
+		_jacob.Pausa = new TaskCompletionSource();
+
+		var sincronizador = Crear();
+		var primero = sincronizador.EnviarUnaAsync("LOC-000001");
+		await _jacob.LlegoLaPrimera.Task;
+
+		_cola.Encolar(Pendiente("uuid-2") with { ClaveLocal = "LOC-000002" });
+		var segundo = await sincronizador.EnviarUnaAsync("LOC-000002");
+		Assert.Equal(MotivoNoSincroniza.YaEnCurso, segundo.MotivoBloqueo);
+
+		_jacob.Pausa.SetResult();
+		await primero;
+
+		Assert.Equal(["uuid-1", "uuid-2"], _jacob.Recibidos.Select(r => r.Uuid).ToArray());
+	}
+
+	[Fact]
 	public async Task SinNadaNuevoAMediaTanda_noHaySegundaPasada()
 	{
 		_cola.Encolar(Pendiente("uuid-1"));

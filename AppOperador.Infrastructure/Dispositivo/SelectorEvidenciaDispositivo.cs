@@ -101,19 +101,25 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 			}
 
 			var descritos = new List<ArchivoElegido>(resultados.Count);
+			var ilegibles = 0;
 			foreach (var resultado in resultados)
 			{
 				var descrito = await DescribirAsync(resultado, origen, cancelacion);
-				if (descrito is not null)
+				if (descrito is null)
 				{
-					descritos.Add(descrito);
+					ilegibles++;
+					continue;
 				}
+
+				descritos.Add(descrito);
 			}
 
-			// El sistema entregó archivos que no se pueden leer. No es del operador.
+			// El sistema entregó archivos que no se pueden leer. No es del operador. Si fue
+			// alguno de varios, los demás siguen y se dice cuántos se quedaron fuera: callarlo
+			// dejaría al operador contando tres fotos donde adjuntó dos.
 			return descritos.Count == 0
 				? SeleccionEvidencia.NoDisponible
-				: SeleccionEvidencia.Elegidos(descritos);
+				: SeleccionEvidencia.Elegidos(descritos, ilegibles);
 		}
 		catch (PermissionException)
 		{

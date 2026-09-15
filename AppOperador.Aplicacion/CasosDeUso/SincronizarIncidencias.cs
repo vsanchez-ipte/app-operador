@@ -96,14 +96,40 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
 		}
 
+		ResultadoSincronizacion resultado;
 		try
 		{
-			return await EjecutarTandaAsync(cancelacion);
+			resultado = await EjecutarTandaAsync(cancelacion);
 		}
 		finally
 		{
 			_unaTandaALaVez.Release();
 		}
+
+		// La señal de «llegó algo» pudo encenderse después de la última lectura de la tanda y
+		// antes de soltar el cerrojo, o mientras el cerrojo lo tenía un envío inmediato. Se
+		// mira una vez más ya sin el cerrojo: si está encendida, corre otra tanda entera —que
+		// vuelve a tomarlo— y lo que salga se suma. Es una sola vez: lo que llegue durante esa
+		// tanda tiene su propia segunda pasada, y lo que llegue después ya es otro disparo.
+		if (Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0) == 1
+			&& await _unaTandaALaVez.WaitAsync(0, cancelacion))
+		{
+			try
+			{
+				var extra = await EjecutarTandaAsync(cancelacion);
+				resultado = resultado with
+				{
+					Confirmados = resultado.Confirmados + extra.Confirmados,
+					Intentados = resultado.Intentados + extra.Intentados,
+				};
+			}
+			finally
+			{
+				_unaTandaALaVez.Release();
+			}
+		}
+
+		return resultado;
 	}
 
 	/// <summary>Recorre la cola. Ya con la exclusión tomada.</summary>
@@ -238,14 +264,25 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
 		}
 
+		ResultadoSincronizacion resultado;
 		try
 		{
-			return await EnviarSoloEsaAsync(claveLocal, cancelacion);
+			resultado = await EnviarSoloEsaAsync(claveLocal, cancelacion);
 		}
 		finally
 		{
 			_unaTandaALaVez.Release();
 		}
+
+		// Si otra captura llegó mientras este envío tenía el cerrojo, se le prometió que saldría
+		// con «la sincronización en curso»: se corre una tanda para cumplirlo. Su resultado no
+		// es el de este envío —se asienta en la bitácora y en los estados de la cola—.
+		if (Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0) == 1)
+		{
+			await EjecutarAsync(cancelacion);
+		}
+
+		return resultado;
 	}
 
 	/// <summary>Envía un registro concreto. Ya con la exclusión tomada.</summary>

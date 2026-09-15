@@ -48,7 +48,10 @@ public enum OrigenEvidencia
 /// </remarks>
 /// <param name="Archivos">Lo elegido, en el orden en que se eligió; vacío si no hubo nada.</param>
 /// <param name="Desenlace">Qué ocurrió. Ver <see cref="DesenlaceSeleccion"/>.</param>
-public sealed record SeleccionEvidencia(IReadOnlyList<ArchivoElegido> Archivos, DesenlaceSeleccion Desenlace)
+public sealed record SeleccionEvidencia(
+	IReadOnlyList<ArchivoElegido> Archivos,
+	DesenlaceSeleccion Desenlace,
+	int Ilegibles = 0)
 {
 	/// <summary>El operador cerró el diálogo sin elegir. Respuesta válida: no se avisa.</summary>
 	public static readonly SeleccionEvidencia Cancelada =
@@ -78,8 +81,10 @@ public sealed record SeleccionEvidencia(IReadOnlyList<ArchivoElegido> Archivos, 
 	/// aplica aquí</b>: quien adjunta comprueba cada uno contra el catálogo, y el primero que
 	/// no quepa detiene la tanda con su motivo.
 	/// </remarks>
-	public static SeleccionEvidencia Elegidos(IReadOnlyList<ArchivoElegido> archivos) =>
-		archivos.Count == 0 ? Cancelada : new(archivos, DesenlaceSeleccion.Elegido);
+	/// <param name="archivos">Lo que sí se pudo leer.</param>
+	/// <param name="ilegibles">Cuántos de los marcados no se pudieron leer y se quedaron fuera.</param>
+	public static SeleccionEvidencia Elegidos(IReadOnlyList<ArchivoElegido> archivos, int ilegibles = 0) =>
+		archivos.Count == 0 ? Cancelada : new(archivos, DesenlaceSeleccion.Elegido, ilegibles);
 
 	/// <summary>El primero de los elegidos, o <see langword="null"/> si no se eligió nada.</summary>
 	public ArchivoElegido? Archivo => Archivos.Count > 0 ? Archivos[0] : null;
