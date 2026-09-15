@@ -353,25 +353,37 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		// La capa de carga cubre solo lo local —catálogo, borradores, evidencias: milisegundos—.
 		// El GPS se pide después, con la pantalla ya usable y su propio aviso junto al KM: es
 		// lo único que tarda, y esperarlo con toda la pantalla tapada desesperaba al operador.
+		var claveACorregir = _claveACorregir;
+		_claveACorregir = null;
+
 		Cargando = true;
 		try
 		{
 			await InicializarCargandoAsync();
+
+			// Lo que llegó desde la Cola se repone antes de destapar la pantalla: un formulario
+			// vacío y usable durante unos segundos, que después se rellena solo, es peor que
+			// esperar. Su kilómetro es manual, así que no se pide el GPS.
+			if (claveACorregir is not null)
+			{
+				await AbrirRechazadaAsync(claveACorregir);
+				return;
+			}
 		}
 		finally
 		{
 			Cargando = false;
 		}
 
-		await RecalcularUbicacionAsync();
-
-		// Ahora sí, con la ubicación ya recalculada, se repone lo que llegó desde la Cola.
-		if (_claveACorregir is { } clave)
-		{
-			_claveACorregir = null;
-			await AbrirRechazadaAsync(clave);
-		}
+		RecalcularUbicacionSinEsperar();
 	}
+
+	/// <summary>Pide una lectura al GPS sin detener a quien la pide.</summary>
+	/// <remarks>
+	/// Lo que escape de aquí no tendría quién lo recogiera: el comando de la vista ya captura
+	/// sus fallos por dentro, y lo que puede fallar es la lectura, que se traduce a un aviso.
+	/// </remarks>
+	private void RecalcularUbicacionSinEsperar() => _ = RecalcularUbicacionCommand.ExecuteAsync(null);
 
 	private async Task InicializarCargandoAsync()
 	{
@@ -649,19 +661,13 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			posicionGps: FuenteKilometro == KilometerSource.GPS ? _posicionGps : null);
 
 		LimpiarFormulario();
-
-		// El tipo también, para que el formulario quede como en una captura nueva: si se
-		// quedara, un segundo toque con el GPS activo volvería a guardar el mismo hecho.
-		TipoSeleccionado = null;
-
-		// El kilómetro también se limpia y se vuelve a pedir al GPS. Si se quedaba el manual
-		// anterior, dos toques seguidos de «Guardar» creaban dos incidencias del mismo hecho: el
-		// 14-sep salieron tres seguidas así, con el formulario aparentemente igual.
-		Kilometro = string.Empty;
-		await RecalcularUbicacionAsync();
-
 		await RecargarBorradoresAsync();
 		await IntentarEnviarRecienGuardadaAsync(clave);
+
+		// El kilómetro de la siguiente captura se pide al GPS después de enviar y sin esperar:
+		// la lectura tarda hasta diez segundos y el aviso de «guardada/enviada» no tiene por qué
+		// esperarla. Mientras llega, el campo dice que se está buscando.
+		RecalcularUbicacionSinEsperar();
 	}
 
 	[RelayCommand(CanExecute = nameof(PuedeRegistrar))]
@@ -791,6 +797,10 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 			return;
 		}
 
+		// Un borrador abierto desplaza a cualquier rechazado que estuviera en corrección: los
+		// dos modos no coexisten, y con los dos encendidos el botón diría «Reenviar» y convertiría.
+		RechazadaEnCorreccion = null;
+		MotivoRechazoEnCorreccion = null;
 		MensajeError = null;
 		BorradorEnEdicion = borrador.ClaveLocal;
 
@@ -824,7 +834,6 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		BorradorEnEdicion = null;
 		MensajeError = null;
 		LimpiarFormulario();
-		Kilometro = string.Empty;
 	}
 
 	// ── Corregir un registro rechazado (JTT-291 CA 8) ─────────────────────────────────
@@ -889,13 +898,14 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 
 		if (resultado != ResultadoCorreccionRechazada.Corregida)
 		{
-			SenalarError(CampoDe(resultado), MensajeDe(resultado));
-
+			// Si ya no existe, primero se suelta el formulario y después se dice: al revés, la
+			// limpieza se llevaba el aviso y el operador veía el formulario vaciarse sin explicación.
 			if (resultado == ResultadoCorreccionRechazada.NoEncontrada)
 			{
 				CancelarCorreccion();
 			}
 
+			SenalarError(CampoDe(resultado), MensajeDe(resultado));
 			return;
 		}
 
@@ -918,7 +928,6 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		MotivoRechazoEnCorreccion = null;
 		MensajeError = null;
 		LimpiarFormulario();
-		Kilometro = string.Empty;
 	}
 
 	private static string TextoMotivoRechazo(IncidenciaRechazada rechazada)
@@ -1094,10 +1103,22 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		OnPropertyChanged(nameof(HayBorradores));
 	}
 
+	/// <summary>
+	/// Deja el formulario como en una captura nueva.
+	/// </summary>
+	/// <remarks>
+	/// El tipo y el kilómetro también: si se quedaran, un segundo toque de «Guardar» crearía
+	/// otra incidencia del mismo hecho —el 14-sep salieron tres seguidas así—. El aviso del
+	/// envío anterior se retira por lo mismo: hablaba de otro registro.
+	/// </remarks>
 	private void LimpiarFormulario()
 	{
+		TipoSeleccionado = null;
+		Kilometro = string.Empty;
 		Nota = string.Empty;
 		SeveridadSeleccionada = Severidades.FirstOrDefault();
+		MensajeEnvio = null;
+		LimpiarErroresDeCampo();
 		SoltarEvidencias();
 	}
 
@@ -1363,6 +1384,14 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 				CampoConError?.Invoke(this, CampoCaptura.Evidencia);
 				break;
 			}
+		}
+
+		if (MensajeError is null && seleccion.Ilegibles > 0)
+		{
+			MensajeError = seleccion.Ilegibles == 1
+				? "Uno de los archivos marcados no se pudo leer y se quedó fuera."
+				: $"{seleccion.Ilegibles} de los archivos marcados no se pudieron leer y se quedaron fuera.";
+			CampoConError?.Invoke(this, CampoCaptura.Evidencia);
 		}
 
 		await RecargarEvidenciasAsync();
