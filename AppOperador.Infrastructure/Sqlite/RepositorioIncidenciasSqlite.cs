@@ -302,35 +302,11 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			return false;
 		}
 
-		fila.TipoClave = tipo.Id.ToString(CultureInfo.InvariantCulture);
-		fila.TipoNombre = tipo.Nombre;
-		fila.Kilometro = kilometro.Valor;
-		fila.FuenteKilometro = (int)fuenteKilometro;
-		fila.KilometroMetros = kilometro.MetrosNormalizados;
-		var lecturaGps = fuenteKilometro == KilometerSource.GPS ? posicionGps : null;
-		fila.GpsLatitud = lecturaGps?.Latitud;
-		fila.GpsLongitud = lecturaGps?.Longitud;
-		fila.GpsPrecisionMetros = lecturaGps?.PrecisionMetros;
-		fila.GpsInstanteUtcTicks = lecturaGps?.InstanteUtc.Ticks;
-		fila.SeveridadId = severidad.Id.ToString();
-		fila.SeveridadNombre = severidad.Nivel;
-		fila.SeveridadOrden = severidad.Orden;
-		fila.Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden);
-		fila.Nota = nota;
-		fila.Estado = (int)EstadoSincronizacion.Pendiente;
-		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
-
-		// La versión del catálogo se vuelve a sellar aquí, y no se conserva la del borrador.
-		// La que cuenta para JTT-1394 CA 5 es la que estaba vigente cuando se eligieron el tipo
-		// y la severidad definitivos, que es ahora: un borrador todavía no es una incidencia.
-		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
-
-		// El permiso también: un borrador puede llevar días guardado y el permiso con el que
-		// hoy se confirma no tiene por qué ser el de entonces (JTT-1385 CA 7).
-		fila.PermisoOrigen = PermisoDeLaSesion();
-
-		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
-		await conexion.UpdateAsync(fila);
+		// La versión del catálogo y el permiso se vuelven a sellar, y no se conservan los del
+		// borrador: los que cuentan (JTT-1394 CA 5, JTT-1385 CA 7) son los vigentes cuando se
+		// eligieron el tipo y la severidad definitivos, que es ahora. Un borrador puede llevar
+		// días guardado y todavía no es una incidencia.
+		await PasarAPendienteAsync(fila, tipo, kilometro, fuenteKilometro, severidad, nota, posicionGps, cancelacion);
 		return true;
 	}
 
@@ -378,8 +354,35 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			return false;
 		}
 
-		// Los mismos campos que al convertir un borrador: es la misma operación —algo guardado
-		// pasa a la cola— sobre un registro que ya estuvo en ella.
+		// Fallido → Pendiente es la única salida que admite el grafo de estados. El contador y
+		// el último código se reinician: para el operador esto es un envío nuevo, y arrastrar
+		// el rechazo anterior a un Pendiente lo haría parecer todavía rechazado. La bitácora de
+		// intentos se conserva tal cual: lo que pasó, pasó.
+		fila.Intentos = 0;
+		fila.UltimoErrorCodigo = null;
+
+		await PasarAPendienteAsync(fila, tipo, kilometro, fuenteKilometro, severidad, nota, posicionGps, cancelacion);
+		return true;
+	}
+
+	/// <summary>
+	/// Escribe en la fila los datos definitivos y la deja como <c>Pendiente</c>.
+	/// </summary>
+	/// <remarks>
+	/// Es la misma operación para un borrador que se convierte y para un rechazado que se
+	/// corrige: algo guardado pasa a la cola con los datos que el operador acaba de confirmar.
+	/// El catálogo y el permiso se sellan con los vigentes ahora, que son los que cuentan.
+	/// </remarks>
+	private async Task PasarAPendienteAsync(
+		IncidenciaLocal fila,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps,
+		CancellationToken cancelacion)
+	{
 		fila.TipoClave = tipo.Id.ToString(CultureInfo.InvariantCulture);
 		fila.TipoNombre = tipo.Nombre;
 		fila.Kilometro = kilometro.Valor;
@@ -395,24 +398,13 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		fila.SeveridadOrden = severidad.Orden;
 		fila.Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden);
 		fila.Nota = nota;
-		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
-
-		// Fallido → Pendiente es la única salida que admite el grafo de estados. El contador y
-		// el último código se reinician: para el operador esto es un envío nuevo, y arrastrar
-		// el rechazo anterior a un Pendiente lo haría parecer todavía rechazado. La bitácora de
-		// intentos se conserva tal cual: lo que pasó, pasó.
 		fila.Estado = (int)EstadoSincronizacion.Pendiente;
-		fila.Intentos = 0;
-		fila.UltimoErrorCodigo = null;
-
-		// El catálogo y el permiso se vuelven a sellar, por lo mismo que al convertir: lo que
-		// cuenta es lo vigente cuando el operador confirmó los datos definitivos.
+		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
 		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 		fila.PermisoOrigen = PermisoDeLaSesion();
 
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		await conexion.UpdateAsync(fila);
-		return true;
 	}
 
 	/// <summary>

@@ -8,8 +8,8 @@ namespace AppOperador.Aplicacion.Modelos;
 /// Existe para que la pantalla de acceso pueda <b>decirlo antes de que el operador decida</b>.
 /// Cuando Android mata el proceso —al revocar un permiso desde Ajustes, por ejemplo— la app
 /// vuelve a abrirse en el acceso con la sesión intacta en el almacenamiento seguro, y el único
-/// rastro era un botón que decía «Continuar offline». Con red, nadie lee ahí «reanudar mi
-/// sesión»: QA inició sesión de nuevo y lo reportó como que la app la había cerrado (JTT-1681).
+/// rastro es un botón que dice «Continuar offline», que con red no se lee como «reanudar mi
+/// sesión» (JTT-1681).
 /// </para>
 /// <para>
 /// Es una <b>lectura</b>: no reanuda, no renueva, no revoca ni escribe en la bitácora. Eso lo

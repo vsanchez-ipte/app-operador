@@ -69,10 +69,9 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string PasoAbriendoSesion = "Abriendo la sesión con la unidad elegida…";
 	private const string PasoReanudandoOffline = "Reanudando la última sesión guardada…";
 
-	// Aviso de que la sesión sigue ahí. Cuando Android mata el proceso —al revocar un permiso
-	// desde Ajustes, por ejemplo— la app vuelve a abrirse aquí con la sesión intacta, y el único
-	// rastro era el botón «Continuar offline». Con red, nadie lee ahí «reanudar mi sesión»: QA
-	// inició sesión de nuevo y lo reportó como que la app la había cerrado (JTT-1681).
+	// Cuando Android mata el proceso —al revocar un permiso desde Ajustes, por ejemplo— la app
+	// vuelve a abrirse aquí con la sesión intacta. Sin este aviso, el único rastro es el botón
+	// «Continuar offline», que con red no se lee como «reanudar mi sesión» (JTT-1681).
 	private const string FormatoSesionGuardada =
 		"Hay una sesión guardada de {0}, vigente hasta el {1}. «Continuar offline» la reanuda "
 		+ "sin volver a autenticarse.";

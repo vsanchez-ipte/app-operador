@@ -24,9 +24,8 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 {
 	// Textos fijados por JTT-280.
 	private const string MensajeKilometroInvalido = "Capture un KM válido";
-	// Con el nombre del tipo, no con «Otro» fijo: el 14-sep el líder retiró el tipo «Otro» y
-	// pasó la descripción obligatoria a «Desconocido» (ya en Dev y QA). Quién exige descripción
-	// lo dice el catálogo; el aviso nombra al que esté seleccionado.
+	// Con el nombre del tipo y no con «Otro» fijo: quién exige descripción lo dice el catálogo y
+	// puede cambiar sin publicar versión; el aviso nombra al tipo que esté seleccionado.
 	private const string FormatoDescripcionRequerida = "Describa la incidencia de tipo {0}";
 
 	/// <summary>
@@ -147,9 +146,9 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	[ObservableProperty]
 	public partial string? MensajeError { get; set; }
 
-	// Un error por campo, debajo del campo que lo causó (pedido por Víctor el 14-sep al probar):
-	// «Capture un KM válido» al pie del formulario no dice dónde mirar, y con el formulario largo
-	// ni siquiera se ve. Cada uno se apaga solo en cuanto el operador toca ese campo.
+	// Un error por campo, debajo del campo que lo causó: un aviso al pie del formulario no dice
+	// dónde mirar y, con el formulario largo, ni siquiera se ve. Cada uno se apaga solo en
+	// cuanto el operador toca ese campo.
 	[ObservableProperty]
 	public partial string? ErrorTipo { get; set; }
 
@@ -1108,8 +1107,8 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	/// </summary>
 	/// <remarks>
 	/// El tipo y el kilómetro también: si se quedaran, un segundo toque de «Guardar» crearía
-	/// otra incidencia del mismo hecho —el 14-sep salieron tres seguidas así—. El aviso del
-	/// envío anterior se retira por lo mismo: hablaba de otro registro.
+	/// otra incidencia del mismo hecho. El aviso del envío anterior se retira por lo mismo:
+	/// hablaba de otro registro.
 	/// </remarks>
 	private void LimpiarFormulario()
 	{

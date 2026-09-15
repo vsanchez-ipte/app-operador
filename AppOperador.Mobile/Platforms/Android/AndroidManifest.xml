@@ -51,11 +51,10 @@
 		WRITE_EXTERNAL_STORAGE sí, pero SOLO hasta Android 12 (API 32), y no por decisión
 		nuestra: MediaPicker.CapturePhotoAsync y CaptureVideoAsync lo exigen por dentro en
 		cualquier versión anterior a la 13 (src/Essentials/src/MediaPicker/MediaPicker.android.cs),
-		y sin declararlo lanzan PermissionException aunque la cámara ya esté concedida. Así se
-		vio en QA el 7-sep en un POCO X3 con Android 12: el operador concedía la cámara y la app
-		contestaba que no tenía permiso (JTT-1681). En Android 13+ el atributo maxSdkVersion lo
-		deja fuera y no cambia nada. La galería y el selector de archivos no lo necesitan en
-		ninguna versión.
+		y sin declararlo lanzan PermissionException aunque la cámara ya esté concedida: el
+		operador concedía la cámara y la app contestaba que no tenía permiso (JTT-1681). En
+		Android 13+ el atributo maxSdkVersion lo deja fuera y no cambia nada. La galería y el
+		selector de archivos no lo necesitan en ninguna versión.
 	-->
 	<uses-permission android:name="android.permission.CAMERA" />
 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
