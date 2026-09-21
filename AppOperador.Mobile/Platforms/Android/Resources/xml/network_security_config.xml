@@ -1,22 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-	Permite HTTP sin cifrar SOLO contra los servidores de desarrollo.
+	Dos excepciones a la política de red de Android, cada una para un destino concreto.
 
-	Desde Android 9 el tráfico en claro está bloqueado por omisión, así que sin esto la
-	llamada al API falla con "Cleartext HTTP traffic not permitted" antes de salir del
-	dispositivo.
+	1. HTTP sin cifrar SOLO contra los servidores que todavía no publican TLS. Desde
+	   Android 9 el tráfico en claro está bloqueado por omisión, así que sin esto la llamada
+	   al API falla con "Cleartext HTTP traffic not permitted" antes de salir del dispositivo.
+	   Se listan destinos concretos en vez de abrir `cleartextTrafficPermitted` global: así el
+	   permiso no acompaña a la app cuando apunte al API de producción.
 
-	Se listan destinos concretos en vez de abrir `cleartextTrafficPermitted` global: así el
-	permiso no acompaña a la app cuando apunte al API de producción, que irá por HTTPS.
+	     · 10.0.2.2        → el equipo anfitrión visto desde el emulador de Android
+	     · localhost       → el propio dispositivo, útil con `adb reverse`
+	     · 192.168.100.215 → servidor de desarrollo de IPTE, que no publica el 443
 
-	  · 10.0.2.2        → el equipo anfitrión visto desde el emulador de Android
-	  · localhost       → el propio dispositivo, útil con `adb reverse`
-	  · 192.168.100.215 → servidor de desarrollo de IPTE, que no publica el 443
-	  · 192.168.100.230 → servidor de QA de IPTE; comprobado que tampoco publica el 443
+	2. La autoridad interna que firma el certificado del servidor de QA. Desde el 17-sep-2026
+	   192.168.100.230 solo habla HTTPS en el 81, con un certificado de mkcert que Android no
+	   reconoce; se declara su CA como ancla de confianza ÚNICAMENTE para ese host, junto con
+	   las del sistema. El archivo es `raw/ipte_qa_ca.pem`, la raíz de mkcert de ese servidor.
+	   Cuando QA tenga un certificado de una autoridad pública, esta entrada sobra.
 
-	Este archivo se retira cuando todos los ambientes hablen HTTPS (criterio pendiente de
-	JTT-1378). Si el certificado del servidor lo emite una autoridad interna de IPTE, hay
-	que declararla aquí antes de retirar el resto.
+	Todo esto se retira cuando todos los ambientes hablen HTTPS con certificado reconocido
+	(criterio pendiente de JTT-1378).
 -->
 <network-security-config>
 	<domain-config cleartextTrafficPermitted="true">
@@ -24,6 +27,12 @@
 		<domain includeSubdomains="false">localhost</domain>
 		<domain includeSubdomains="false">127.0.0.1</domain>
 		<domain includeSubdomains="false">192.168.100.215</domain>
+	</domain-config>
+	<domain-config cleartextTrafficPermitted="false">
 		<domain includeSubdomains="false">192.168.100.230</domain>
+		<trust-anchors>
+			<certificates src="@raw/ipte_qa_ca" />
+			<certificates src="system" />
+		</trust-anchors>
 	</domain-config>
 </network-security-config>

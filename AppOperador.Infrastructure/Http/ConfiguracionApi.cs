@@ -43,12 +43,14 @@ public sealed class ConfiguracionApi
 	/// URL base del API en el servidor de QA de IPTE.
 	/// </summary>
 	/// <remarks>
-	/// Es el ambiente donde prueba el equipo de calidad, con sus propios datos. Vale lo mismo
-	/// que para desarrollo: dirección de la red interna, por HTTP porque ese despliegue
-	/// tampoco publica el 443, así que el host figura en la lista de tráfico en claro de
-	/// Android.
+	/// Es el ambiente donde prueba el equipo de calidad, con sus propios datos. Dirección de
+	/// la red interna, y desde el 17-sep-2026 <b>por HTTPS en el mismo puerto 81</b>: el nginx
+	/// de ese servidor dejó de aceptar HTTP en claro y contesta 400 a cualquier petición sin
+	/// TLS. El certificado lo emite una autoridad interna (mkcert) que Android no conoce, así
+	/// que va declarada como ancla de confianza para este host en
+	/// <c>network_security_config.xml</c>.
 	/// </remarks>
-	public const string UrlBaseQa = "http://192.168.100.230:81";
+	public const string UrlBaseQa = "https://192.168.100.230:81";
 
 	/// <summary>Dirección del API. Debe terminar sin barra final.</summary>
 	public string UrlBase { get; init; } = UrlBaseEscritorio;
