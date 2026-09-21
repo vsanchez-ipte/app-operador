@@ -79,6 +79,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string AccionPermitir = "Permitir ubicación";
 	private const string AccionAjustesApp = "Abrir configuración de la app";
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
+	private const string AccionRevalidar = "Volver a validar";
 
 	private readonly ReanudarSesionOffline? _reanudarOffline;
 	private readonly AvisoDeSesionTerminada _aviso;
@@ -152,6 +153,20 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// </summary>
 	[ObservableProperty]
 	public partial string? TextoAccionUbicacion { get; set; }
+
+	/// <summary>
+	/// Indica si se ofrece volver a comprobar la ubicación.
+	/// </summary>
+	/// <remarks>
+	/// Se muestra siempre que el acceso este bloqueado por ubicación, incluso cuando ya hay
+	/// otro botón. Dos estados —dispositivo sin ubicación y fallo al consultar— no tienen
+	/// ninguna otra accion, y sin esto el operador se quedaba sin nada que pulsar.
+	/// </remarks>
+	[ObservableProperty]
+	public partial bool PuedeRevalidarUbicacion { get; set; }
+
+	/// <summary>Texto del botón de revalidación.</summary>
+	public static string TextoRevalidarUbicacion => AccionRevalidar;
 
 	/// <param name="ubicacion">
 	/// Comprobación del prerrequisito de ubicación (JTT-279 PR3, JTT-1380). Se ejecuta antes
@@ -596,6 +611,29 @@ public sealed partial class AccesoViewModel : ObservableObject
 		AplicarUbicacion(await _ubicacion.RevisarAsync());
 	}
 
+	/// <summary>
+	/// Vuelve a comprobar la ubicación a petición del operador.
+	/// </summary>
+	/// <remarks>
+	/// Es la accion explicita de revalidacion. No pide permisos ni abre nada: solo consulta
+	/// el estado otra vez. Sirve cuando el operador corrigio algo fuera de la app y la
+	/// pantalla no llego a reaparecer, y es la unica salida en los estados que no ofrecen
+	/// ninguna otra accion.
+	/// </remarks>
+	[RelayCommand]
+	private async Task RevalidarUbicacionAsync()
+	{
+		Ocupado = true;
+		try
+		{
+			await RevisarUbicacionAsync();
+		}
+		finally
+		{
+			Ocupado = false;
+		}
+	}
+
 	/// <summary>Comprueba el prerrequisito y deja la pantalla contando lo que encontró.</summary>
 	/// <remarks>
 	/// El paso se anuncia aquí y no en cada quien la llama, porque los dos caminos de acceso
@@ -629,6 +667,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 			DetalleUbicacion = null;
 			TextoAccionUbicacion = null;
+			PuedeRevalidarUbicacion = false;
 			return;
 		}
 
@@ -637,6 +676,10 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MensajeError = MensajeUbicacion;
 		DetalleUbicacion = DetalleDe(resultado.Estado);
 		TextoAccionUbicacion = TextoAccionDe(resultado.Accion);
+
+		// Siempre que el acceso quede bloqueado por ubicación hay como volver a comprobar,
+		// aunque el estado no ofrezca ninguna otra accion.
+		PuedeRevalidarUbicacion = true;
 	}
 
 	private static string DetalleDe(EstadoUbicacion estado) => estado switch
@@ -732,6 +775,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		{
 			DetalleUbicacion = null;
 			TextoAccionUbicacion = null;
+			PuedeRevalidarUbicacion = false;
 		}
 	}
 
