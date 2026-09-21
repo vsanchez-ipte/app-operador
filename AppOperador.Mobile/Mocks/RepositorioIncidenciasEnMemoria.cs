@@ -31,33 +31,17 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 	/// </summary>
 	private string OperadorActual => _sesiones.Actual?.Operador ?? "-";
 
-	public Task<IReadOnlyList<TipoIncidencia>> ObtenerTiposAsync(CancellationToken cancelacion = default)
-	{
-		// Catálogo provisional: el definitivo lo entrega Jacob. Lo único fijado es que
-		// existe "Otro" y que obliga a describir la incidencia (JTT-333).
-		IReadOnlyList<TipoIncidencia> tipos =
-		[
-			new("OBJ", "Objeto en camino"),
-			new("VEH", "Vehículo detenido"),
-			new("ACC", "Accidente"),
-			new("ANI", "Animal en la vía"),
-			new("PAV", "Daño en pavimento"),
-			new("OTR", "Otro", ExigeDescripcion: true),
-		];
-
-		return Task.FromResult(tipos);
-	}
-
 	public Task<string> GuardarAsync(
 		TipoIncidencia tipo,
 		Kilometer kilometro,
 		KilometerSource fuenteKilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia severidad,
 		string nota,
+		PosicionDispositivo? posicionGps = null,
 		CancellationToken cancelacion = default)
 	{
 		// La prioridad de cola la decide la regla de dominio, no esta clase.
-		var prioridad = ReglaPrioridadSincronizacion.Para(gravedad);
+		var prioridad = ReglaPrioridadSincronizacion.Para(severidad.Orden);
 
 
 		var registro = new RegistroCola(
@@ -75,7 +59,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 	public Task<string> GuardarBorradorAsync(
 		TipoIncidencia? tipo,
 		string? kilometro,
-		Gravedad gravedad,
+		SeveridadIncidencia? severidad,
 		string nota,
 		CancellationToken cancelacion = default)
 	{
@@ -83,7 +67,7 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 		var registro = new RegistroCola(
 			ClaveLocal: _almacen.SiguienteClaveLocal(),
 			Clase: ClaseRegistro.Incidencia,
-			Prioridad: ReglaPrioridadSincronizacion.Para(gravedad),
+			Prioridad: ReglaPrioridadSincronizacion.Para(severidad?.Orden ?? int.MaxValue),
 			Descripcion: tipo?.Nombre ?? "Sin tipo",
 			Kilometro: kilometro ?? "-",
 			Estado: EstadoSincronizacion.Borrador);
@@ -94,4 +78,59 @@ public sealed class RepositorioIncidenciasEnMemoria : IIncidentRepository
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerBorradoresAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(_almacen.PorEstado(EstadoSincronizacion.Borrador, OperadorActual));
+
+	// ── Ciclo de vida del borrador (JTT-1399 CA 8 y 9) ────────────────────────────────
+	//
+	// Sin implementar a propósito. El recorrido simulado se elimina completo en rama propia
+	// —decisión del 21-ago—: nadie lo prueba, ni QA ni nadie, y basta con que compile. Lo que
+	// vale para estos criterios es RepositorioIncidenciasSqlite, que sí los implementa y sí
+	// tiene pruebas. Devolver "no encontrado" es la respuesta honesta de un almacén que no los
+	// soporta; fingir que convirtió daría por buena una funcionalidad que aquí no existe.
+
+	public Task<BorradorIncidencia?> ObtenerBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<BorradorIncidencia?>(null);
+
+	public Task<bool> ActualizarBorradorAsync(
+		string claveLocal,
+		TipoIncidencia? tipo,
+		string? kilometro,
+		SeveridadIncidencia? severidad,
+		string nota,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
+
+	public Task<bool> EliminarBorradorAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
+
+	public Task<bool> ConvertirBorradorAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps = null,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
+
+	// El simulador no rechaza nada, así que no hay nada que corregir.
+	public Task<IncidenciaRechazada?> ObtenerRechazadaAsync(
+		string claveLocal,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult<IncidenciaRechazada?>(null);
+
+	public Task<bool> CorregirRechazadaAsync(
+		string claveLocal,
+		TipoIncidencia tipo,
+		Kilometer kilometro,
+		KilometerSource fuenteKilometro,
+		SeveridadIncidencia severidad,
+		string nota,
+		PosicionDispositivo? posicionGps = null,
+		CancellationToken cancelacion = default) =>
+		Task.FromResult(false);
 }

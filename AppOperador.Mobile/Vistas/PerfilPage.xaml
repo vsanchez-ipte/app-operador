@@ -10,6 +10,7 @@
              Style="{StaticResource PaginaOperador}"
              Title="Perfil">
 
+    <Grid>
     <ScrollView>
         <VerticalStackLayout Padding="14" Spacing="12">
 
@@ -84,9 +85,57 @@
                         </BindableLayout.ItemTemplate>
                     </HorizontalStackLayout>
 
+                    <!-- Las cuatro capacidades que nombra JTT-292 CA 2, con su estado. Las
+                         etiquetas de arriba son los modulos del token; esto es lo que el
+                         operador puede hacer hoy con ellos. -->
+                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Capacidades}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CapacidadVista">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Grid.Column="0" Text="{Binding Nombre}" Style="{StaticResource TextoSecundario}" />
+                                    <Label Grid.Column="1" Text="{Binding Estado}"
+                                           FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
                     <Button Text="Cerrar sesion"
                             Style="{StaticResource BotonSecundario}"
                             Command="{Binding CerrarSesionCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Almacenamiento local (JTT-292 CA 4 y 6): espacio libre y evidencia que
+                 todavia no esta en el CCO. Nunca dice "enviada": mientras el CCO no confirme,
+                 el archivo solo existe aqui. -->
+            <Border Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Almacenamiento local" Style="{StaticResource TituloTarjeta}" />
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="8">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Espacio del dispositivo" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="0" Grid.Column="1" Text="{Binding EspacioLibre}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Evidencias" Style="{StaticResource TextoSecundario}" />
+                        <Label Grid.Row="1" Grid.Column="1" Text="{Binding TextoEvidenciasPendientes}"
+                               FontAttributes="Bold" FontSize="13" TextColor="{StaticResource TextoTitulo}" />
+                    </Grid>
+
+                    <VerticalStackLayout Spacing="4"
+                                         IsVisible="{Binding HayEvidenciasPendientes}"
+                                         BindableLayout.ItemsSource="{Binding EvidenciasPendientes}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EvidenciaPendienteVista">
+                                <Label Text="{Binding Texto}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       LineBreakMode="MiddleTruncation" />
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
 
                 </VerticalStackLayout>
             </Border>
@@ -102,16 +151,21 @@
                             <DataTemplate x:DataType="vm:EventoAuditoriaVista">
                                 <Border Style="{StaticResource TarjetaInterna}">
                                     <VerticalStackLayout Spacing="2">
-                                        <Grid ColumnDefinitions="*,Auto">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                             <!-- Se guarda en UTC y se presenta en hora local (DA-10) -->
                                             <Label Grid.Column="0" Text="{Binding HoraLocal}"
                                                    FontAttributes="Bold" FontSize="13"
                                                    TextColor="{StaticResource TextoTitulo}" />
+                                            <!-- Con o sin enlace al ocurrir (JTT-1392 CA 1) -->
+                                            <Label Grid.Column="1" Text="{Binding TextoOrigen}"
+                                                   Style="{StaticResource TextoSecundario}"
+                                                   IsVisible="{Binding HayOrigen}"
+                                                   VerticalOptions="Center" />
                                             <!--
                                                 BackgroundColor y no Background: al enlazar,
                                                 la cadena se convierte a Color pero no a brocha.
                                             -->
-                                            <Border Grid.Column="1"
+                                            <Border Grid.Column="2"
                                                     BackgroundColor="{Binding ColorFondoNivel}"
                                                     Stroke="Transparent" StrokeShape="RoundRectangle 4"
                                                     Padding="8,3" VerticalOptions="Center">
@@ -121,16 +175,98 @@
                                             </Border>
                                         </Grid>
                                         <Label Text="{Binding Mensaje}" Style="{StaticResource TextoDato}" />
+                                        <!-- Usuario, rol, permiso, unidad y sesión (JTT-1392 CA 1) -->
+                                        <Label Text="{Binding Contexto}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               FontSize="11" LineBreakMode="WordWrap"
+                                               IsVisible="{Binding HayContexto}" />
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
 
+                    <!-- De quince en quince: lo conservado es más de lo que se lee de una vez -->
+                    <Button Text="Ver mas"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding VerMasEventosCommand}"
+                            IsVisible="{Binding HayMasEventos}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!--
+                Exportacion de diagnostico. Solo aparece en paquetes compilados con
+                -p:HabilitarExportacionBaseDatos=true; en un paquete normal la propiedad es
+                falsa y la tarjeta entera no se pinta. El enlace se compila siempre porque el
+                XAML no se preprocesa, por eso PuedeExportarBaseDatos existe en ambos casos.
+
+                La advertencia va en pantalla y no solo en el dialogo de confirmacion: quien
+                revisa el telefono tiene que poder ver que este paquete puede sacar la base
+                sin cifrar.
+            -->
+            <Border IsVisible="{Binding PuedeExportarBaseDatos}" Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Diagnostico" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Style="{StaticResource TextoSecundario}"
+                           Text="Guarda una copia de la base local en formato SQLite para revisarla en el equipo. La copia queda SIN CIFRAR e incluye incidencias, operador, unidad y bitacora." />
+
+                    <Button Text="Exportar base de datos"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding ExportarBaseDatosCommand}" />
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!--
+                Copia del token, para que QA pueda autorizarse en Swagger. Solo aparece en
+                paquetes compilados con -p:HabilitarCopiaToken=true; vale lo mismo que arriba
+                sobre PuedeCopiarToken y el XAML.
+
+                Va en su propia tarjeta y no junto a la exportacion porque son dos
+                interruptores distintos: un paquete puede traer una capacidad y no la otra, y
+                una sola tarjeta con un boton escondido se leeria como que estan juntas.
+            -->
+            <Border IsVisible="{Binding PuedeCopiarToken}" Style="{StaticResource Tarjeta}">
+                <VerticalStackLayout Spacing="10">
+
+                    <Label Text="Token de sesion" Style="{StaticResource TituloTarjeta}" />
+
+                    <Label Style="{StaticResource TextoSecundario}"
+                           Text="Copia el token de esta sesion para pegarlo en el boton Authorize de Swagger. Es la CREDENCIAL de la sesion: quien la tenga puede actuar como este operador hasta que la sesion termine." />
+
+                    <Button Text="Copiar token de sesion"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding CopiarTokenCommand}" />
+
                 </VerticalStackLayout>
             </Border>
 
         </VerticalStackLayout>
     </ScrollView>
+
+        <!-- Capa de carga, centrada y encima de todo. Al entrar a la pestana la pantalla
+             tarda unos segundos en estar lista y sin esto parece que no responde. Va como
+             capa y no dentro del scroll: arriba del todo quedaba escondida. -->
+        <Grid IsVisible="{Binding Cargando}"
+              BackgroundColor="#B3E8DED0"
+              InputTransparent="False">
+            <Border Style="{StaticResource Tarjeta}"
+                    HorizontalOptions="Center" VerticalOptions="Center"
+                    Padding="24,18">
+                <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                    <ActivityIndicator IsRunning="{Binding Cargando}"
+                                       Color="{StaticResource Vino}"
+                                       HeightRequest="36" WidthRequest="36"
+                                       HorizontalOptions="Center" />
+                    <Label Text="Cargando…"
+                           Style="{StaticResource TextoSecundario}"
+                           HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
 
 </ContentPage>

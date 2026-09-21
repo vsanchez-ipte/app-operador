@@ -20,6 +20,14 @@
   </ItemGroup>
 
   <!--
+    Bases de versiones anteriores, en SQL, para probar la migración contra lo que la app dejaba
+    de verdad en el dispositivo. Van embebidas para que la prueba no dependa de rutas.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures\*.sql" />
+  </ItemGroup>
+
+  <!--
     A diferencia de AppOperador.UnitTests, este proyecto SÍ referencia Infrastructure:
     su razón de existir es probar los adaptadores contra una base SQLite real. La regla
     de arquitectura que aísla UnitTests se mantiene intacta.

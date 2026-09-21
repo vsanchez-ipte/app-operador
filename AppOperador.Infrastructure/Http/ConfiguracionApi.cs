@@ -123,4 +123,27 @@ public sealed class ConfiguracionApi
 	/// operador ni de la unidad. Es la sonda del indicador de enlace (JTT-1391).
 	/// </remarks>
 	public const string RutaEstado = "/ITS/AppLogin/Estado";
+
+	/// <summary>
+	/// Ruta de los catálogos vigentes. Exige el token y sesión activa (JTT-1394).
+	/// </summary>
+	/// <remarks>
+	/// Devuelve tipos, severidades, afectaciones y cuerpos en <b>una sola llamada</b>, porque lo
+	/// que se sella en una incidencia capturada sin conexión es una sola versión de catálogo, no
+	/// cuatro.
+	/// <para>
+	/// Exige el permiso <b>general</b> de la app, no el de captura: consultar el catálogo no es
+	/// capturar.
+	/// </para>
+	/// </remarks>
+	public const string RutaCatalogos = "/ITS/AppCatalogos/Vigentes";
+
+	/// <summary>
+	/// Ruta de creación de incidencias del canal móvil (JTT-1401).
+	/// </summary>
+	/// <remarks>
+	/// Exige el permiso de <b>captura</b>, no el general. Es idempotente por el <c>uuid</c> del
+	/// cuerpo: reenviar el mismo devuelve el mismo folio en vez de crear una segunda incidencia.
+	/// </remarks>
+	public const string RutaIncidencias = "/ITS/AppIncidencias";
 }

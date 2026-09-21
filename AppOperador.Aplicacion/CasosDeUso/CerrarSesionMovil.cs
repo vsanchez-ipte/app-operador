@@ -61,14 +61,16 @@ public sealed class CerrarSesionMovil
 
 		var avisado = await AvisarAJacobAsync(cancelacion);
 
-		await _custodia.RevocarAsync(cancelacion);
-
+		// La línea se escribe antes de revocar: después ya no hay sesión que diga de quién era,
+		// con qué unidad ni con qué permisos.
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
+			OperacionAuditada.CierreSesion, ResultadoAuditoria.Exito,
 			avisado
 				? $"Sesión cerrada por el operador. Pendientes conservados: {pendientes}."
 				: $"Sesión cerrada sin conexión. Pendientes conservados: {pendientes}.",
-			cancelacion);
+			cancelacion: cancelacion);
+
+		await _custodia.RevocarAsync(cancelacion);
 
 		return new ResultadoCierreSesion(avisado, pendientes);
 	}

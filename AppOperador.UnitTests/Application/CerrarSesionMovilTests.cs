@@ -127,7 +127,9 @@ public class CerrarSesionMovilTests
 
 		await ConJacob().CerrarAsync();
 
-		await _cola.DidNotReceive().SincronizarAsync(Arg.Any<CancellationToken>());
+		// Cerrar sesión no sincroniza: la sincronización es una acción del operador o de la
+		// revalidación, no un efecto del cierre. Y sobre todo, no vacía la cola.
+		await _cola.DidNotReceiveWithAnyArgs().ActualizarEnvioAsync(default!, default);
 		await _cola.Received(1).ContarPendientesAsync(Arg.Any<CancellationToken>());
 	}
 
@@ -184,8 +186,10 @@ public class CerrarSesionMovilTests
 
 		await ConJacob().CerrarAsync();
 
+		// Con su operación, para que se pueda casar con la auditoría del CCO (JTT-1392 CA 2).
 		await _bitacora.Received(1).RegistrarAsync(
-			NivelAuditoria.Info, Arg.Any<string>(), Arg.Any<CancellationToken>());
+			OperacionAuditada.CierreSesion, ResultadoAuditoria.Exito, Arg.Any<string>(),
+			Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
 	}
 
 	[Fact]
@@ -194,8 +198,9 @@ public class CerrarSesionMovilTests
 		JacobResponde(false);
 		string? registrado = null;
 		_bitacora.When(b => b.RegistrarAsync(
-				Arg.Any<NivelAuditoria>(), Arg.Any<string>(), Arg.Any<CancellationToken>()))
-			.Do(c => registrado = c.ArgAt<string>(1));
+				Arg.Any<OperacionAuditada>(), Arg.Any<ResultadoAuditoria>(), Arg.Any<string>(),
+				Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()))
+			.Do(c => registrado = c.ArgAt<string>(2));
 
 		await ConJacob().CerrarAsync();
 

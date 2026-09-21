@@ -3,12 +3,16 @@ using SQLite;
 namespace AppOperador.Infrastructure.Sqlite.Entidades;
 
 /// <summary>
-/// Sesión guardada para reanudarla sin conexión (JTT-1383).
+/// Fila de <c>sesion_local</c>: una sesión validada en Jacob, para reanudarla sin conexión
+/// (JTT-1383) y para que lo capturado sepa de qué sesión salió.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Solo hay una fila</b>, con <see cref="Id"/> fijo: la app atiende a un operador a la
-/// vez y guardar varias invitaría a reanudar la que no toca.
+/// <b>Es un historial, no una fila que se sobrescribe.</b> Hasta el esquema 10 había una sola
+/// y entrar otro operador la pisaba; por eso las incidencias y la bitácora copiaban el operador
+/// y la unidad como texto. Ahora cada validación agrega una fila, la app trabaja con la que
+/// tiene <see cref="Vigente"/>, y cerrar sesión la marca en vez de borrarla: lo que apuntaba a
+/// ella sigue apuntando.
 /// </para>
 /// <para>
 /// <b>Aquí no hay token ni contraseña.</b> El token vive en el almacenamiento seguro y la
@@ -17,31 +21,38 @@ namespace AppOperador.Infrastructure.Sqlite.Entidades;
 /// nada (JTT-1379 CA 8).
 /// </para>
 /// </remarks>
-public sealed class SesionLocal
+[Table("sesion_local")]
+internal class SesionLocal
 {
-	/// <summary>Llave fija: esta tabla guarda una sola sesión.</summary>
-	public const int IdUnico = 1;
-
+	/// <summary>Identificador de la sesión en Jacob. Vacío en los recorridos simulados, que no abren sesión.</summary>
 	[PrimaryKey]
-	public int Id { get; set; } = IdUnico;
-
+	[Column("session_id")]
 	public string SessionId { get; set; } = string.Empty;
 
+	/// <summary>Cuenta del operador; llave a <c>operador_local</c>.</summary>
+	[Indexed(Name = "ix_sesion_operador")]
+	[Column("operador")]
 	public string Operador { get; set; } = string.Empty;
 
+	/// <summary>
+	/// Clave de la unidad; llave a <c>unidad_local</c>. Nula solo en sesiones que la migración
+	/// reconstruyó sin saber la unidad.
+	/// </summary>
+	[Indexed(Name = "ix_sesion_unidad")]
+	[Column("unidad_clave")]
+	public string? UnidadClave { get; set; }
+
+	[Column("rol")]
 	public string Rol { get; set; } = string.Empty;
 
-	public string UnidadId { get; set; } = string.Empty;
-
-	public string UnidadClave { get; set; } = string.Empty;
-
-	public string UnidadDescripcion { get; set; } = string.Empty;
-
 	/// <summary>Permisos separados por coma. Se revalidan contra el token al restaurar.</summary>
+	[Column("permisos")]
 	public string Permisos { get; set; } = string.Empty;
 
+	[Column("validado_utc_ticks")]
 	public long ValidadoUtcTicks { get; set; }
 
+	[Column("offline_hasta_utc_ticks")]
 	public long OfflineHastaUtcTicks { get; set; }
 
 	/// <summary>
@@ -51,9 +62,19 @@ public sealed class SesionLocal
 	/// Es lo que permite detectar que alguien movió la hora del dispositivo. Sin este dato,
 	/// la ventana offline se mediría solo con el reloj y atrasarlo la alargaría.
 	/// </remarks>
+	[Column("monotonico_al_validar_ticks")]
 	public long MonotonicoAlValidarTicks { get; set; }
 
+	[Column("version_aplicacion")]
 	public string VersionAplicacion { get; set; } = string.Empty;
 
+	[Column("version_catalogos")]
 	public string VersionCatalogos { get; set; } = string.Empty;
+
+	/// <summary>
+	/// <c>1</c> en la sesión con la que la app trabaja; <c>0</c> en las demás. Un índice único
+	/// parcial impide que haya dos vigentes.
+	/// </summary>
+	[Column("vigente")]
+	public int Vigente { get; set; }
 }

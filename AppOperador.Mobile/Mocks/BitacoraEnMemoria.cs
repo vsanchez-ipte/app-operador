@@ -25,6 +25,13 @@ public sealed class BitacoraEnMemoria : IAuditLog
 		return Task.FromResult(copia);
 	}
 
+	public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(int omitir, int cantidad, CancellationToken cancelacion = default)
+	{
+		IReadOnlyList<EventoAuditoria> pagina =
+			_eventos.OrderByDescending(e => e.InstanteUtc).Skip(omitir).Take(cantidad).ToList();
+		return Task.FromResult(pagina);
+	}
+
 	public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken cancelacion = default)
 	{
 		_eventos.Add(new EventoAuditoria(_reloj.UtcAhora, nivel, mensaje));
@@ -37,4 +44,14 @@ public sealed class BitacoraEnMemoria : IAuditLog
 
 		return Task.CompletedTask;
 	}
+
+	public Task AtribuirAsync(string alias, string operador, CancellationToken cancelacion = default) =>
+		Task.CompletedTask;
+
+	public Task RegistrarAsync(
+		OperacionAuditada operacion, ResultadoAuditoria resultado, string mensaje,
+		string? motivoCodigo = null, string? operador = null, CancellationToken cancelacion = default) =>
+		RegistrarAsync(
+			resultado == ResultadoAuditoria.Rechazo ? NivelAuditoria.Advertencia : NivelAuditoria.Info,
+			mensaje, cancelacion);
 }

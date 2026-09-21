@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	Nada de esta app sale del dispositivo por respaldo ni por transferencia (JTT-1388 CA 7 y 11).
+
+	allowBackup="false" en el manifiesto ya apaga el respaldo en la nube, pero desde Android 12
+	la transferencia directa entre dispositivos se controla aparte y con estas reglas. Sin la
+	sección device-transfer, la base local viajaria al telefono nuevo en un cambio de equipo.
+
+	Ademas de los criterios, hay una razon tecnica: la clave de la base vive en el KeyStore, que
+	NO se respalda. Un archivo restaurado en otro dispositivo llegaria cifrado y sin su clave, es
+	decir, ilegible. Mas vale que no viaje.
+-->
+<data-extraction-rules>
+	<cloud-backup>
+		<exclude domain="root" />
+		<exclude domain="file" />
+		<exclude domain="database" />
+		<exclude domain="sharedpref" />
+		<exclude domain="external" />
+	</cloud-backup>
+	<device-transfer>
+		<exclude domain="root" />
+		<exclude domain="file" />
+		<exclude domain="database" />
+		<exclude domain="sharedpref" />
+		<exclude domain="external" />
+	</device-transfer>
+</data-extraction-rules>

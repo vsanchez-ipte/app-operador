@@ -1,3 +1,4 @@
+using AppOperador.Aplicacion.CasosDeUso;
 using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Reglas;
@@ -37,22 +38,30 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 	private readonly IConnectivityService _conectividad;
 	private readonly ISessionStore _sesiones;
 	private readonly IAuditLog _bitacora;
+	private readonly ActualizarCatalogoLocal? _catalogos;
 
 	// Última validación en línea. Es lo que permite reanudar sin conexión más adelante.
 	private VigenciaOffline? _ultimaVigencia;
 	private UnidadVehicular? _ultimaUnidad;
 	private string? _ultimoUsuario;
 
+	/// <param name="catalogos">
+	/// Descarga del catálogo simulado (JTT-1394). El simulador hace de Jacob también para esto:
+	/// desde que la base dejó de sembrar tipos, sin esta llamada el recorrido simulado se queda
+	/// sin nada que ofrecer en el formulario. Opcional para no obligar a las pruebas.
+	/// </param>
 	public ServicioAutenticacionSimulado(
 		IClock reloj,
 		IConnectivityService conectividad,
 		ISessionStore sesiones,
-		IAuditLog bitacora)
+		IAuditLog bitacora,
+		ActualizarCatalogoLocal? catalogos = null)
 	{
 		_reloj = reloj;
 		_conectividad = conectividad;
 		_sesiones = sesiones;
 		_bitacora = bitacora;
+		_catalogos = catalogos;
 	}
 
 	public Task<IReadOnlyList<UnidadVehicular>> ObtenerUnidadesAsync(CancellationToken cancelacion = default)
@@ -100,6 +109,13 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 
 		var sesion = ConstruirSesion(usuario, unidad, _ultimaVigencia);
 		_sesiones.Guardar(sesion);
+
+		// Mismo momento que en el acceso real: el catálogo se refresca al validar en línea
+		// (JTT-1394 CA 4). El token da igual aquí, pero no puede ir vacío o no se llamaría.
+		if (_catalogos is not null)
+		{
+			await _catalogos.EjecutarAsync("simulado", cancelacion);
+		}
 		await _bitacora.RegistrarAsync(NivelAuditoria.Info, "Enlace CCO activo.", cancelacion);
 
 		return ResultadoAcceso.Autorizar(sesion);
@@ -134,7 +150,20 @@ public sealed class ServicioAutenticacionSimulado : IAuthenticationService
 			vigencia: vigencia,
 			// El simulador hace de Jacob: por eso puede entregar permisos. Ninguna otra parte
 			// de la app puede construirlos (JTT-1379 CA 7).
-			permisos: PermisosOperador.DelServidor(["CAPTURA", "EVIDENCIA", "SYNC", "OFFLINE"]),
+			//
+			// Entrega lo mismo que el servidor real, que desde el 20-ago son dos permisos: el
+			// general y el de captura. Antes daba CAPTURA, EVIDENCIA, SYNC y OFFLINE, codigos
+			// que nunca existieron en Jacob: con ellos el recorrido simulado quedaba sin
+			// ninguna capacidad concedida (JTT-1385) y ademas hacia creer que el catalogo de
+			// capacidades finas ya estaba resuelto.
+			//
+			// El de captura hace falta desde que registrar dejo de aceptar el respaldo del
+			// permiso general: sin el, el recorrido simulado se queda sin poder capturar.
+			permisos: PermisosOperador.DelServidor(
+			[
+				ReglaCapacidades.PermisoAppOperadorMovil,
+				ReglaCapacidades.PermisoCapturaIncidencias,
+			]),
 			versionAplicacion: "1.2.0",
 			versionCatalogos: new DateOnly(2026, 7, 23));
 }

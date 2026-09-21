@@ -86,13 +86,14 @@ public sealed class ComprobarVigenciaOffline
 	/// </remarks>
 	private async Task<EstadoVigenciaSesion> ExpirarAsync(CancellationToken cancelacion)
 	{
-		await _custodia.RevocarAsync(cancelacion);
-		_aviso.Registrar(MotivoRechazoAcceso.SesionOfflineExpirada);
-
+		// La línea se escribe antes de revocar, para que lleve la sesión que vence.
 		await _bitacora.RegistrarAsync(
 			NivelAuditoria.Advertencia,
 			"Sesión bloqueada: la ventana offline venció. Los registros pendientes se conservan.",
 			cancelacion);
+
+		await _custodia.RevocarAsync(cancelacion);
+		_aviso.Registrar(MotivoRechazoAcceso.SesionOfflineExpirada);
 
 		return EstadoVigenciaSesion.Expirada;
 	}

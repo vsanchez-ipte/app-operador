@@ -335,6 +335,17 @@ public sealed class ClienteAccesoJacobTests
 	}
 
 	[Fact]
+	public async Task Un_socket_cerrado_en_Android_se_reporta_como_falta_de_comunicacion()
+	{
+		// AndroidMessageHandler no lanza HttpRequestException sino WebException. Con el API
+		// apagado, esto cerraba la app al tocar «Ingresar».
+		var resultado = await PreautenticarAsync(Nuevo(ManejadorHttpFalso.SocketCerradoEnAndroid()));
+
+		Assert.Equal(MotivoRechazoAcceso.SinComunicacion, resultado.Motivo);
+		Assert.Equal("conexion.fallida", resultado.CodigoError);
+	}
+
+	[Fact]
 	public async Task Un_tiempo_de_espera_agotado_se_reporta_como_falta_de_comunicacion()
 	{
 		var resultado = await PreautenticarAsync(Nuevo(ManejadorHttpFalso.TiempoAgotado()));

@@ -24,7 +24,15 @@ namespace AppOperador.Infrastructure.Dispositivo;
 /// <para>
 /// <b>Antes de que exista sesión no hay con qué preguntar</b>, porque la sonda va
 /// autenticada. En ese caso manda la red a secas: decirle al operador que no hay enlace
-/// cuando ni siquiera ha intentado entrar sería un aviso sin fundamento.
+/// cuando ni siquiera ha intentado entrar sería un aviso sin fundamento. Sesión quiere
+/// decir la <b>viva</b>, no que haya un token guardado: el de una sesión vencida sobrevive
+/// en el almacén seguro, y sondear con él en la pantalla de acceso traía un <c>401</c> que
+/// se mostraba como «Sin conexión» con el servidor contestando.
+/// </para>
+/// <para>
+/// <b>El acceso también es una señal.</b> La preautenticación y la apertura de sesión hablan
+/// con Jacob sin sesión, y lo que contesten se anota como si fuera la sonda: si acaba de
+/// validar credenciales, hay enlace; si no contestó, no lo hay.
 /// </para>
 /// <para>
 /// El evento se levanta en el hilo principal: lo consumen enlaces de la interfaz, y
@@ -35,14 +43,16 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 {
 	private readonly IAccesoJacobClient _jacob;
 	private readonly ITokenProvider _tokens;
+	private readonly ISessionStore _sesiones;
 
 	private bool _hayEnlace;
 	private bool _liberado;
 
-	public ServicioConectividadJacob(IAccesoJacobClient jacob, ITokenProvider tokens)
+	public ServicioConectividadJacob(IAccesoJacobClient jacob, ITokenProvider tokens, ISessionStore sesiones)
 	{
 		_jacob = jacob;
 		_tokens = tokens;
+		_sesiones = sesiones;
 
 		// Se parte de lo que diga la red. La primera sonda llega con la primera
 		// comprobación explícita, para no lanzar tráfico desde el constructor.
@@ -67,16 +77,24 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 				"El dispositivo declara no tener acceso a internet."));
 		}
 
-		var token = await _tokens.ObtenerAsync(cancelacion);
-
-		// Sin sesión no hay sonda autenticada posible. Ver las notas del tipo.
-		if (string.IsNullOrWhiteSpace(token))
+		// Sin sesión viva no hay sonda autenticada posible. Ver las notas del tipo.
+		if (_sesiones.Actual is null)
 		{
 			return Publicar(ResultadoSondeo.SegunLaRed());
 		}
 
+		var token = await _tokens.ObtenerAsync(cancelacion);
+		if (string.IsNullOrWhiteSpace(token))
+		{
+			return Publicar(ResultadoSondeo.SinSesion());
+		}
+
 		return Publicar(await _jacob.ComprobarEnlaceAsync(token, cancelacion));
 	}
+
+	/// <inheritdoc />
+	public void AnotarIntercambio(bool jacobRespondio) =>
+		Publicar(ResultadoSondeo.Observado(jacobRespondio));
 
 	/// <summary>Indica si el dispositivo declara tener acceso a internet.</summary>
 	private static bool HayRed =>

@@ -26,8 +26,9 @@ public sealed class RevalidarSesionMovil
 	private readonly AvisoDeSesionTerminada _aviso;
 	private readonly ITokenClaims _claims;
 	private readonly IMonotonicClock _monotonico;
-	private readonly ISyncQueueService _cola;
+	private readonly ISincronizadorIncidencias _sincronizador;
 	private readonly IAuditLog _bitacora;
+	private readonly ActualizarCatalogoLocal? _catalogos;
 
 	public RevalidarSesionMovil(
 		IAccesoJacobClient jacob,
@@ -35,16 +36,18 @@ public sealed class RevalidarSesionMovil
 		AvisoDeSesionTerminada aviso,
 		ITokenClaims claims,
 		IMonotonicClock monotonico,
-		ISyncQueueService cola,
-		IAuditLog bitacora)
+		ISincronizadorIncidencias sincronizador,
+		IAuditLog bitacora,
+		ActualizarCatalogoLocal? catalogos = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
 		_aviso = aviso;
 		_claims = claims;
 		_monotonico = monotonico;
-		_cola = cola;
+		_sincronizador = sincronizador;
 		_bitacora = bitacora;
+		_catalogos = catalogos;
 	}
 
 	/// <summary>Intenta revalidar la sesión guardada.</summary>
@@ -114,10 +117,18 @@ public sealed class RevalidarSesionMovil
 		// sin credencial.
 		await _custodia.AbrirAsync(renovada, accessToken: null, cancelacion);
 
+		// El catálogo se refresca aquí, que es la otra mitad del CA 4 de JTT-1394: la
+		// revalidación es la validación en línea que ocurre sin que el operador vuelva a
+		// entrar. Su fallo no se propaga: la sesión ya quedó renovada.
+		if (_catalogos is not null)
+		{
+			await _catalogos.EjecutarAsync(token, cancelacion);
+		}
+
 		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Info,
+			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Exito,
 			"Sesión revalidada con Jacob CCO. Ventana offline renovada.",
-			cancelacion);
+			cancelacion: cancelacion);
 
 		await SincronizarAsync(cancelacion);
 
@@ -136,17 +147,17 @@ public sealed class RevalidarSesionMovil
 		ResultadoRevalidacion resultado,
 		CancellationToken cancelacion)
 	{
+		// La línea se escribe antes de revocar, para que lleve la sesión que se está cerrando.
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.RevalidacionSesion, ResultadoAuditoria.Rechazo,
+			"Sesión negada por Jacob CCO al revalidar. Los registros pendientes se conservan.",
+			motivoCodigo: resultado.CodigoError, cancelacion: cancelacion);
+
 		await _custodia.RevocarAsync(cancelacion);
 
 		// Para que la pantalla de acceso pueda decir por qué se cerró la sesión, en vez de
 		// aparecer en blanco (JTT-1383 CA 11: «solicita autenticación»).
 		_aviso.Registrar(resultado.Motivo ?? MotivoRechazoAcceso.SesionRevocada);
-
-		await _bitacora.RegistrarAsync(
-			NivelAuditoria.Advertencia,
-			$"Sesión negada por Jacob CCO al revalidar ({resultado.CodigoError ?? "sin código"}). " +
-			"Los registros pendientes se conservan.",
-			cancelacion);
 
 		return resultado;
 	}
@@ -162,7 +173,7 @@ public sealed class RevalidarSesionMovil
 	{
 		try
 		{
-			await _cola.SincronizarAsync(cancelacion);
+			await _sincronizador.EjecutarAsync(cancelacion);
 		}
 		catch (OperationCanceledException)
 		{

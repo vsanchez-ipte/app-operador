@@ -91,10 +91,11 @@ public sealed class AlmacenSesionOfflineSqliteTests
 	}
 
 	[Fact]
-	public async Task Guardar_de_nuevo_reemplaza_la_sesion_anterior()
+	public async Task Guardar_de_nuevo_deja_vigente_solo_la_ultima()
 	{
-		// Solo interesa la ultima validacion: conservar las anteriores daria material para
-		// intentar reanudar una vencida.
+		// Reanudar mira la ultima validacion y nada mas. La anterior no se borra —desde el
+		// esquema 11 la sesion es historial y lo capturado apunta a ella—, pero deja de ser la
+		// vigente, asi que no hay forma de reanudarla.
 		await using var contexto = new ContextoSqlite();
 		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
 
@@ -104,6 +105,60 @@ public sealed class AlmacenSesionOfflineSqliteTests
 		var recuperada = await almacen.ObtenerAsync();
 		Assert.Equal("s-2", recuperada!.SessionId);
 		Assert.Equal("Ana López", recuperada.Operador);
+
+		var historial = await contexto.ConsultarAsync<FilaSesion>(
+			"SELECT session_id AS SessionId, vigente AS Vigente FROM sesion_local ORDER BY session_id");
+		Assert.Equal([("s-1", 0), ("s-2", 1)], historial.Select(h => (h.SessionId, h.Vigente)));
+	}
+
+	[Fact]
+	public async Task Revalidar_la_misma_sesion_actualiza_su_fila_sin_duplicarla()
+	{
+		await using var contexto = new ContextoSqlite();
+		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
+
+		await almacen.GuardarAsync(Sesion());
+		await almacen.GuardarAsync(Sesion() with
+		{
+			Vigencia = VigenciaOffline.DelServidor(Validacion.AddHours(4), Validacion.AddHours(12)),
+		});
+
+		var recuperada = await almacen.ObtenerAsync();
+		Assert.Equal(Validacion.AddHours(12), recuperada!.Vigencia.OfflineUntilUtc);
+		Assert.Equal(1, await contexto.EscalarAsync<int>("SELECT COUNT(*) FROM sesion_local"));
+	}
+
+	[Fact]
+	public async Task Guardar_deja_creados_el_operador_y_la_unidad_a_los_que_apunta()
+	{
+		await using var contexto = new ContextoSqlite();
+		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
+
+		await almacen.GuardarAsync(Sesion());
+
+		Assert.Equal("Operador de campo", await contexto.EscalarAsync<string>(
+			"SELECT rol FROM operador_local WHERE cuenta = 'Juan Pérez'"));
+		Assert.Equal("Camioneta 01", await contexto.EscalarAsync<string>(
+			"SELECT descripcion FROM unidad_local WHERE clave = 'VEH-01' AND id = 'u-1'"));
+	}
+
+	[Fact]
+	public async Task Limpiar_conserva_la_sesion_para_lo_que_apunta_a_ella()
+	{
+		await using var contexto = new ContextoSqlite();
+		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
+		await almacen.GuardarAsync(Sesion());
+
+		await almacen.LimpiarAsync();
+
+		Assert.Null(await almacen.ObtenerAsync());
+		Assert.Equal(1, await contexto.EscalarAsync<int>("SELECT COUNT(*) FROM sesion_local WHERE session_id = 's-1' AND vigente = 0"));
+	}
+
+	public sealed class FilaSesion
+	{
+		public string SessionId { get; set; } = "";
+		public int Vigente { get; set; }
 	}
 
 	[Fact]

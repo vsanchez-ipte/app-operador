@@ -26,6 +26,8 @@ public sealed class AbrirSesionMovil
 {
 	private readonly IAccesoJacobClient _jacob;
 	private readonly CustodiaSesionLocal _custodia;
+	private readonly ActualizarCatalogoLocal? _catalogos;
+	private readonly IConnectivityService? _conectividad;
 	private readonly DatosDeInstalacion _instalacion;
 	private readonly IMonotonicClock _monotonico;
 
@@ -38,17 +40,38 @@ public sealed class AbrirSesionMovil
 	/// Contador que se guarda junto con la sesión para poder medir después cuánto tiempo
 	/// pasó de verdad, aunque muevan el reloj (JTT-1383).
 	/// </param>
+	/// <param name="catalogos">
+	/// Refresco del catálogo local (JTT-1394 CA 4). Opcional para no obligar a las pruebas de
+	/// acceso, que no lo ejercitan, a proporcionarlo.
+	/// </param>
+	/// <param name="conectividad">
+	/// A quién contarle si Jacob contestó. Antes de la sesión la sonda no puede autenticarse,
+	/// así que los dos pasos del acceso son la única medida real del enlace que hay en esa
+	/// pantalla. Opcional por la misma razón que el catálogo.
+	/// </param>
 	public AbrirSesionMovil(
 		IAccesoJacobClient jacob,
 		CustodiaSesionLocal custodia,
 		DatosDeInstalacion instalacion,
-		IMonotonicClock monotonico)
+		IMonotonicClock monotonico,
+		IAuditLog bitacora,
+		ActualizarCatalogoLocal? catalogos = null,
+		IConnectivityService? conectividad = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
 		_instalacion = instalacion;
 		_monotonico = monotonico;
+		_bitacora = bitacora;
+		_catalogos = catalogos;
+		_conectividad = conectividad;
 	}
+
+	private readonly IAuditLog _bitacora;
+
+	// Con quién se está intentando entrar. Todavía no hay sesión que lo diga, y la bitácora
+	// necesita a quién atribuirle el intento (JTT-1392 CA 1 y 2).
+	private string? _emailEnCurso;
 
 	/// <summary>
 	/// Paso 1: valida credenciales y retiene el desafío para el paso 2.
@@ -69,9 +92,28 @@ public sealed class AbrirSesionMovil
 		CancellationToken cancelacion = default)
 	{
 		var resultado = await _jacob.PreautenticarAsync(email, contrasena, cancelacion);
+		AnotarEnlace(resultado.Motivo);
 		_desafio = resultado.Exitoso ? resultado.ChallengeId : null;
+		_emailEnCurso = email;
 
 		await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
+
+		// Inicio exitoso, intento fallido y falta de permiso son tres de las operaciones que
+		// JTT-1392 CA 2 pide auditar, y hasta aquí el acceso real no dejaba ninguna línea.
+		if (resultado.Exitoso)
+		{
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito,
+				$"Credenciales validadas por Jacob CCO para {email}.",
+				operador: email, cancelacion: cancelacion);
+		}
+		else
+		{
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo,
+				$"Acceso denegado para {email}: {resultado.Motivo}.",
+				motivoCodigo: resultado.CodigoError, operador: email, cancelacion: cancelacion);
+		}
 
 		return resultado;
 	}
@@ -103,20 +145,53 @@ public sealed class AbrirSesionMovil
 		_desafio = null;
 
 		var resultado = await _jacob.CompletarAccesoAsync(desafio, unidad.Id, cancelacion);
+		AnotarEnlace(resultado.Motivo);
 		if (!resultado.Exitoso)
 		{
 			// El permiso se revalida al crear la sesión, no solo al preautenticar: puede
 			// retirarse entre un paso y el otro.
 			await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.CreacionSesion, ResultadoAuditoria.Rechazo,
+				$"Jacob CCO no abrió la sesión con la unidad {unidad.Clave}: {resultado.Motivo}.",
+				motivoCodigo: resultado.CodigoError, operador: _emailEnCurso, cancelacion: cancelacion);
 			return resultado;
 		}
 
 		await RegistrarAsync(resultado.Sesion!, cancelacion);
+
+		// Lo que se escribió a nombre del correo —las credenciales validadas y los intentos
+		// fallidos previos— pasa a nombre del operador que Jacob confirmó, que es por el que se
+		// filtra el perfil. Sin esto quedaría guardado pero invisible para su dueño.
+		if (_emailEnCurso is not null)
+		{
+			await _bitacora.AtribuirAsync(_emailEnCurso, resultado.Sesion!.Operador, cancelacion);
+		}
+
+		// Ya con la sesión guardada: las dos líneas salen a nombre del operador que Jacob
+		// confirmó, no del correo tecleado.
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.SeleccionUnidad, ResultadoAuditoria.Exito,
+			$"Unidad {unidad.Clave} seleccionada.", cancelacion: cancelacion);
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Exito,
+			"Sesión abierta con Jacob CCO.", cancelacion: cancelacion);
+
 		return resultado;
 	}
 
 	/// <summary>Olvida el desafío retenido, al abandonar el acceso.</summary>
 	public void Descartar() => _desafio = null;
+
+	/// <summary>
+	/// Traduce el desenlace de una petición del acceso a la señal de enlace.
+	/// </summary>
+	/// <remarks>
+	/// Solo la falta de comunicación niega el enlace. Una credencial rechazada o una cuenta
+	/// bloqueada las contestó Jacob, y contestar es justo lo que el enlace mide.
+	/// </remarks>
+	private void AnotarEnlace(MotivoRechazoAcceso? motivo) =>
+		_conectividad?.AnotarIntercambio(motivo != MotivoRechazoAcceso.SinComunicacion);
 
 	/// <summary>
 	/// Borra sesión y token locales cuando Jacob niega el permiso funcional (JTT-1379 CA 6).
@@ -158,7 +233,7 @@ public sealed class AbrirSesionMovil
 	/// El token va primero: si fallara al guardarse, es preferible no haber anunciado una
 	/// sesión que después no podría autenticar ninguna petición.
 	/// </remarks>
-	private Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
+	private async Task RegistrarAsync(SesionValidada sesion, CancellationToken cancelacion)
 	{
 		// El contador monotónico se lee aquí, lo más cerca posible de la validación: es la
 		// referencia contra la que se medirá la ventana offline (JTT-1383).
@@ -172,6 +247,15 @@ public sealed class AbrirSesionMovil
 			MonotonicoAlValidar: _monotonico.Transcurrido,
 			Instalacion: _instalacion);
 
-		return _custodia.AbrirAsync(persistida, sesion.AccessToken, cancelacion);
+		await _custodia.AbrirAsync(persistida, sesion.AccessToken, cancelacion);
+
+		// El catálogo se refresca aquí, que es la «validación en línea» del CA 4: en el momento
+		// que ya existe, sin temporizador propio. Va DESPUÉS de abrir la sesión y su fallo no se
+		// propaga: si no hay red para el catálogo, el operador entra igual y captura con la
+		// copia que ya tenía, que es justo lo que el CA 2 promete.
+		if (_catalogos is not null)
+		{
+			await _catalogos.EjecutarAsync(sesion.AccessToken, cancelacion);
+		}
 	}
 }

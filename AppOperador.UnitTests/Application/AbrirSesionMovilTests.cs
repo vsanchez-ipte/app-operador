@@ -21,12 +21,16 @@ public class AbrirSesionMovilTests
 	private readonly ISessionStore _sesiones = Substitute.For<ISessionStore>();
 	private readonly IOfflineSessionStore _persistida = Substitute.For<IOfflineSessionStore>();
 	private readonly IMonotonicClock _monotonico = Substitute.For<IMonotonicClock>();
+	private readonly IAuditLog _bitacora = Substitute.For<IAuditLog>();
+	private readonly IConnectivityService _conectividad = Substitute.For<IConnectivityService>();
 
 	private AbrirSesionMovil CrearCasoDeUso() =>
 		new(_jacob,
 			new CustodiaSesionLocal(_sesiones, _tokens, _persistida),
 			new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)),
-			_monotonico);
+			_monotonico,
+			_bitacora,
+			conectividad: _conectividad);
 
 	private static SesionValidada SesionDePrueba(string token = "jwt-de-prueba") =>
 		new(
@@ -209,6 +213,95 @@ public class AbrirSesionMovilTests
 			Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 	}
 
+	// ---------- JTT-1392 CA 2: el acceso real deja rastro en la bitácora ----------
+
+	[Fact]
+	public async Task Identificar_ConExito_LoAnotaANombreDelCorreo()
+	{
+		// Todavía no hay sesión que diga quién es: se atribuye al correo con el que se intentó.
+		ConDesafioEmitido();
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await _bitacora.Received(1).RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito, Arg.Any<string>(),
+			null, "op@ipte.com.mx", Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Identificar_ConRechazo_LoAnotaConElCodigoDeJacob()
+	{
+		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinPermiso, "appoperador.permiso.faltante"));
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await _bitacora.Received(1).RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, Arg.Any<string>(),
+			"appoperador.permiso.faltante", "op@ipte.com.mx", Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Abrir_ConExito_AnotaLaUnidadYLaSesion_DespuesDeGuardarla()
+	{
+		// Las dos líneas se escriben ya con la sesión publicada, para que salgan a nombre del
+		// operador que Jacob confirmó y no del correo tecleado.
+		ConDesafioEmitido();
+		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
+		var sesionYaGuardada = false;
+		_sesiones.When(s => s.Guardar(Arg.Any<SesionOperador>())).Do(_ => sesionYaGuardada = true);
+		var guardadaAlAnotar = new List<bool>();
+		_bitacora.When(b => b.RegistrarAsync(
+				Arg.Any<OperacionAuditada>(), Arg.Any<ResultadoAuditoria>(), Arg.Any<string>(),
+				Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()))
+			.Do(_ => guardadaAlAnotar.Add(sesionYaGuardada));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await casoDeUso.AbrirAsync(Unidad);
+
+		await _bitacora.Received(1).RegistrarAsync(
+			OperacionAuditada.SeleccionUnidad, ResultadoAuditoria.Exito, Arg.Is<string>(m => m != null && m.Contains("VEH-01")),
+			Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+		await _bitacora.Received(1).RegistrarAsync(
+			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Exito, Arg.Any<string>(),
+			Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+		Assert.Equal([false, true, true], guardadaAlAnotar);
+	}
+
+	[Fact]
+	public async Task Abrir_ConExito_PoneANombreDelOperadorLoQueSeAnotoConElCorreo()
+	{
+		// Las líneas del acceso se escribieron a nombre del correo; el perfil se filtra por el
+		// nombre que Jacob devuelve. Sin esto quedarían guardadas pero invisibles para su dueño.
+		ConDesafioEmitido();
+		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await casoDeUso.AbrirAsync(Unidad);
+
+		await _bitacora.Received(1).AtribuirAsync("op@ipte.com.mx", "Juan Pérez", Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Abrir_ConRechazo_LoAnotaConElCodigo()
+	{
+		ConDesafioEmitido();
+		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Rechazado(MotivoRechazoAcceso.UnidadNoAutorizada, "appoperador.vehiculo.noautorizado"));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await casoDeUso.AbrirAsync(Unidad);
+
+		await _bitacora.Received(1).RegistrarAsync(
+			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Rechazo, Arg.Any<string>(),
+			"appoperador.vehiculo.noautorizado", "op@ipte.com.mx", Arg.Any<CancellationToken>());
+	}
+
 	[Fact]
 	public async Task Descartar_OlvidaElDesafio()
 	{
@@ -234,5 +327,65 @@ public class AbrirSesionMovilTests
 		var resultado = await segunda.AbrirAsync(Unidad);
 
 		Assert.Equal(MotivoRechazoAcceso.DesafioNoValido, resultado.Motivo);
+	}
+
+	// ---------- El acceso es la única medida del enlace antes de la sesión ----------
+
+	[Fact]
+	public async Task Identificar_ConExito_AnotaQueHayEnlace()
+	{
+		// Sin sesión la sonda no puede autenticarse; que Jacob acabe de validar credenciales
+		// es la prueba de enlace que la pantalla de acceso necesita.
+		ConDesafioEmitido();
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		_conectividad.Received(1).AnotarIntercambio(true);
+	}
+
+	[Fact]
+	public async Task Identificar_ConCredencialRechazada_TambienAnotaQueHayEnlace()
+	{
+		// Rechazar es contestar: el transporte funciona aunque la credencial no.
+		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoPreauth.Rechazado(MotivoRechazoAcceso.CredencialInvalida));
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "mala");
+
+		_conectividad.Received(1).AnotarIntercambio(true);
+	}
+
+	[Fact]
+	public async Task Identificar_SinComunicacion_AnotaQueNoHayEnlace()
+	{
+		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinComunicacion, "conexion.fallida"));
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		_conectividad.Received(1).AnotarIntercambio(false);
+	}
+
+	[Fact]
+	public async Task Abrir_SinComunicacion_AnotaQueNoHayEnlace()
+	{
+		ConDesafioEmitido();
+		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinComunicacion, "tiempo.agotado"));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await casoDeUso.AbrirAsync(Unidad);
+
+		_conectividad.Received(1).AnotarIntercambio(false);
+	}
+
+	[Fact]
+	public async Task Abrir_SinDesafio_NoAnotaNada()
+	{
+		// No se habló con Jacob, así que no hay nada que anotar.
+		await CrearCasoDeUso().AbrirAsync(Unidad);
+
+		_conectividad.DidNotReceive().AnotarIntercambio(Arg.Any<bool>());
 	}
 }

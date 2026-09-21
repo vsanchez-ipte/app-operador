@@ -1,4 +1,4 @@
-using AppOperador.Aplicacion.Modelos;
+﻿using AppOperador.Aplicacion.Modelos;
 using AppOperador.Domain.Enums;
 
 namespace AppOperador.Mobile.ViewModels;
@@ -18,8 +18,19 @@ public sealed class RegistroColaVista
 		Registro = registro;
 
 		var clase = registro.Clase == ClaseRegistro.Incidencia ? "Incidencia" : "Evidencia local";
-		var prioridad = registro.Prioridad == SyncPriority.Critica ? "Crítica" : "Normal";
-		TextoDatos = $"{clase} / {prioridad} / {registro.Descripcion} / KM {registro.Kilometro}";
+
+		// Va la SEVERIDAD, no la prioridad de sincronización. Antes iba la prioridad rotulada
+		// como severidad, y la prioridad solo tiene dos valores: Advertencia e Información se
+		// leían "Normal". La prioridad sigue existiendo y sigue ordenando la cola; lo que no
+		// hace es hacerse pasar por otra cosa.
+		TextoDatos =
+			$"{clase} / {registro.SeveridadLegible} / {registro.Descripcion} / KM {registro.Kilometro}";
+
+		// La hora de captura (JTT-290 CA 3), en hora local del dispositivo. Con fecha solo
+		// cuando no es de hoy: en una jornada normal todas son de hoy y la fecha estorbaría.
+		TextoHora = registro.CapturadaUtc is { } capturada
+			? FormatearHora(capturada.ToLocalTime())
+			: string.Empty;
 
 		(TextoEstado, ColorFondoEstado, ColorTextoEstado) = registro.Estado switch
 		{
@@ -36,8 +47,25 @@ public sealed class RegistroColaVista
 
 	public string ClaveLocal => Registro.ClaveLocal;
 
-	/// <summary>Línea de datos: clase, prioridad, descripción y kilómetro.</summary>
+	/// <summary>
+	/// Referencia que encabeza la tarjeta: el folio si ya llegó, la clave local mientras no.
+	/// </summary>
+	/// <remarks>
+	/// La decide el modelo de aplicación, no esta clase: es el CA 1 de JTT-1403 y tiene un solo
+	/// dueño, donde además se puede probar. Aquí solo se muestra.
+	/// </remarks>
+	public string ReferenciaPrincipal => Registro.ReferenciaPrincipal;
+
+	/// <summary>Línea de datos: clase, severidad, descripción y kilómetro.</summary>
 	public string TextoDatos { get; }
+
+	/// <summary>Cuándo se capturó, o vacío si el registro no lo trae.</summary>
+	public string TextoHora { get; }
+
+	public bool MuestraHora => TextoHora.Length > 0;
+
+	/// <summary>Indica si se ofrece el botón «Corregir» (JTT-291 CA 8).</summary>
+	public bool MuestraCorregir => Registro.SePuedeCorregir;
 
 	public string TextoEstado { get; }
 
@@ -46,10 +74,69 @@ public sealed class RegistroColaVista
 	public string ColorTextoEstado { get; }
 
 	/// <summary>
-	/// Folio central y confirmación de llegada al CCO.
+	/// Línea de trazabilidad: la clave local del registro, ya confirmado, y la confirmación de
+	/// que llegó al CCO (JTT-1403 CA 2).
 	/// </summary>
-	/// <remarks>El folio no existe hasta que Jacob confirma el registro (DA-15).</remarks>
-	public string TextoFolio => $"{Registro.FolioCentral} · Visible en Incidencias";
+	/// <remarks>
+	/// Cuando el folio encabeza la tarjeta, la clave local baja aquí en vez de desaparecer. Es
+	/// la única referencia común entre lo que el operador ve, la base del dispositivo y la
+	/// bitácora local, así que sin ella un registro confirmado deja de poder rastrearse hacia
+	/// atrás.
+	/// </remarks>
+	public string TextoTrazabilidad => $"{Registro.ClaveLocal} · Visible en Incidencias";
 
-	public bool MuestraFolio => !string.IsNullOrEmpty(Registro.FolioCentral);
+	/// <summary>Si la tarjeta lleva línea de trazabilidad, que es tanto como decir si ya tiene folio.</summary>
+	public bool MuestraTrazabilidad => Registro.TieneFolio;
+
+	/// <summary>
+	/// Por qué no salió este registro. Solo en los fallidos.
+	/// </summary>
+	/// <remarks>
+	/// El texto lo compone <see cref="RegistroCola.MotivoFallo"/>, no esta clase: qué se le dice
+	/// al operador se decide donde hay pruebas. Aquí solo se muestra.
+	/// </remarks>
+	public string TextoMotivoFallo => Registro.MotivoFallo;
+
+	/// <summary>Si la tarjeta lleva la línea del motivo.</summary>
+	public bool MuestraMotivoFallo => Registro.HayMotivoFallo;
+
+	/// <summary>
+	/// Cuándo va a reintentarse este registro, en hora local.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Se muestra la hora y no una cuenta atrás.</b> Una cuenta atrás obliga a repintar cada
+	/// segundo mientras la pantalla esté abierta; la hora se calcula una vez y no vuelve a
+	/// tocarse. La espera llega a treinta minutos, así que un contador sería además una cifra
+	/// larga cambiando sin parar delante de alguien que solo quiere saber si tiene que hacer algo.
+	/// </para>
+	/// <para>
+	/// <b>En hora local</b>, que es la única que el operador puede comparar con su reloj. El
+	/// instante viaja en UTC, como todo lo demás.
+	/// </para>
+	/// </remarks>
+	public string TextoReintento
+	{
+		get
+		{
+			if (Registro.ReintentoUtc is not { } reintento)
+			{
+				return string.Empty;
+			}
+
+			// Ya venció y sigue ahí: no hay enlace, o la comprobación no ha llegado todavía.
+			// Anunciar una hora pasada haría dudar de si la aplicación sigue intentando algo.
+			return reintento <= DateTime.UtcNow
+				? "Listo para reintentar."
+				: $"Reintento a las {reintento.ToLocalTime():HH:mm}.";
+		}
+	}
+
+	/// <summary>Si la tarjeta lleva la línea del reintento.</summary>
+	public bool MuestraReintento => Registro.HayReintentoProgramado;
+
+	private static string FormatearHora(DateTime local) =>
+		local.Date == DateTime.Now.Date
+			? $"Capturada a las {local:HH:mm}."
+			: $"Capturada el {local:dd/MM/yyyy} a las {local:HH:mm}.";
 }

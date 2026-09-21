@@ -59,6 +59,23 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string DetalleAjustesNoAbrieron =
 		"No se pudo abrir la configuración del dispositivo. Ábrala manualmente y vuelva a la app.";
 
+	// Qué se está haciendo mientras el operador espera. Van uno por paso y no un «Cargando…»
+	// común: el acceso son hasta tres esperas seguidas contra el servidor, y cada una puede
+	// tardar lo que dure el tiempo de espera del cliente. Decirle cuál va es la diferencia
+	// entre esperar y creer que la app se colgó.
+	private const string PasoComprobandoEnlace = "Comprobando el enlace con Jacob CCO…";
+	private const string PasoComprobandoUbicacion = "Comprobando la ubicación del dispositivo…";
+	private const string PasoValidandoCredenciales = "Validando sus credenciales con Jacob CCO…";
+	private const string PasoAbriendoSesion = "Abriendo la sesión con la unidad elegida…";
+	private const string PasoReanudandoOffline = "Reanudando la última sesión guardada…";
+
+	// Cuando Android mata el proceso —al revocar un permiso desde Ajustes, por ejemplo— la app
+	// vuelve a abrirse aquí con la sesión intacta. Sin este aviso, el único rastro es el botón
+	// «Continuar offline», que con red no se lee como «reanudar mi sesión» (JTT-1681).
+	private const string FormatoSesionGuardada =
+		"Hay una sesión guardada de {0}, vigente hasta el {1}. «Continuar offline» la reanuda "
+		+ "sin volver a autenticarse.";
+
 	private const string AccionPermitir = "Permitir ubicación";
 	private const string AccionAjustesApp = "Abrir configuración de la app";
 	private const string AccionAjustesUbicacion = "Abrir configuración de ubicación";
@@ -93,8 +110,34 @@ public sealed partial class AccesoViewModel : ObservableObject
 	[ObservableProperty]
 	public partial string? MensajeAviso { get; set; }
 
+	/// <summary>
+	/// Aviso de que hay una sesión guardada que «Continuar offline» reanudaría, o
+	/// <see langword="null"/> si no la hay (JTT-1681).
+	/// </summary>
+	[ObservableProperty]
+	public partial string? AvisoSesionGuardada { get; set; }
+
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
+
+	/// <summary>
+	/// Qué está haciendo la pantalla ahora mismo, o <see langword="null"/> si no espera nada.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Sin esto la pantalla parece colgada.</b> <see cref="Ocupado"/> solo apagaba los
+	/// botones: el operador pulsaba «Iniciar sesión», todo se ponía gris y no ocurría nada
+	/// visible durante lo que tardara el servidor —hasta veinte segundos por llamada, y el
+	/// acceso real hace dos seguidas—. No había ningún indicador de actividad en la aplicación.
+	/// </para>
+	/// <para>
+	/// Va en el mismo bloque que <see cref="Ocupado"/> en cada camino, y se limpia en el mismo
+	/// <c>finally</c>: si los dos se separaran, quedaría un texto anunciando un trabajo que ya
+	/// terminó, que es peor que no decir nada.
+	/// </para>
+	/// </remarks>
+	[ObservableProperty]
+	public partial string? PasoEnCurso { get; set; }
 
 	/// <summary>
 	/// Explicación del estado de ubicación encontrado. Acompaña al literal de JTT-279, que
@@ -159,11 +202,17 @@ public sealed partial class AccesoViewModel : ObservableObject
 	/// <summary>Indica si hay un aviso informativo que mostrar.</summary>
 	public bool HayAviso => !string.IsNullOrEmpty(MensajeAviso);
 
+	/// <summary>Indica si hay una sesión guardada que anunciar.</summary>
+	public bool HaySesionGuardada => !string.IsNullOrEmpty(AvisoSesionGuardada);
+
 	/// <summary>Indica si hay explicación del estado de ubicación que mostrar.</summary>
 	public bool HayDetalleUbicacion => !string.IsNullOrEmpty(DetalleUbicacion);
 
 	/// <summary>Indica si hay un botón de ubicación que ofrecer.</summary>
 	public bool HayAccionUbicacion => !string.IsNullOrEmpty(TextoAccionUbicacion);
+
+	/// <summary>Indica si hay que mostrar el indicador de actividad y su texto.</summary>
+	public bool HayPasoEnCurso => !string.IsNullOrEmpty(PasoEnCurso);
 
 	/// <summary>Estado de comunicación con Jacob CCO, visible en la pantalla.</summary>
 	public string TextoEstadoEnlace => _conectividad.HayEnlace ? "Enlace CCO activo" : MensajeSinComunicacion;
@@ -197,6 +246,10 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 		await InicializarAsync();
 
+		// Se consulta cada vez que se llega a la pantalla, no una sola: la sesión que había al
+		// abrir la app puede haberse cerrado, y la que no había puede existir tras un acceso.
+		AvisoSesionGuardada = await TextoSesionGuardadaAsync();
+
 		// Si se llegó aquí porque la sesión se cerró sola —ventana vencida, revalidación
 		// negada o permiso retirado— hay que decir por qué. Sin esto el operador aparecería
 		// en el formulario sin explicación (JTT-1384 CA 3).
@@ -209,7 +262,21 @@ public sealed partial class AccesoViewModel : ObservableObject
 		// El indicador de enlace de esta pantalla debe reflejar el estado real, no el último
 		// que se conociera (JTT-1391 CA 6). Sin sesión la sonda no puede autenticarse, así
 		// que lo que se comprueba aquí es la red.
-		await _conectividad.ComprobarAsync();
+		//
+		// Se anuncia porque es la primera espera que encuentra el operador y ocurre sola, al
+		// llegar a la pantalla: sin aviso, la app se abre y se queda quieta sin explicación.
+		Ocupado = true;
+		PasoEnCurso = PasoComprobandoEnlace;
+		try
+		{
+			await _conectividad.ComprobarAsync();
+		}
+		finally
+		{
+			PasoEnCurso = null;
+			Ocupado = false;
+		}
+
 		OnPropertyChanged(nameof(TextoEstadoEnlace));
 	}
 
@@ -303,12 +370,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 			// confirmarla. No se vuelve a preautenticar: el desafío sigue vigente.
 			if (EnSeleccionDeUnidad)
 			{
+				PasoEnCurso = PasoAbriendoSesion;
 				await AbrirSesionAsync();
 				return;
 			}
 
 			if (_accesoJacob is not null)
 			{
+				PasoEnCurso = PasoValidandoCredenciales;
 				await IdentificarAsync();
 				return;
 			}
@@ -318,11 +387,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 				return;
 			}
 
+			PasoEnCurso = PasoValidandoCredenciales;
 			var resultado = await _autenticacion.IngresarAsync(Usuario, Contrasena, UnidadSeleccionada);
 			await ProcesarResultadoAsync(resultado);
 		}
 		finally
 		{
+			PasoEnCurso = null;
 			Ocupado = false;
 		}
 	}
@@ -451,14 +522,23 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 			// Con el canal real, la reanudación consulta la sesión que quedó guardada y mide
 			// su vigencia sin fiarse del reloj (JTT-1383). Sin canal, sigue el simulador.
+			PasoEnCurso = PasoReanudandoOffline;
 			var resultado = _reanudarOffline is not null
 				? await _reanudarOffline.ReanudarAsync()
 				: await _autenticacion.ContinuarSinConexionAsync();
 
 			await ProcesarResultadoAsync(resultado);
+
+			// Si no se pudo reanudar, el aviso ya no es cierto: la ventana pudo vencer entre
+			// que se consultó y que el operador tocó el botón.
+			if (!resultado.Autorizado)
+			{
+				AvisoSesionGuardada = null;
+			}
 		}
 		finally
 		{
+			PasoEnCurso = null;
 			Ocupado = false;
 		}
 	}
@@ -517,8 +597,16 @@ public sealed partial class AccesoViewModel : ObservableObject
 	}
 
 	/// <summary>Comprueba el prerrequisito y deja la pantalla contando lo que encontró.</summary>
+	/// <remarks>
+	/// El paso se anuncia aquí y no en cada quien la llama, porque los dos caminos de acceso
+	/// —en línea y sin conexión— pasan por ella y esperarían lo mismo sin explicación. Puede
+	/// tardar: si el permiso no está concedido, esta llamada abre el diálogo del sistema y no
+	/// vuelve hasta que el operador conteste.
+	/// </remarks>
 	private async Task<bool> UbicacionAutorizadaAsync()
 	{
+		PasoEnCurso = PasoComprobandoUbicacion;
+
 		var resultado = await _ubicacion.ExigirAsync();
 		AplicarUbicacion(resultado);
 
@@ -568,6 +656,31 @@ public sealed partial class AccesoViewModel : ObservableObject
 		AccionUbicacion.AbrirAjustesDeUbicacion => AccionAjustesUbicacion,
 		_ => null,
 	};
+
+	/// <summary>
+	/// Texto del aviso de sesión guardada, o <see langword="null"/> si no hay nada que anunciar.
+	/// </summary>
+	/// <remarks>
+	/// Sin el canal real no hay sesión persistida que consultar, y contra el simulador el aviso
+	/// mentiría. La hora se muestra como en el perfil y en el indicador de enlace, con fecha,
+	/// porque una ventana de ocho horas cruza la medianoche con frecuencia.
+	/// </remarks>
+	private async Task<string?> TextoSesionGuardadaAsync()
+	{
+		if (_reanudarOffline is null)
+		{
+			return null;
+		}
+
+		var guardada = await _reanudarOffline.ConsultarGuardadaAsync();
+
+		return guardada is null
+			? null
+			: string.Format(
+				FormatoSesionGuardada,
+				guardada.Operador,
+				guardada.VenceUtc.ToLocalTime().ToString("dd/MM/yyyy, hh:mm tt"));
+	}
 
 	private async Task ProcesarResultadoAsync(ResultadoAcceso resultado)
 	{
@@ -630,6 +743,10 @@ public sealed partial class AccesoViewModel : ObservableObject
 			MensajeError = null;
 		}
 	}
+
+	partial void OnAvisoSesionGuardadaChanged(string? value) => OnPropertyChanged(nameof(HaySesionGuardada));
+
+	partial void OnPasoEnCursoChanged(string? value) => OnPropertyChanged(nameof(HayPasoEnCurso));
 
 	partial void OnDetalleUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayDetalleUbicacion));
 

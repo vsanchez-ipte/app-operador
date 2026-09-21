@@ -105,6 +105,37 @@
                                    FontAttributes="Bold"
                                    IsVisible="{Binding HayAviso}" />
 
+                            <!--
+                                Actividad en curso. Los botones deshabilitados no bastan: sin
+                                esto, pulsar "Iniciar sesion" apagaba la pantalla y no ocurria
+                                nada visible durante lo que tardara el servidor, hasta veinte
+                                segundos por llamada y con dos llamadas seguidas en el acceso
+                                real. El texto nombra el paso porque son varias esperas
+                                distintas y "Cargando..." no dice en cual va.
+                            -->
+                            <HorizontalStackLayout Spacing="10"
+                                                   HorizontalOptions="Center"
+                                                   IsVisible="{Binding HayPasoEnCurso}">
+                                <ActivityIndicator IsRunning="{Binding HayPasoEnCurso}"
+                                                   Color="{StaticResource Vino}"
+                                                   HeightRequest="18"
+                                                   WidthRequest="18"
+                                                   VerticalOptions="Center" />
+                                <Label Text="{Binding PasoEnCurso}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
+                            <!--
+                                Sesión guardada (JTT-1681). Cuando Android mata el proceso, la
+                                app vuelve a abrirse aquí con la sesión intacta; sin este aviso
+                                el único rastro era el botón de abajo, y con red "Continuar
+                                offline" no se lee como "reanudar mi sesión".
+                            -->
+                            <Label Text="{Binding AvisoSesionGuardada}"
+                                   Style="{StaticResource TextoSecundario}"
+                                   IsVisible="{Binding HaySesionGuardada}" />
+
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <Button Grid.Column="0"
                                         Text="{Binding TextoBotonAcceso}"

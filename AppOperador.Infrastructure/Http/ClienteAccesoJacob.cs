@@ -78,9 +78,9 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			// La llave pública no sirve. No es culpa de la credencial del operador.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "llave.invalida");
 		}
-		catch (HttpRequestException)
+		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
-			// Servidor inalcanzable, DNS, certificado, conexión rechazada.
+			// Servidor inalcanzable, DNS, certificado, conexión rechazada, socket cerrado.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinComunicacion, "conexion.fallida");
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
@@ -107,7 +107,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 
 			return await InterpretarLoginAsync(respuesta, cancelacion);
 		}
-		catch (HttpRequestException)
+		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
 			return ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinComunicacion, "conexion.fallida");
 		}
@@ -134,7 +134,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			// interpretar. Cualquier otro código significa que la revocación no consta.
 			return respuesta.IsSuccessStatusCode;
 		}
-		catch (HttpRequestException)
+		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
 			return false;
 		}
@@ -161,7 +161,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 
 			return await InterpretarRevalidacionAsync(respuesta, cancelacion);
 		}
-		catch (HttpRequestException)
+		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
 			// Sin red no se sabe nada de la sesión: sigue valiendo la ventana offline.
 			return ResultadoRevalidacion.SinRespuesta("conexion.fallida");
@@ -423,7 +423,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			// haber contestado ya distingue un problema del servidor de uno de comunicación.
 			return ResultadoSondeo.Desde((int)respuesta.StatusCode);
 		}
-		catch (HttpRequestException excepcion)
+		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
 			return ResultadoSondeo.SinTransporte($"No se alcanzó a Jacob CCO: {excepcion.Message}");
 		}

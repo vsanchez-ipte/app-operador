@@ -31,7 +31,8 @@ public class RevocacionDePermisoTests
 		new(_jacob,
 			new CustodiaSesionLocal(_sesiones, _tokens, _persistida),
 			new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)),
-			_monotonico);
+			_monotonico,
+			Substitute.For<IAuditLog>());
 
 	private void PreautenticacionDevuelve(ResultadoPreauth resultado) =>
 		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())

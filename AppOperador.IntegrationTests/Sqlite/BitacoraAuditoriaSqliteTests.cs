@@ -1,3 +1,4 @@
+using AppOperador.Aplicacion.Interfaces;
 using AppOperador.Aplicacion.Modelos;
 using AppOperador.Infrastructure.Sqlite;
 
@@ -47,7 +48,7 @@ public sealed class BitacoraAuditoriaSqliteTests
 		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "antes de cerrar");
 
 		var reabierta = contexto.ReabrirBaseDatos();
-		var bitacora = new BitacoraAuditoriaSqlite(reabierta, contexto.Reloj);
+		var bitacora = contexto.CrearBitacora(reabierta);
 
 		var evento = Assert.Single(await bitacora.ObtenerEventosAsync());
 		Assert.Equal("antes de cerrar", evento.Mensaje);
@@ -62,7 +63,7 @@ public sealed class BitacoraAuditoriaSqliteTests
 
 		// Diez por encima del tope: la tabla no puede crecer sin límite en un dispositivo
 		// que pasa semanas sin mantenimiento.
-		for (var i = 0; i < BitacoraAuditoriaSqlite.EventosMaximos + 10; i++)
+		for (var i = 0; i < BitacoraAuditoriaSqlite.EventosConservados + 10; i++)
 		{
 			contexto.Reloj.Avanzar(TimeSpan.FromSeconds(1));
 			await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, $"evento {i}");
@@ -70,8 +71,170 @@ public sealed class BitacoraAuditoriaSqliteTests
 
 		var eventos = await contexto.Bitacora.ObtenerEventosAsync();
 
-		Assert.Equal(BitacoraAuditoriaSqlite.EventosMaximos, eventos.Count);
-		Assert.Equal($"evento {BitacoraAuditoriaSqlite.EventosMaximos + 9}", eventos[0].Mensaje);
+		Assert.Equal(BitacoraAuditoriaSqlite.EventosConservados, eventos.Count);
+		Assert.Equal($"evento {BitacoraAuditoriaSqlite.EventosConservados + 9}", eventos[0].Mensaje);
 		Assert.DoesNotContain(eventos, e => e.Mensaje == "evento 0");
 	}
+
+	[Fact]
+	public async Task ObtenerEventos_porPaginas_recorreDelMasRecienteAlMasAntiguoSinRepetir()
+	{
+		await using var contexto = new ContextoSqlite();
+
+		for (var i = 0; i < 7; i++)
+		{
+			await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, $"evento {i}");
+		}
+
+		var primera = await contexto.Bitacora.ObtenerEventosAsync(omitir: 0, cantidad: 3);
+		var segunda = await contexto.Bitacora.ObtenerEventosAsync(omitir: 3, cantidad: 3);
+		var tercera = await contexto.Bitacora.ObtenerEventosAsync(omitir: 6, cantidad: 3);
+		var vacia = await contexto.Bitacora.ObtenerEventosAsync(omitir: 9, cantidad: 3);
+
+		Assert.Equal(["evento 6", "evento 5", "evento 4"], primera.Select(e => e.Mensaje));
+		Assert.Equal(["evento 3", "evento 2", "evento 1"], segunda.Select(e => e.Mensaje));
+		Assert.Equal(["evento 0"], tercera.Select(e => e.Mensaje));
+		Assert.Empty(vacia);
+	}
+
+	// ---------- JTT-1392: quién y desde dónde, en cada línea ----------
+
+	[Fact]
+	public async Task Registrar_copiaEnLaLineaAlOperadorSuUnidadSuSesionYElOrigen()
+	{
+		await using var contexto = new ContextoSqlite();
+		contexto.Conectividad.HayEnlace = false;
+
+		await contexto.Bitacora.RegistrarAsync(
+			OperacionAuditada.Sincronizacion, ResultadoAuditoria.Rechazo, "sin enlace",
+			motivoCodigo: "appincidencias.error.tecnico");
+
+		var evento = Assert.Single(await contexto.Bitacora.ObtenerEventosAsync());
+		Assert.Equal(OperacionAuditada.Sincronizacion, evento.Operacion);
+		Assert.Equal(ResultadoAuditoria.Rechazo, evento.Resultado);
+		Assert.Equal("appincidencias.error.tecnico", evento.MotivoCodigo);
+		Assert.Equal(NivelAuditoria.Advertencia, evento.Nivel);
+		Assert.Equal(contexto.Sesion.Actual!.Operador, evento.Operador);
+		Assert.Equal(contexto.Sesion.Actual.Rol, evento.Rol);
+		Assert.Equal(contexto.Sesion.Actual.UnidadVehicular, evento.UnidadClave);
+		// La sesión fija de las pruebas no tiene identificador, como un recorrido simulado: la
+		// línea queda sin sesión a la que apuntar, no con una cadena vacía.
+		Assert.Null(evento.SesionId);
+		Assert.Equal(OrigenAuditoria.Offline, evento.Origen);
+		Assert.Equal(contexto.Monotonico.Transcurrido.Ticks, evento.MonotonicoTicks);
+	}
+
+	[Fact]
+	public async Task ConSesionReal_laLineaApuntaALaSesionYLaSesionExiste()
+	{
+		await using var contexto = new ContextoSqlite();
+		var sesion = new SesionFija("ana.lopez", sessionId: "s-777");
+		var bitacora = contexto.CrearBitacoraDe(sesion);
+
+		await bitacora.RegistrarAsync(OperacionAuditada.Captura, ResultadoAuditoria.Exito, "captura");
+
+		var evento = Assert.Single(await bitacora.ObtenerEventosAsync());
+		Assert.Equal("s-777", evento.SesionId);
+
+		// La llave se sostiene aunque nadie haya persistido la sesión: la bitácora la deja
+		// creada, sin marcarla como vigente.
+		var vigente = await new AlmacenSesionOfflineSqlite(contexto.BaseDatos).ObtenerAsync();
+		Assert.Null(vigente);
+	}
+
+	[Fact]
+	public async Task ObtenerEventos_devuelveSoloLoDelOperadorConSesion_yLoAnteriorAlEsquema10()
+	{
+		// El Perfil es del operador (D3). Lo del turno anterior sigue guardado, pero no se le
+		// muestra. Lo escrito antes del esquema 10 —sin operador y sin origen— se muestra a
+		// todos como historial previo; una línea nueva que llegue sin operador, a nadie: se
+		// distingue de las viejas porque sí tiene origen.
+		await using var contexto = new ContextoSqlite();
+		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "de admin");
+
+		var otro = new SesionFija("otro");
+		await contexto.CrearBitacoraDe(otro).RegistrarAsync(NivelAuditoria.Info, "de otro");
+		await contexto.CrearBitacoraDe(new SesionSinNadie()).RegistrarAsync(NivelAuditoria.Info, "nueva sin operador");
+
+		// Una fila como las que dejó el esquema anterior: solo instante, nivel y mensaje.
+		await contexto.EjecutarSqlAsync(
+			"INSERT INTO evento_auditoria (instante_utc_ticks, nivel, mensaje) VALUES (?, ?, ?)",
+			contexto.Reloj.UtcAhora.Ticks, (int)NivelAuditoria.Info, "historial previo");
+
+		var deAdmin = (await contexto.Bitacora.ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
+		var deOtro = (await contexto.CrearBitacoraDe(otro).ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
+
+		Assert.Equal(["historial previo", "de admin"], deAdmin);
+		Assert.Equal(["historial previo", "de otro"], deOtro);
+	}
+
+	[Fact]
+	public async Task Atribuir_poneANombreDelOperadorLoQueSeEscribioANombreDelCorreo()
+	{
+		// El acceso escribe a nombre del correo porque es lo único que sabe; al abrir la sesión,
+		// Jacob contesta con el nombre, que es por el que se filtra el perfil.
+		await using var contexto = new ContextoSqlite();
+		var sinSesion = contexto.CrearBitacoraDe(new SesionSinNadie());
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, "primer intento", operador: "op@ipte.com.mx");
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito, "credenciales validadas", operador: "op@ipte.com.mx");
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, "de otro correo", operador: "otra@ipte.com.mx");
+
+		await contexto.Bitacora.AtribuirAsync("op@ipte.com.mx", contexto.Sesion.Actual!.Operador);
+
+		var mensajes = (await contexto.Bitacora.ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
+		Assert.Equal(["credenciales validadas", "primer intento"], mensajes);
+	}
+
+	[Fact]
+	public async Task ObtenerEventos_sinSesionNoDevuelveNada()
+	{
+		await using var contexto = new ContextoSqlite();
+		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "algo");
+
+		Assert.Empty(await contexto.CrearBitacoraDe(new SesionSinNadie()).ObtenerEventosAsync());
+	}
+
+	[Fact]
+	public async Task ElOrden_noLoMueveElRelojDelDispositivo()
+	{
+		// Hallazgo del 12-ago: atrasar la hora del teléfono desordenaba el historial. El orden
+		// es el de escritura, que ni el reloj ni un reinicio pueden mover.
+		await using var contexto = new ContextoSqlite();
+		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "primero");
+		contexto.Reloj.Avanzar(TimeSpan.FromHours(-3));
+		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "segundo, con el reloj atrasado");
+
+		var mensajes = (await contexto.Bitacora.ObtenerEventosAsync()).Select(e => e.Mensaje).ToArray();
+
+		Assert.Equal(["segundo, con el reloj atrasado", "primero"], mensajes);
+	}
+
+	[Fact]
+	public async Task SinSesion_laLineaSaleANombreDeQuienDigaQuienRegistra()
+	{
+		// El acceso escribe antes de que exista sesión: se atribuye al correo que se intentó.
+		await using var contexto = new ContextoSqlite();
+		var sinSesion = contexto.CrearBitacoraDe(new SesionSinNadie());
+
+		await sinSesion.RegistrarAsync(
+			OperacionAuditada.Autenticacion, ResultadoAuditoria.Rechazo, "denegado",
+			motivoCodigo: "appoperador.credencial.invalida", operador: "op@ipte.com.mx");
+
+		var evento = Assert.Single(await contexto.CrearBitacoraDe(new SesionFija("op@ipte.com.mx")).ObtenerEventosAsync());
+		Assert.Equal("op@ipte.com.mx", evento.Operador);
+		Assert.Null(evento.SesionId);
+	}
+}
+
+/// <summary>Sesión que no existe: antes del acceso, o después de cerrarla.</summary>
+public sealed class SesionSinNadie : ISessionStore
+{
+	public SesionOperador? Actual => null;
+
+	public void Guardar(SesionOperador sesion) { }
+
+	public void Limpiar() { }
 }

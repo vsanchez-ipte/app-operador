@@ -319,7 +319,7 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 		}
 
 		// Sin esto el estado se queda como lo dejó el último sondeo. Ver las notas del método.
-		_ = ActualizarEstadoDelEnlaceAsync();
+		_ = ComprobarElEnlaceAsync();
 		return true;
 	}
 
@@ -344,28 +344,35 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 	/// no revalidara la sesión, que es lo que pide JTT-1383 CA 9.
 	/// </para>
 	/// <para>
-	/// Es el mismo criterio de JTT-1384: se comprueba al entrar a cada pantalla y no con un
-	/// temporizador, para no dejar un reloj corriendo en segundo plano gastando batería.
+	/// Es el mismo criterio de JTT-1384: <b>no hay un reloj sondeando en segundo plano</b>. Se
+	/// comprueba al entrar a cada pantalla y, desde la Cola, cuando ya hay un reintento vencido
+	/// que enviar; con la cola limpia —el caso normal— no se sondea nunca.
 	/// </para>
 	/// </remarks>
-	private async Task ActualizarEstadoDelEnlaceAsync()
+	/// <returns>
+	/// <see langword="true"/> si tras el sondeo hay enlace. Lo mira quien vaya a intentar algo
+	/// que lo necesite, para no salir con el valor guardado, que puede ser viejo.
+	/// </returns>
+	public async Task<bool> ComprobarElEnlaceAsync()
 	{
 		// Sin sesión no hay sonda autenticada que enviar, y la pantalla de acceso ya dice lo suyo.
 		if (_sesiones.Actual is null)
 		{
-			return;
+			return false;
 		}
 
 		try
 		{
 			var sondeo = await _conectividad.ComprobarAsync();
 			_ultimaCausa = sondeo.Causa;
+			return sondeo.HayEnlace;
 		}
 		catch (Exception excepcion)
 		{
-			// Nadie espera este resultado, así que una excepción aquí no tendría quién la
-			// recogiera y en el hilo de interfaz cierra la app.
-			_registro.LogError(excepcion, "Falló el sondeo del enlace al mostrar una pantalla.");
+			// Puede llamarse sin que nadie espere el resultado, así que una excepción aquí no
+			// tendría quién la recogiera y en el hilo de interfaz cierra la app.
+			_registro.LogError(excepcion, "Falló el sondeo del enlace con Jacob CCO.");
+			return false;
 		}
 		finally
 		{
@@ -416,6 +423,14 @@ public sealed partial class EstadoEnlaceViewModel : ObservableObject
 		// anterior deja de valer. Sin esto, un «Error de servicio» viejo seguiría pintado tras
 		// una caída posterior que nada tuvo que ver con el servidor.
 		_ultimaCausa = CausaSinEnlace.Ninguna;
+
+		// Y el detalle es de la última vez que sí hubo enlace. Sin limpiarlo, el aviso se
+		// contradecía solo: «Sin conexión / Modo offline» arriba y «Enlace recuperado. Sesión
+		// revalidada.» debajo, sin manera de saber cuál de las dos creer.
+		if (!hayEnlace)
+		{
+			Detalle = null;
+		}
 
 		Refrescar();
 

@@ -48,13 +48,51 @@ public sealed class ReanudarSesionOffline
 		_bitacora = bitacora;
 	}
 
+	/// <summary>
+	/// Dice si hay una sesión guardada que se podría reanudar ahora, sin reanudarla.
+	/// </summary>
+	/// <returns>
+	/// La sesión reanudable, o <see langword="null"/> si no hay ninguna guardada, no tiene
+	/// token, sus permisos no cuadran con él o su ventana ya venció.
+	/// </returns>
+	/// <remarks>
+	/// Aplica <b>exactamente las mismas condiciones</b> que <see cref="ReanudarAsync"/>, para que
+	/// la pantalla nunca anuncie una sesión que después no se pueda reanudar. Pero no tiene
+	/// efectos: no publica la sesión, no revoca nada ni escribe en la bitácora. Es lo que la
+	/// pantalla de acceso consulta al abrirse para avisar que la sesión sigue ahí (JTT-1681).
+	/// </remarks>
+	public async Task<SesionReanudable?> ConsultarGuardadaAsync(CancellationToken cancelacion = default)
+	{
+		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
+		if (guardada is null)
+		{
+			return null;
+		}
+
+		var token = await _custodia.ObtenerTokenAsync(cancelacion);
+		if (string.IsNullOrWhiteSpace(token) || !_claims.Respaldan(guardada.Permisos, token))
+		{
+			return null;
+		}
+
+		var transcurso = TranscursoOffline.Medir(
+			guardada.Vigencia.LastValidatedAtUtc,
+			_reloj.UtcAhora,
+			guardada.MonotonicoAlValidar,
+			_monotonico.Transcurrido);
+
+		return guardada.Vigencia.EstaVigenteTras(transcurso)
+			? new SesionReanudable(guardada.Operador, guardada.Vigencia.OfflineUntilUtc)
+			: null;
+	}
+
 	/// <summary>Intenta abrir la app con la sesión guardada.</summary>
 	public async Task<ResultadoAcceso> ReanudarAsync(CancellationToken cancelacion = default)
 	{
 		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
 		if (guardada is null)
 		{
-			return await RechazarAsync("Reanudación negada: no hay validación en línea previa.", cancelacion);
+			return await RechazarAsync("Reanudación negada: no hay validación en línea previa.", null, cancelacion);
 		}
 
 		// Sin token no se podría hablar con Jacob al recuperar el enlace, y los permisos
@@ -62,7 +100,7 @@ public sealed class ReanudarSesionOffline
 		var token = await _custodia.ObtenerTokenAsync(cancelacion);
 		if (string.IsNullOrWhiteSpace(token))
 		{
-			return await RechazarAsync("Reanudación negada: no hay token de la sesión.", cancelacion);
+			return await RechazarAsync("Reanudación negada: no hay token de la sesión.", guardada.Operador, cancelacion);
 		}
 
 		// Los permisos guardados se vuelven a cotejar contra el token (JTT-1379 CA 8): el
@@ -71,7 +109,7 @@ public sealed class ReanudarSesionOffline
 		{
 			await _custodia.RevocarAsync(cancelacion);
 			return await RechazarAsync(
-				"Reanudación negada: los permisos guardados no coinciden con el token.", cancelacion);
+				"Reanudación negada: los permisos guardados no coinciden con el token.", guardada.Operador, cancelacion);
 		}
 
 		var transcurso = TranscursoOffline.Medir(
@@ -82,7 +120,7 @@ public sealed class ReanudarSesionOffline
 
 		if (!guardada.Vigencia.EstaVigenteTras(transcurso))
 		{
-			return await RechazarAsync(MotivoDelVencimiento(transcurso), cancelacion);
+			return await RechazarAsync(MotivoDelVencimiento(transcurso), guardada.Operador, cancelacion);
 		}
 
 		if (transcurso.RelojRetrocedido)
@@ -118,9 +156,16 @@ public sealed class ReanudarSesionOffline
 			? "Reanudación negada: la ventana offline ya venció."
 			: "Reanudación negada: no se pudo determinar el tiempo transcurrido.";
 
-	private async Task<ResultadoAcceso> RechazarAsync(string motivo, CancellationToken cancelacion)
+	private async Task<ResultadoAcceso> RechazarAsync(
+		string motivo,
+		string? operador,
+		CancellationToken cancelacion)
 	{
-		await _bitacora.RegistrarAsync(NivelAuditoria.Advertencia, motivo, cancelacion);
+		// Todavía no hay sesión abierta: la línea se atribuye al operador de la guardada, si
+		// la hay, para que la vea su dueño y no quien entre después.
+		await _bitacora.RegistrarAsync(
+			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Rechazo, motivo,
+			operador: operador, cancelacion: cancelacion);
 		return ResultadoAcceso.Rechazar(MotivoRechazoAcceso.SesionOfflineExpirada);
 	}
 

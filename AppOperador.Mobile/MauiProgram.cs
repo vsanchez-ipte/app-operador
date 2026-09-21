@@ -87,6 +87,10 @@ public static class MauiProgram
 		servicios.AddSingleton<IMonotonicClock, RelojMonotonicoDispositivo>();
 		servicios.AddSingleton<ISessionStore, AlmacenSesionEnMemoria>();
 
+		// Qué autoriza la sesión abierta (JTT-1385). Va aquí, junto al almacén de sesión, porque
+		// es lo único que necesita: pregunta por la sesión vigente en cada consulta.
+		servicios.AddSingleton<CapacidadesDeLaSesion>();
+
 		// Datos que el perfil muestra junto a la sesión y que Jacob no devuelve porque no los
 		// conoce. La versión de catálogos es fija mientras no exista su sincronización.
 		servicios.AddSingleton(new DatosDeInstalacion(
@@ -94,7 +98,6 @@ public static class MauiProgram
 			VersionCatalogos: new DateOnly(2026, 7, 23)));
 
 		RegistrarCustodiaDelToken(servicios);
-		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 		servicios.AddSingleton<IAuthenticationService, ServicioAutenticacionSimulado>();
 
 		RegistrarUbicacion(servicios);
@@ -104,11 +107,57 @@ public static class MauiProgram
 		// contrato ILocalDatabase no expone a propósito.
 		// Fábrica explícita: el constructor recibe una ruta opcional y el contenedor no
 		// debe intentar resolverla como si fuera un servicio.
-		servicios.AddSingleton(_ => new BaseDatosLocal());
+		servicios.AddSingleton(sp => new BaseDatosLocal(
+			rutaArchivo: null,
+			claves: sp.GetService<IDatabaseKeyProvider>()));
 		servicios.AddSingleton<ILocalDatabase>(sp => sp.GetRequiredService<BaseDatosLocal>());
 		servicios.AddSingleton<IAuditLog, BitacoraAuditoriaSqlite>();
 		servicios.AddSingleton<IIncidentRepository, RepositorioIncidenciasSqlite>();
+
+		// Copia local del catálogo de Jacob (JTT-1394). Va aparte del repositorio de
+		// incidencias: uno es caché reemplazable del servidor y el otro son datos que solo
+		// existen en el dispositivo hasta que se sincronizan.
+		servicios.AddSingleton<ICatalogoRepository, RepositorioCatalogoSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
+
+		// Evidencia de la incidencia (JTT-1398). El repositorio va aparte del de incidencias
+		// porque la evidencia se sincroniza y se reintenta por su cuenta: una evidencia
+		// fallida no revierte una incidencia ya confirmada.
+		servicios.AddSingleton<IRepositorioEvidencias, RepositorioEvidenciasSqlite>();
+
+		// Fábrica explícita: el almacén recibe el directorio de datos de la app, que es un
+		// valor de plataforma y no un servicio que el contenedor sepa resolver. Es el espacio
+		// privado —no la caché— porque el sistema vacía la caché cuando le falta espacio, y
+		// ahí se perdería una evidencia pendiente de enviar.
+		servicios.AddSingleton<IAlmacenEvidencias>(
+			_ => new AlmacenEvidenciasDispositivo(FileSystem.AppDataDirectory));
+
+		// El selector se registra en todos los destinos, sin variante simulada. En escritorio
+		// MediaPicker no existe: la implementación lo detecta y responde que no está
+		// disponible, que es la verdad y basta para que la pantalla no ofrezca el botón. Una
+		// versión simulada solo serviría para adjuntar archivos falsos que nadie va a probar.
+		servicios.AddSingleton<ISelectorEvidencia, SelectorEvidenciaDispositivo>();
+
+		// El espacio se mide sobre el directorio de datos, que es donde caen la base y las
+		// evidencias (JTT-289 CA 8, JTT-292 CA 4).
+		servicios.AddSingleton<IEspacioDispositivo>(
+			_ => new MedidorEspacioDispositivo(FileSystem.AppDataDirectory));
+		servicios.AddSingleton<AdjuntarEvidencia>();
+		servicios.AddSingleton<ConsultarAlmacenamientoLocal>();
+		servicios.AddSingleton<QuitarEvidencia>();
+		servicios.AddSingleton<ObtenerEvidenciasDeIncidencia>();
+		servicios.AddSingleton<EliminarBorrador>();
+
+#if EXPORTAR_BASE_DATOS
+		// Copia legible de la base para revisarla en el escritorio. Solo existe en paquetes
+		// compilados con -p:HabilitarExportacionBaseDatos=true; en cualquier otro, ni esta
+		// línea ni la clase que resuelve llegan al paquete.
+		// Fábrica explícita: el constructor admite un directorio temporal opcional que solo
+		// usan las pruebas, y el contenedor no debe intentar resolverlo como servicio.
+		servicios.AddSingleton<IExportadorBaseDatos>(sp => new ExportadorBaseDatosSqlite(
+			sp.GetRequiredService<BaseDatosLocal>(),
+			sp.GetRequiredService<IClock>()));
+#endif
 
 		// Sesión persistida y lectura de los claims del token (JTT-1383). El token sigue
 		// aparte, en el almacenamiento seguro: aquí solo van los metadatos.
@@ -133,6 +182,11 @@ public static class MauiProgram
 		// Después del canal: el cierre recibe el cliente de Jacob si está registrado, y se
 		// queda con el cierre puramente local si no lo está (JTT-1390).
 		servicios.AddSingleton<CerrarSesionMovil>();
+
+		// Único para toda la app: dos instancias escucharían el mismo evento de enlace y
+		// dispararían dos tandas por cada reconexión (JTT-1406). Va después del canal porque
+		// necesita el sincronizador, que se registra en los dos caminos.
+		servicios.AddSingleton<SincronizacionAutomatica>();
 	}
 
 	/// <summary>
@@ -149,6 +203,11 @@ public static class MauiProgram
 	{
 #if ANDROID || IOS || MACCATALYST
 		servicios.AddSingleton<ITokenProvider, AlmacenTokenSeguro>();
+
+		// La clave de la base local va al mismo almacén que el token (JTT-1388 CA 2). Solo se
+		// registra donde SecureStorage existe: sin proveedor, la base se abre en claro, que es
+		// lo que necesita el destino de escritorio de la demostración.
+		servicios.AddSingleton<IDatabaseKeyProvider, ClaveBaseDatosSegura>();
 #else
 		servicios.AddSingleton<ITokenProvider, AlmacenTokenEnMemoria>();
 #endif
@@ -174,11 +233,15 @@ public static class MauiProgram
 	{
 #if ANDROID || IOS || MACCATALYST
 		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionDispositivo>();
+		servicios.AddSingleton<ILocationService, ServicioUbicacionDispositivo>();
 #else
 		servicios.AddSingleton<ILocationPermissionService, ServicioPermisoUbicacionSimulado>();
+		servicios.AddSingleton<ILocationService, ServicioUbicacionSimulado>();
 #endif
 
 		servicios.AddSingleton<VerificarUbicacionParaAcceso>();
+		servicios.AddSingleton<IRepositorioGeometriaCorredor, RepositorioGeometriaCorredorEmbebido>();
+		servicios.AddSingleton<ObtenerKilometroPorUbicacion>();
 	}
 
 	/// <summary>
@@ -213,6 +276,16 @@ public static class MauiProgram
 			// Sin canal no hay a quién sondear: el estado de enlace se simula, como el resto
 			// del recorrido.
 			servicios.AddSingleton<IConnectivityService, ServicioConectividadSimulado>();
+
+			// El catálogo también se simula (JTT-1394). Sin esto el recorrido simulado se
+			// quedaría sin tipos ni severidades —la base dejó de sembrarlos— y no habría con
+			// qué capturar. El simulador hace de Jacob, igual que con los permisos.
+			servicios.AddSingleton<ICatalogosJacobClient, CatalogoSimulado>();
+			servicios.AddSingleton<IIncidenciasJacobClient, EnvioIncidenciasSimulado>();
+			servicios.AddSingleton<ActualizarCatalogoLocal>();
+			servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
+			servicios.AddSingleton<CorregirIncidenciaRechazada>();
+			servicios.AddSingleton<ISincronizadorIncidencias, SincronizarIncidencias>();
 			return;
 		}
 
@@ -222,6 +295,38 @@ public static class MauiProgram
 			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
 			return new ClienteAccesoJacob(http, opciones, sp.GetRequiredService<ITokenClaims>());
 		});
+
+		// Catálogos reales de Jacob (JTT-1394). Cliente propio y no una ruta más en
+		// ClienteAccesoJacob: aquel no registra nada a propósito porque por él pasan
+		// contraseñas y desafíos, y una consulta de catálogo no necesita esa disciplina.
+		servicios.AddSingleton<ICatalogosJacobClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
+			return new ClienteCatalogosJacob(http, opciones);
+		});
+
+		servicios.AddSingleton<IIncidenciasJacobClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera };
+			return new ClienteIncidenciasJacob(http, opciones);
+		});
+
+		// Evidencias (JTT-1398). Cliente propio porque viaja en multipart y no en JSON, y con
+		// un tiempo de espera más largo: 15 MB por datos móviles en carretera no caben en el
+		// mismo margen que un JSON de dos kilobytes.
+		servicios.AddSingleton<IEvidenciasJacobClient>(sp =>
+		{
+			var opciones = sp.GetRequiredService<ConfiguracionApi>();
+			var http = new HttpClient { Timeout = opciones.TiempoDeEspera * 4 };
+			return new ClienteEvidenciasJacob(http, opciones);
+		});
+
+		servicios.AddSingleton<ActualizarCatalogoLocal>();
+		servicios.AddSingleton<ConvertirBorradorEnIncidencia>();
+		servicios.AddSingleton<CorregirIncidenciaRechazada>();
+		servicios.AddSingleton<ISincronizadorIncidencias, SincronizarIncidencias>();
 
 		// Estado de enlace real: red del dispositivo más una sonda autenticada a Jacob. Va
 		// aquí porque necesita el cliente que se acaba de registrar (JTT-1391).

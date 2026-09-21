@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 /Claudio/
 /docs/Maqueta App Operador.pdf
+
+# launchSettings.json de las bibliotecas: lo genera Visual Studio al abrir la solucion y
+# no aporta nada al equipo. Se colo dos veces en JTT-1401 por un `git add` de carpeta
+# entera; ignorarlo cierra la causa en vez del sintoma.
+AppOperador.Aplicacion/Properties/launchSettings.json

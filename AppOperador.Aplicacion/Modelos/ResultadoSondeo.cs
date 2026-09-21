@@ -59,6 +59,18 @@ public sealed class ResultadoSondeo
 	public static ResultadoSondeo SegunLaRed() =>
 		new(true, CausaSinEnlace.Ninguna, null, "Sin sesión todavía: se cree a la red del dispositivo.");
 
+	/// <summary>
+	/// Desenlace de una petición ajena a la sonda, tomado como señal del enlace.
+	/// </summary>
+	/// <remarks>
+	/// Lo produce el acceso, que habla con Jacob antes de que haya sesión que sondear. Que
+	/// Jacob conteste —aunque sea para rechazar— vale tanto como la sonda; que no conteste, lo
+	/// mismo que un sondeo sin transporte.
+	/// </remarks>
+	public static ResultadoSondeo Observado(bool jacobRespondio) => jacobRespondio
+		? new(true, CausaSinEnlace.Ninguna, null, "Jacob CCO contestó a una petición del acceso.")
+		: new(false, CausaSinEnlace.SinTransporte, null, "Una petición del acceso no alcanzó a Jacob CCO.");
+
 	/// <summary>No se alcanzó al servidor.</summary>
 	public static ResultadoSondeo SinTransporte(string detalle) =>
 		new(false, CausaSinEnlace.SinTransporte, null, detalle);

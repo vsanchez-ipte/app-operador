@@ -210,6 +210,66 @@ public class ReanudarSesionOfflineTests
 			Arg.Any<CancellationToken>());
 	}
 
+	// ---------- Consultar sin reanudar (JTT-1681) ----------
+
+	[Fact]
+	public async Task Consultar_dentro_de_la_ventana_dice_de_quien_es_y_hasta_cuando()
+	{
+		var reanudable = await Crear().ConsultarGuardadaAsync();
+
+		Assert.NotNull(reanudable);
+		Assert.Equal("Juan Pérez", reanudable.Operador);
+		Assert.Equal(Validacion.AddHours(8), reanudable.VenceUtc);
+	}
+
+	[Fact]
+	public async Task Consultar_no_reanuda_ni_deja_rastro()
+	{
+		// Es una lectura: la pantalla la hace al abrirse, sin que el operador haya decidido nada.
+		await Crear().ConsultarGuardadaAsync();
+
+		_sesiones.DidNotReceive().Guardar(Arg.Any<SesionOperador>());
+		await _persistida.DidNotReceive().LimpiarAsync(Arg.Any<CancellationToken>());
+		await _bitacora.DidNotReceive().RegistrarAsync(
+			Arg.Any<NivelAuditoria>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Consultar_sin_sesion_guardada_no_anuncia_nada()
+	{
+		_persistida.ObtenerAsync(Arg.Any<CancellationToken>()).Returns((SesionOfflinePersistida?)null);
+
+		Assert.Null(await Crear().ConsultarGuardadaAsync());
+	}
+
+	[Fact]
+	public async Task Consultar_sin_token_no_anuncia_nada()
+	{
+		_tokens.ObtenerAsync(Arg.Any<CancellationToken>()).Returns((string?)null);
+
+		Assert.Null(await Crear().ConsultarGuardadaAsync());
+	}
+
+	[Fact]
+	public async Task Consultar_con_la_ventana_vencida_no_anuncia_nada()
+	{
+		// Mismas condiciones que reanudar: lo que se anuncia tiene que poder reanudarse después.
+		_reloj.UtcAhora = Validacion.AddHours(9);
+		_monotonico.Transcurrido = MonotonicoAlValidar + TimeSpan.FromHours(9);
+
+		Assert.Null(await Crear().ConsultarGuardadaAsync());
+	}
+
+	[Fact]
+	public async Task Consultar_con_permisos_que_no_respalda_el_token_no_anuncia_ni_borra()
+	{
+		_persistida.ObtenerAsync(Arg.Any<CancellationToken>())
+			.Returns(Guardada(PermisosOperador.DelServidor([Modulo, "ADMINISTRAR"])));
+
+		Assert.Null(await Crear().ConsultarGuardadaAsync());
+		await _persistida.DidNotReceive().LimpiarAsync(Arg.Any<CancellationToken>());
+	}
+
 	private sealed class RelojFalso : IClock
 	{
 		public DateTime UtcAhora { get; set; } = DateTime.UnixEpoch;
