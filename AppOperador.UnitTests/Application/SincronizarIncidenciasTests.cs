@@ -891,7 +891,7 @@ public sealed class SincronizarIncidenciasTests
 			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
 
 		public Task ActualizarEnvioAsync(
-			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
+			string uuid, EstadoSincronizacion estado, string? codigoError, string? mensaje = null, CancellationToken c = default)
 		{
 			Actualizadas.Add((uuid, estado));
 			return Task.CompletedTask;

@@ -3,30 +3,27 @@ using SQLite;
 namespace AppOperador.Infrastructure.Sqlite.Entidades;
 
 /// <summary>
-/// Fila de <c>intento_sincronizacion</c>: la bitácora de cada envío, exitoso o fallido.
+/// Fila de <c>intento_incidencia</c>: cada envío de una incidencia a Jacob, exitoso o fallido.
 /// </summary>
 /// <remarks>
-/// El documento de arquitectura pide conservar "intentos y errores" y poder responder
-/// por qué un registro no ha llegado. Sin esta tabla, un registro atorado en Fallido no
-/// dice nada: con ella se sabe cuántas veces se intentó, contra qué respondió Jacob y
-/// cuándo fue la última vez.
+/// El documento de arquitectura pide conservar "intentos y errores" y poder responder por qué
+/// un registro no ha llegado. Sin esta tabla, un registro atorado en Fallido no dice nada: con
+/// ella se sabe cuántas veces se intentó, contra qué respondió Jacob y cuándo fue la última vez.
+/// Hasta el esquema 10 compartía tabla con los intentos de evidencia; se partió porque una
+/// llave foránea no puede apuntar a dos tablas.
 /// </remarks>
-[Table("intento_sincronizacion")]
-internal sealed class IntentoSincronizacion
+[Table("intento_incidencia")]
+internal sealed class IntentoIncidencia
 {
 	[PrimaryKey]
 	[AutoIncrement]
 	[Column("id")]
 	public int Id { get; set; }
 
-	/// <summary>UUID del registro que se intentó enviar.</summary>
-	[Indexed(Name = "ix_intento_registro")]
-	[Column("registro_uuid")]
-	public string RegistroUuid { get; set; } = string.Empty;
-
-	/// <summary>Si el registro era incidencia o evidencia. Ver <c>ClaseRegistro</c>.</summary>
-	[Column("clase")]
-	public int Clase { get; set; }
+	/// <summary>Incidencia que se intentó enviar; llave a <c>incidencia_local</c>.</summary>
+	[Indexed(Name = "ix_intento_incidencia")]
+	[Column("incidencia_uuid")]
+	public string IncidenciaUuid { get; set; } = string.Empty;
 
 	/// <summary>Instante del intento, en ticks UTC.</summary>
 	[Column("instante_utc_ticks")]
@@ -38,12 +35,8 @@ internal sealed class IntentoSincronizacion
 
 	/// <summary>
 	/// Código HTTP del intento. <b>Ya no se escribe</b>; se conserva por lo guardado antes.
+	/// Las filas nuevas la dejan nula y usan <see cref="CodigoTexto"/>.
 	/// </summary>
-	/// <remarks>
-	/// Quitar una columna en SQLite obliga a reconstruir la tabla, y con ella se iría la traza
-	/// de los envíos anteriores. Las filas nuevas la dejan nula y usan
-	/// <see cref="CodigoTexto"/>.
-	/// </remarks>
 	[Column("codigo")]
 	public int? Codigo { get; set; }
 

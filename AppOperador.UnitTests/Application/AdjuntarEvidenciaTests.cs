@@ -248,7 +248,7 @@ public sealed class AdjuntarEvidenciaTests
 			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
 
 		public Task ActualizarEnvioAsync(
-			string uuid, EstadoSincronizacion estado, string? codigoError, CancellationToken c = default)
+			string uuid, EstadoSincronizacion estado, string? codigoError, string? mensaje = null, CancellationToken c = default)
 		{
 			var indice = Registradas.FindIndex(e => e.Uuid == uuid);
 

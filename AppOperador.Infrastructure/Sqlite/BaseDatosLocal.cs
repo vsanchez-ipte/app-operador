@@ -1,5 +1,5 @@
 using AppOperador.Aplicacion.Interfaces;
-using AppOperador.Infrastructure.Sqlite.Entidades;
+using AppOperador.Infrastructure.Sqlite.Esquema;
 using Microsoft.Maui.Storage;
 using SQLite;
 
@@ -19,13 +19,10 @@ namespace AppOperador.Infrastructure.Sqlite;
 public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 {
 	/// <summary>
-	/// Versión de esquema que este código espera.
+	/// Versión de esquema que este código espera. Se guarda en el <c>PRAGMA user_version</c>
+	/// del archivo; las tablas están descritas en <see cref="EsquemaLocal"/>.
 	/// </summary>
-	/// <remarks>
-	/// Se guarda en el <c>PRAGMA user_version</c> del archivo. Al cambiar el esquema hay
-	/// que subir este número y agregar su paso en <see cref="MigrarAsync"/>.
-	/// </remarks>
-	public const int VersionEsquemaActual = 10;
+	public const int VersionEsquemaActual = EsquemaLocal.Version;
 
 	private const string NombreArchivo = "appoperador.db3";
 
@@ -82,24 +79,16 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 			_clave = _claves is null ? null : await _claves.ObtenerAsync(cancelacion);
 			CifrarBaseEnClaroSiHace();
 
-			var conexion = AbrirConexion();
+			// El esquema se prepara con una conexión propia y síncrona, aparte de la que la app
+			// va a usar: reconstruir tablas apaga y enciende las llaves foráneas, y eso no debe
+			// mezclarse con la conexión compartida. En un hilo aparte porque las pestañas lo
+			// piden desde la interfaz y una migración con datos tarda lo que tarda.
+			var migrador = new MigradorEsquema(RutaArchivo, Banderas, _clave);
+			await Task.Run(migrador.Aplicar, cancelacion);
 
-			// Va ANTES de crear las tablas, no después: hay cambios que CreateTableAsync no
-			// sabe hacer y que dejarían la tabla mal formada si se aplicaran encima.
-			await PrepararEsquemaAsync(conexion);
-
-			await conexion.CreateTableAsync<IncidenciaLocal>();
-			await conexion.CreateTableAsync<EvidenciaLocal>();
-			await conexion.CreateTableAsync<IntentoSincronizacion>();
-			await conexion.CreateTableAsync<EventoAuditoriaLocal>();
-			await conexion.CreateTableAsync<TipoIncidenciaLocal>();
-			await conexion.CreateTableAsync<SeveridadLocal>();
-			await conexion.CreateTableAsync<AfectacionLocal>();
-			await conexion.CreateTableAsync<CuerpoLocal>();
-			await conexion.CreateTableAsync<CatalogoMetaLocal>();
-			await conexion.CreateTableAsync<SesionLocal>();
-
-			await MigrarAsync(conexion);
+			// Sin esto las llaves foráneas son decorativas: SQLite no las verifica por omisión y
+			// sqlite-net no las enciende. Es por conexión, y esta es la única que usa la app.
+			await AbrirConexion().ExecuteAsync("PRAGMA foreign_keys = ON;");
 
 			_inicializada = true;
 		}
@@ -115,11 +104,6 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 		await InicializarAsync(cancelacion);
 		return await AbrirConexion().ExecuteScalarAsync<int>("PRAGMA user_version;");
 	}
-
-	/// <summary>
-	/// Conexión compartida, ya abierta. Uso interno de los repositorios.
-	/// </summary>
-	internal SQLiteAsyncConnection Conexion => AbrirConexion();
 
 	/// <summary>
 	/// Garantiza que la base está lista antes de cualquier consulta de un repositorio.
@@ -248,110 +232,6 @@ public sealed class BaseDatosLocal : ILocalDatabase, IAsyncDisposable
 	private SQLiteAsyncConnection AbrirConexion() =>
 		_conexion ??= new SQLiteAsyncConnection(
 			new SQLiteConnectionString(RutaArchivo, Banderas, storeDateTimeAsTicks: true, key: _clave));
-
-	/// <summary>
-	/// Lleva el archivo desde la versión que tenga hasta <see cref="VersionEsquemaActual"/>.
-	/// </summary>
-	/// <remarks>
-	/// <c>CreateTableAsync</c> ya agrega columnas nuevas a tablas existentes, así que los
-	/// cambios aditivos no necesitan paso propio. Este método existe para los que sí lo
-	/// necesitan: renombrar, borrar o rellenar datos. Hoy solo sella la versión inicial.
-	/// </remarks>
-	private static async Task MigrarAsync(SQLiteAsyncConnection conexion)
-	{
-		var version = await conexion.ExecuteScalarAsync<int>("PRAGMA user_version;");
-
-		if (version >= VersionEsquemaActual)
-		{
-			return;
-		}
-
-		// De 0 a 1: primera versión publicada.
-		// De 1 a 2: sesión persistida y sello de origen de las incidencias (JTT-1383).
-		// De 2 a 3: permiso con el que se autorizó la captura (JTT-1385 CA 7).
-		// De 3 a 4: catálogo real de Jacob (JTT-1394). Su parte destructiva la hace
-		//           PrepararEsquemaAsync antes de crear las tablas; lo que queda —las columnas
-		//           de severidad y la versión de catálogo en incidencia_local, y las tablas de
-		//           severidades, afectaciones, cuerpos y meta— es aditivo y CreateTableAsync ya
-		//           lo aplicó arriba.
-		//
-		// De 4 a 5: el envío real a Jacob (JTT-1401). Agrega ultimo_error_codigo a
-		//           incidencia_local y codigo_texto a intento_sincronizacion, las dos para
-		//           guardar el código de error del canal móvil, que es cadena y no número.
-		//           Aditivo: CreateTableAsync ya las aplicó arriba.
-		// De 5 a 6: JTT-1395 agrega el kilómetro normalizado y la lectura GPS original
-		//           (latitud, longitud, precisión e instante UTC) a incidencia_local.
-		//           Es aditivo: las filas anteriores quedan con esos campos nulos.
-		//
-		// De 6 a 7: JTT-1398 agrega los límites de evidencia a la fila de metadatos del
-		//           catálogo: formatos admitidos, tamaño máximo y número de archivos. Aditivo.
-		//           Una base anterior queda con las tres columnas en su valor por omisión, y
-		//           eso deja los límites como «desconocidos» hasta la primera descarga del
-		//           catálogo: no se puede adjuntar mientras tanto. Es deliberado —validar con
-		//           números que la app se invente es peor que no admitir adjuntos— y se
-		//           resuelve solo en cuanto haya conexión.
-		//
-		// De 7 a 8: JTT-1398 agrega nombre_original a evidencia_local. Aditivo. La tabla
-		//           existía desde el primer esquema y nadie había escrito en ella, así que no
-		//           hay filas anteriores a las que les falte: la columna nace poblada.
-		//
-		// De 8 a 9: JTT-1398 agrega ultimo_error_codigo a evidencia_local, por lo mismo que en
-		//           incidencia_local: en memoria, cerrar la app convertiria cada rechazo
-		//           funcional en un reintento indefinido a la manana siguiente. Aditivo.
-		//
-		// De 9 a 10: JTT-1392 agrega a evento_auditoria las dimensiones del CA 1 —operación,
-		//            resultado, motivo, operador, rol, permiso, unidad, sesión y origen— y el
-		//            sello monotónico. Aditivo: las líneas anteriores quedan sin operador y se
-		//            muestran a todos como historial previo; no se borran.
-		//
-		// Las incidencias capturadas antes se conservan (JTT-1388 CA 8). Quedan con la
-		// severidad vacía y sin versión de catálogo: no se puede reconstruir con qué se
-		// capturaron, igual que pasó con el permiso al pasar de 2 a 3.
-		//
-		// Las que ya habían fallado quedan sin último código de error, así que se tratan como
-		// técnicas y se reintentan una vez. Es lo correcto: no se sabe por qué fallaron, y un
-		// reintento las reclasifica con el código real en vez de dejarlas paradas para siempre.
-		await conexion.ExecuteAsync($"PRAGMA user_version = {VersionEsquemaActual};");
-	}
-
-	/// <summary>
-	/// Aplica los cambios de esquema que <c>CreateTableAsync</c> no sabe hacer.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <c>CreateTableAsync</c> solo <b>agrega</b> columnas que falten. No cambia una llave
-	/// primaria ni quita columnas, así que aplicarlo sobre una tabla cuya forma cambió deja un
-	/// híbrido de las dos versiones. Este método corre <b>antes</b> para dejar el archivo en un
-	/// estado sobre el que crear sea seguro.
-	/// </para>
-	/// <para>
-	/// Solo toca tablas que son <b>caché reconstruible</b>. Nada de lo que el operador capturó
-	/// se borra aquí: eso lo prohíbe JTT-1388 CA 8.
-	/// </para>
-	/// </remarks>
-	private static async Task PrepararEsquemaAsync(SQLiteAsyncConnection conexion)
-	{
-		var version = await conexion.ExecuteScalarAsync<int>("PRAGMA user_version;");
-
-		if (version >= VersionEsquemaActual)
-		{
-			return;
-		}
-
-		// De 3 a 4 (JTT-1394): el catálogo de tipos cambió de llave, de una clave de texto
-		// inventada en la maqueta al entero de Jacob. No se puede migrar fila por fila porque
-		// no hay correspondencia: los seis tipos sembrados —OBJETO, VEHICULO, ACCIDENTE,
-		// ANIMAL, SENALAMIENTO, OTRO— no existen en ningún servidor. Se tira la tabla y se
-		// vuelve a crear vacía; la llena la primera descarga del catálogo real.
-		//
-		// Que quede vacía hasta esa descarga es a propósito: un formulario sin tipos avisa de
-		// que falta bajar el catálogo, mientras que uno con seis tipos falsos deja capturar
-		// incidencias que Jacob va a rechazar.
-		if (version < 4)
-		{
-			await conexion.ExecuteAsync("DROP TABLE IF EXISTS catalogo_tipo_incidencia;");
-		}
-	}
 
 	public async ValueTask DisposeAsync()
 	{

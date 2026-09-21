@@ -117,9 +117,29 @@ public sealed class BitacoraAuditoriaSqliteTests
 		Assert.Equal(contexto.Sesion.Actual!.Operador, evento.Operador);
 		Assert.Equal(contexto.Sesion.Actual.Rol, evento.Rol);
 		Assert.Equal(contexto.Sesion.Actual.UnidadVehicular, evento.UnidadClave);
-		Assert.Equal(contexto.Sesion.Actual.SessionId, evento.SesionId);
+		// La sesión fija de las pruebas no tiene identificador, como un recorrido simulado: la
+		// línea queda sin sesión a la que apuntar, no con una cadena vacía.
+		Assert.Null(evento.SesionId);
 		Assert.Equal(OrigenAuditoria.Offline, evento.Origen);
 		Assert.Equal(contexto.Monotonico.Transcurrido.Ticks, evento.MonotonicoTicks);
+	}
+
+	[Fact]
+	public async Task ConSesionReal_laLineaApuntaALaSesionYLaSesionExiste()
+	{
+		await using var contexto = new ContextoSqlite();
+		var sesion = new SesionFija("ana.lopez", sessionId: "s-777");
+		var bitacora = contexto.CrearBitacoraDe(sesion);
+
+		await bitacora.RegistrarAsync(OperacionAuditada.Captura, ResultadoAuditoria.Exito, "captura");
+
+		var evento = Assert.Single(await bitacora.ObtenerEventosAsync());
+		Assert.Equal("s-777", evento.SesionId);
+
+		// La llave se sostiene aunque nadie haya persistido la sesión: la bitácora la deja
+		// creada, sin marcarla como vigente.
+		var vigente = await new AlmacenSesionOfflineSqlite(contexto.BaseDatos).ObtenerAsync();
+		Assert.Null(vigente);
 	}
 
 	[Fact]

@@ -148,8 +148,9 @@ public sealed class ExportacionBaseDatosTests
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
 		Assert.Equal(LeerEstructura(origen), LeerEstructura(copia));
-		// Diez desde JTT-1394: las seis de antes más severidad, afectación, cuerpo y meta.
-		Assert.Equal(10, exportacion.Tablas.Count);
+		// Trece desde el esquema 11: operador, unidad y sesión como historial, y los intentos
+		// partidos en dos tablas.
+		Assert.Equal(13, exportacion.Tablas.Count);
 		Assert.Contains("incidencia_local", exportacion.Tablas);
 	}
 

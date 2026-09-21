@@ -170,7 +170,7 @@ public sealed partial class CapturaViewModel
 	}
 
 	/// <summary>
-	/// Elimina el borrador que se está editando (JTT-1399 CA 8, «eliminarlo»).
+	/// Elimina el borrador que se está editando, con sus adjuntos (JTT-1399 CA 8, «eliminarlo»).
 	/// </summary>
 	[RelayCommand]
 	private async Task EliminarBorradorAsync()
@@ -180,7 +180,7 @@ public sealed partial class CapturaViewModel
 			return;
 		}
 
-		await _incidencias.EliminarBorradorAsync(clave);
+		await _eliminarBorrador.EjecutarAsync(clave);
 		CancelarEdicionBorrador();
 		await RecargarBorradoresAsync();
 	}

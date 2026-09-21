@@ -146,6 +146,7 @@ public static class MauiProgram
 		servicios.AddSingleton<ConsultarAlmacenamientoLocal>();
 		servicios.AddSingleton<QuitarEvidencia>();
 		servicios.AddSingleton<ObtenerEvidenciasDeIncidencia>();
+		servicios.AddSingleton<EliminarBorrador>();
 
 #if EXPORTAR_BASE_DATOS
 		// Copia legible de la base para revisarla en el escritorio. Solo existe en paquetes

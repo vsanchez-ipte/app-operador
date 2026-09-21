@@ -10,9 +10,10 @@ namespace AppOperador.Infrastructure.Sqlite;
 /// <remarks>
 /// <para>
 /// <b>Cada línea copia quién y desde dónde en el instante de escribirla</b>: operador, rol,
-/// permiso, unidad y sesión salen de la sesión abierta; el origen, de si hay enlace con el CCO.
-/// Se copian en la fila y no se referencian, porque la sesión local es una sola fila que se
-/// sobrescribe con cada operador.
+/// permiso y unidad salen de la sesión abierta; el origen, de si hay enlace con el CCO. La
+/// sesión sí se referencia —<c>sesion_local</c> es historial desde el esquema 11—; lo demás se
+/// copia porque la línea del acceso se escribe antes de tener sesión y porque el operador de una
+/// línea se reescribe al atribuir un alias.
 /// </para>
 /// <para>
 /// <b>Se ordena por el orden de inserción, no por la hora.</b> Mover el reloj del dispositivo
@@ -120,6 +121,7 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 	{
 		var sesion = _sesiones.Actual;
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		var sesionId = await ReferenciasSesion.AsegurarAsync(conexion, sesion);
 
 		await conexion.InsertAsync(new EventoAuditoriaLocal
 		{
@@ -137,7 +139,7 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			// operación, y guardar la lista completa no obliga a adivinarlo.
 			Permiso = sesion is null ? null : string.Join(",", sesion.Permisos),
 			UnidadClave = sesion?.UnidadVehicular,
-			SesionId = sesion?.SessionId,
+			SesionId = sesionId,
 			Origen = (int)(_conectividad.HayEnlace ? OrigenAuditoria.Online : OrigenAuditoria.Offline),
 		});
 

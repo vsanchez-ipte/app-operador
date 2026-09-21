@@ -147,13 +147,23 @@ internal sealed class IncidenciaLocal
 	[Column("folio_central")]
 	public string? FolioCentral { get; set; }
 
-	/// <summary>Operador que capturó, para trazabilidad.</summary>
+	/// <summary>
+	/// Cuenta del operador que capturó; llave a <c>operador_local</c>. Nulo si se capturó sin
+	/// sesión, como en los recorridos simulados.
+	/// </summary>
+	/// <remarks>
+	/// Se conserva aunque la sesión ya lo sepa, porque toda consulta de la cola y de los
+	/// borradores filtra por esta columna (JTT-1388 CA 9, JTT-1390 CA 7) y porque las filas
+	/// anteriores a JTT-1383 no tienen sesión a la que preguntarle.
+	/// </remarks>
+	[Indexed(Name = "ix_incidencia_operador")]
 	[Column("operador")]
-	public string Operador { get; set; } = string.Empty;
+	public string? Operador { get; set; }
 
-	/// <summary>Unidad vehicular activa al capturar.</summary>
+	/// <summary>Clave de la unidad activa al capturar; llave a <c>unidad_local</c>. Nulo sin sesión.</summary>
+	[Indexed(Name = "ix_incidencia_unidad")]
 	[Column("unidad_vehicular")]
-	public string UnidadVehicular { get; set; } = string.Empty;
+	public string? UnidadVehicular { get; set; }
 
 	/// <summary>Instante de captura, en ticks UTC.</summary>
 	[Column("creado_utc_ticks")]
@@ -187,15 +197,19 @@ internal sealed class IncidenciaLocal
 	/// se puede mover. Con las dos, quien reciba el registro puede ordenar lo capturado
 	/// dentro de una misma sesión aunque el reloj haya cambiado en medio.
 	/// </remarks>
+	[Column("monotonico_ticks")]
 	public long MonotonicoTicks { get; set; }
 
 	/// <summary>
-	/// Sesión de la que salió el registro (JTT-1383 CA 12).
+	/// Sesión de la que salió el registro (JTT-1383 CA 12); llave a <c>sesion_local</c>.
 	/// </summary>
 	/// <remarks>
-	/// Vacío en los recorridos simulados, que no crean sesión en Jacob.
+	/// Nulo en los recorridos simulados, que no crean sesión en Jacob, y en lo capturado antes
+	/// de JTT-1383. Hacia Jacob viaja como cadena vacía, igual que antes.
 	/// </remarks>
-	public string SesionOrigen { get; set; } = string.Empty;
+	[Indexed(Name = "ix_incidencia_sesion")]
+	[Column("sesion_origen")]
+	public string? SesionOrigen { get; set; }
 
 	/// <summary>
 	/// Permiso con el que se autorizó la captura (JTT-1385 CA 7).
@@ -212,5 +226,6 @@ internal sealed class IncidenciaLocal
 	/// Vacío en los recorridos simulados, que no abren sesión en el servidor.
 	/// </para>
 	/// </remarks>
+	[Column("permiso_origen")]
 	public string PermisoOrigen { get; set; } = string.Empty;
 }

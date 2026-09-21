@@ -112,6 +112,7 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		string uuid,
 		EstadoSincronizacion estado,
 		string? codigoError,
+		string? mensaje = null,
 		CancellationToken cancelacion = default)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
@@ -126,7 +127,20 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		fila.Intentos++;
 		fila.UltimoErrorCodigo = codigoError;
 
-		await conexion.UpdateAsync(fila);
+		// Cada actualización es un intento de subida: la fila cuenta cuántos van y la bitácora
+		// de intentos dice qué respondió Jacob en cada uno, igual que para las incidencias.
+		await conexion.RunInTransactionAsync(tx =>
+		{
+			tx.Update(fila);
+			tx.Insert(new IntentoEvidencia
+			{
+				EvidenciaUuid = uuid,
+				InstanteUtcTicks = DateTime.UtcNow.Ticks,
+				Exito = estado == EstadoSincronizacion.Sincronizado,
+				CodigoTexto = codigoError,
+				Mensaje = mensaje,
+			});
+		});
 	}
 
 	/// <inheritdoc />

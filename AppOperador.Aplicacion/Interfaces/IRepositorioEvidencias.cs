@@ -59,11 +59,14 @@ public interface IRepositorioEvidencias
 	/// <param name="uuid">La evidencia.</param>
 	/// <param name="estado">Dónde queda tras el intento.</param>
 	/// <param name="codigoError">Último código de Jacob, o <see langword="null"/> si salió bien.</param>
+	/// <param name="mensaje">Lo que dijo Jacob, para la bitácora de intentos; no decide nada.</param>
 	Task ActualizarEnvioAsync(
 		string uuid,
 		EstadoSincronizacion estado,
 		string? codigoError,
+		string? mensaje = null,
 		CancellationToken cancelacion = default);
+
 	/// <summary>
 	/// Evidencias del operador que el CCO todavía no confirmó, con la clave local de su
 	/// incidencia (JTT-292 CA 4 y 6).

@@ -99,6 +99,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	private readonly AdjuntarEvidencia _adjuntarEvidencia;
 	private readonly QuitarEvidencia _quitarEvidencia;
 	private readonly ObtenerEvidenciasDeIncidencia _obtenerEvidencias;
+	private readonly EliminarBorrador _eliminarBorrador;
 
 	[ObservableProperty]
 	public partial TipoIncidencia? TipoSeleccionado { get; set; }
@@ -171,7 +172,8 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		ISelectorEvidencia selectorEvidencia,
 		AdjuntarEvidencia adjuntarEvidencia,
 		QuitarEvidencia quitarEvidencia,
-		ObtenerEvidenciasDeIncidencia obtenerEvidencias)
+		ObtenerEvidenciasDeIncidencia obtenerEvidencias,
+		EliminarBorrador eliminarBorrador)
 	{
 		_incidencias = incidencias;
 		_catalogo = catalogo;
@@ -184,6 +186,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		_adjuntarEvidencia = adjuntarEvidencia;
 		_quitarEvidencia = quitarEvidencia;
 		_obtenerEvidencias = obtenerEvidencias;
+		_eliminarBorrador = eliminarBorrador;
 		Enlace = enlace;
 
 		Kilometro = string.Empty;

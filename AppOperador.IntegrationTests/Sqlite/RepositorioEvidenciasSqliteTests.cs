@@ -31,6 +31,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		await repositorio.AgregarAsync(Evidencia("ev-1"));
 
@@ -51,6 +53,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 		// pidió —nombre, tipo y tamaño— no se puede pintar.
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		await repositorio.AgregarAsync(Evidencia("ev-1", nombre: "Choque carril alta.pdf"));
 
@@ -65,6 +69,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 		// Como el operador las adjuntó, no por nombre: es como espera reconocerlas en la lista.
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		await repositorio.AgregarAsync(Evidencia("ev-1", nombre: "zeta.jpg"));
 		await Task.Delay(2);
@@ -81,9 +87,12 @@ public sealed class RepositorioEvidenciasSqliteTests
 		// Si contara todas, la segunda incidencia del turno nacería con el cupo ya gastado.
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		await repositorio.AgregarAsync(Evidencia("ev-1"));
 		await repositorio.AgregarAsync(Evidencia("ev-2"));
+		await contexto.SembrarIncidenciaAsync(OtraIncidencia);
 		await repositorio.AgregarAsync(Evidencia("ev-3", incidenciaUuid: OtraIncidencia));
 
 		Assert.Equal(2, await repositorio.ContarDeIncidenciaAsync(Incidencia));
@@ -95,6 +104,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		await repositorio.AgregarAsync(Evidencia("ev-1"));
 		await repositorio.AgregarAsync(Evidencia("ev-2"));
@@ -111,6 +122,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 		// Mismo criterio que la cola en JTT-1400: lo que el operador documentó sin cobertura no
 		// se puede perder porque el sistema cierre la app.
 		await using var contexto = new ContextoSqlite();
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 		await new RepositorioEvidenciasSqlite(contexto.BaseDatos).AgregarAsync(Evidencia("ev-1"));
 
 		var reabierta = contexto.ReabrirBaseDatos();
@@ -126,6 +139,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		Assert.Empty(await repositorio.ObtenerDeIncidenciaAsync(Incidencia));
 		Assert.Equal(0, await repositorio.ContarDeIncidenciaAsync(Incidencia));
@@ -139,6 +154,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 
 		// Dos incidencias del operador de la sesión y una de otro operador.
 		var mia = await IncidenciaAsync(contexto, contexto.Sesion);
@@ -166,6 +183,8 @@ public sealed class RepositorioEvidenciasSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		await contexto.SembrarIncidenciaAsync(Incidencia);
 		var mia = await IncidenciaAsync(contexto, contexto.Sesion);
 		await repositorio.AgregarAsync(Evidencia("ev-1", mia.Uuid));
 

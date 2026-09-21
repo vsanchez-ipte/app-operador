@@ -8,9 +8,10 @@ namespace AppOperador.Infrastructure.Sqlite.Entidades;
 /// <remarks>
 /// <para>
 /// Desde la versión 10 del esquema lleva las dimensiones del CA 1 —operador, rol, permiso,
-/// unidad, sesión, online/offline— <b>copiadas en la fila</b>, sin llaves foráneas a
-/// propósito: <c>sesion_local</c> guarda una sola fila y se sobrescribe al entrar otro operador;
-/// una referencia a ella reescribiría el historial en cada cambio de turno.
+/// unidad, sesión, online/offline—. Desde la 11 la sesión es llave a <c>sesion_local</c>, que ya
+/// es historial; operador, rol, permiso y unidad siguen <b>copiados en la fila</b> a propósito:
+/// la línea del acceso se escribe antes de que exista la sesión, y el operador se reescribe al
+/// atribuir un alias.
 /// </para>
 /// <para>
 /// Las filas anteriores a la versión 10 quedan con estas columnas en nulo o en su valor por
@@ -71,6 +72,8 @@ internal sealed class EventoAuditoriaLocal
 	[Column("unidad_clave")]
 	public string? UnidadClave { get; set; }
 
+	/// <summary>Sesión abierta al registrar; llave a <c>sesion_local</c>. Nulo en el acceso, que ocurre antes de tenerla.</summary>
+	[Indexed(Name = "ix_auditoria_sesion")]
 	[Column("sesion_id")]
 	public string? SesionId { get; set; }
 

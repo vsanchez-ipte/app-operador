@@ -114,6 +114,16 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	public BaseDatosLocal ReabrirBaseDatos() => new(_ruta);
 
 	/// <summary>
+	/// Una incidencia mínima con el UUID dado, para colgarle evidencias: desde el esquema 11
+	/// no puede haber una evidencia sin su incidencia.
+	/// </summary>
+	public Task SembrarIncidenciaAsync(string uuid) =>
+		EjecutarSqlAsync(
+			"INSERT INTO incidencia_local (uuid, clave_local, estado, creado_utc_ticks, actualizado_utc_ticks) " +
+			"VALUES (?, ?, ?, ?, ?)",
+			uuid, "LOC-" + uuid[..6], (int)EstadoSincronizacion.Pendiente, Reloj.UtcAhora.Ticks, Reloj.UtcAhora.Ticks);
+
+	/// <summary>
 	/// Ejecuta SQL directo sobre el archivo, para preparar filas que la app ya no escribe
 	/// —por ejemplo, las de un esquema anterior—.
 	/// </summary>
@@ -124,6 +134,36 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		try
 		{
 			await conexion.ExecuteAsync(sql, args);
+		}
+		finally
+		{
+			await conexion.CloseAsync();
+		}
+	}
+
+	/// <summary>Un valor leído directo del archivo, para afirmar sobre lo que quedó escrito.</summary>
+	public async Task<T> EscalarAsync<T>(string sql, params object[] args)
+	{
+		var conexion = new SQLite.SQLiteAsyncConnection(
+			new SQLite.SQLiteConnectionString(_ruta, storeDateTimeAsTicks: true));
+		try
+		{
+			return await conexion.ExecuteScalarAsync<T>(sql, args);
+		}
+		finally
+		{
+			await conexion.CloseAsync();
+		}
+	}
+
+	/// <summary>Filas leídas directo del archivo, mapeadas por nombre de columna.</summary>
+	public async Task<List<T>> ConsultarAsync<T>(string sql, params object[] args) where T : new()
+	{
+		var conexion = new SQLite.SQLiteAsyncConnection(
+			new SQLite.SQLiteConnectionString(_ruta, storeDateTimeAsTicks: true));
+		try
+		{
+			return await conexion.QueryAsync<T>(sql, args);
 		}
 		finally
 		{
@@ -185,9 +225,9 @@ public sealed class ConectividadControlada : IConnectivityService
 /// <summary>Sesión abierta fija, para que las incidencias tengan operador y unidad.</summary>
 public sealed class SesionFija : ISessionStore
 {
-	public SesionFija(string operador = "admin")
+	public SesionFija(string operador = "admin", string sessionId = "")
 	{
-		Actual = De(operador);
+		Actual = De(operador, sessionId);
 	}
 
 	public SesionOperador? Actual { get; private set; }
@@ -196,7 +236,7 @@ public sealed class SesionFija : ISessionStore
 
 	public void Limpiar() => Actual = null;
 
-	private static SesionOperador De(string operador) => new(
+	private static SesionOperador De(string operador, string sessionId) => new(
 		operador,
 		"Operador",
 		"VEH-01",
@@ -209,7 +249,8 @@ public sealed class SesionFija : ISessionStore
 			ReglaCapacidades.PermisoCapturaIncidencias,
 		]),
 		"1.2.0",
-		new DateOnly(2026, 7, 23));
+		new DateOnly(2026, 7, 23),
+		sessionId);
 }
 
 /// <summary>

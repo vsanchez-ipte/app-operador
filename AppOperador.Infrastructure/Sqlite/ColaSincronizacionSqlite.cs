@@ -84,7 +84,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	/// <remarks>
 	/// <para>
 	/// <b>El mensaje no está en la incidencia</b>: la fila guarda el código del rechazo —que es
-	/// lo que decide el reintento— pero el texto vive en <c>intento_sincronizacion</c>. Sin esta
+	/// lo que decide el reintento— pero el texto vive en <c>intento_incidencia</c>. Sin esta
 	/// consulta la tarjeta solo puede decir «FALLIDO», que es justo lo que el operador ya ve.
 	/// </para>
 	/// <para>
@@ -112,9 +112,9 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var marcadores = string.Join(",", uuids.Select(_ => "?"));
 
 		// Descendente por instante: el primero de cada registro es su intento más reciente.
-		var intentos = await conexion.QueryAsync<IntentoSincronizacion>(
-			$"SELECT * FROM intento_sincronizacion " +
-			$"WHERE exito = 0 AND registro_uuid IN ({marcadores}) " +
+		var intentos = await conexion.QueryAsync<IntentoIncidencia>(
+			$"SELECT * FROM intento_incidencia " +
+			$"WHERE exito = 0 AND incidencia_uuid IN ({marcadores}) " +
 			$"ORDER BY instante_utc_ticks DESC",
 			[.. uuids]);
 
@@ -123,7 +123,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		{
 			// TryAdd y no indexador: solo interesa el primero que se encuentra de cada uno, que
 			// por el orden de la consulta es el último que ocurrió.
-			motivos.TryAdd(intento.RegistroUuid, intento.Mensaje);
+			motivos.TryAdd(intento.IncidenciaUuid, intento.Mensaje);
 		}
 
 		return motivos;
@@ -282,10 +282,9 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 
-		await conexion.InsertAsync(new IntentoSincronizacion
+		await conexion.InsertAsync(new IntentoIncidencia
 		{
-			RegistroUuid = uuid,
-			Clase = (int)ClaseRegistro.Incidencia,
+			IncidenciaUuid = uuid,
 			InstanteUtcTicks = _reloj.UtcAhora.Ticks,
 			Exito = exito,
 			CodigoTexto = codigo,
@@ -312,7 +311,9 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		(KilometerSource)fila.FuenteKilometro,
 		fila.Nota,
 		new DateTime(fila.CreadoUtcTicks, DateTimeKind.Utc),
-		fila.SesionOrigen,
+		// Hacia la orquestación sigue viajando como cadena: nulo en la base significa «sin sesión»
+		// y así lo entendía ya todo lo que está arriba.
+		fila.SesionOrigen ?? string.Empty,
 		(EstadoSincronizacion)fila.Estado,
 		fila.Intentos,
 		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc),

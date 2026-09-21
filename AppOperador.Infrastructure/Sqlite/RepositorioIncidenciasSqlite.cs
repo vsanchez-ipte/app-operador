@@ -54,6 +54,8 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		var ahora = _reloj.UtcAhora.Ticks;
 		var versionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 		var lecturaGps = fuenteKilometro == KilometerSource.GPS ? posicionGps : null;
+		var sesion = _sesion.Actual;
+		var sesionId = await ReferenciasSesion.AsegurarAsync(conexion, sesion);
 
 		var fila = new IncidenciaLocal
 		{
@@ -82,8 +84,8 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			VersionCatalogo = versionCatalogo,
 			Nota = nota,
 			Estado = (int)EstadoSincronizacion.Pendiente,
-			Operador = _sesion.Actual?.Operador ?? string.Empty,
-			UnidadVehicular = _sesion.Actual?.UnidadVehicular ?? string.Empty,
+			Operador = sesion?.Operador,
+			UnidadVehicular = sesion?.UnidadVehicular,
 			CreadoUtcTicks = ahora,
 			ActualizadoUtcTicks = ahora,
 
@@ -91,7 +93,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			// monotónica aquí y la sesión de la que salió el registro. Con el reloj solo no
 			// se podría ordenar lo capturado si alguien lo movió a media jornada.
 			MonotonicoTicks = _monotonico?.Transcurrido.Ticks ?? 0,
-			SesionOrigen = _sesion.Actual?.SessionId ?? string.Empty,
+			SesionOrigen = sesionId,
 
 			// Con qué permiso se autorizó (JTT-1385 CA 7). Se sella al crear porque una
 			// incidencia offline puede enviarse horas después, cuando el permiso ya cambió.
@@ -146,6 +148,8 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var ahora = _reloj.UtcAhora.Ticks;
 		var versionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
+		var sesion = _sesion.Actual;
+		var sesionId = await ReferenciasSesion.AsegurarAsync(conexion, sesion);
 
 		var fila = new IncidenciaLocal
 		{
@@ -167,10 +171,11 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			VersionCatalogo = versionCatalogo,
 			Nota = nota,
 			Estado = (int)EstadoSincronizacion.Borrador,
-			Operador = _sesion.Actual?.Operador ?? string.Empty,
-			UnidadVehicular = _sesion.Actual?.UnidadVehicular ?? string.Empty,
+			Operador = sesion?.Operador,
+			UnidadVehicular = sesion?.UnidadVehicular,
 			CreadoUtcTicks = ahora,
 			ActualizadoUtcTicks = ahora,
+			SesionOrigen = sesionId,
 		};
 
 		await conexion.InsertAsync(fila);
@@ -403,7 +408,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 		fila.PermisoOrigen = PermisoDeLaSesion();
 
+		// La sesión de origen se sella con la misma regla que el catálogo y el permiso: la
+		// vigente ahora, que es cuando el registro pasa a ser una incidencia.
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		fila.SesionOrigen = await ReferenciasSesion.AsegurarAsync(conexion, _sesion.Actual) ?? fila.SesionOrigen;
 		await conexion.UpdateAsync(fila);
 	}
 
@@ -444,8 +452,8 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	private async Task<string?> UltimoMensajeDeFalloAsync(string uuid, CancellationToken cancelacion)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
-		var ultimo = await conexion.Table<IntentoSincronizacion>()
-			.Where(i => i.RegistroUuid == uuid && !i.Exito)
+		var ultimo = await conexion.Table<IntentoIncidencia>()
+			.Where(i => i.IncidenciaUuid == uuid && !i.Exito)
 			.OrderByDescending(i => i.InstanteUtcTicks)
 			.FirstOrDefaultAsync();
 

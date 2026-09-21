@@ -509,7 +509,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 				: EstadoSincronizacion.Fallido;
 
 			await _evidencias.ActualizarEnvioAsync(
-				evidencia.Uuid, destino, resultado.Codigo, cancelacion);
+				evidencia.Uuid, destino, resultado.Codigo, resultado.Mensaje, cancelacion);
 		}
 	}
 }
