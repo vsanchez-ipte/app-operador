@@ -92,7 +92,7 @@ escribe en la bitácora ni en ningún log**: solo consta que se copió.
 | Ambiente | Swagger |
 |---|---|
 | Desarrollo | `http://192.168.100.215:81/swagger` |
-| QA | `http://192.168.100.230:81/swagger` |
+| QA | `https://192.168.100.230:81/swagger` |
 
 1. Abrir el Swagger del ambiente que corresponda.
 2. Botón **Authorize**, arriba a la derecha.

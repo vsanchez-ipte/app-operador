@@ -7,7 +7,7 @@
 | Ambiente | Swagger |
 |---|---|
 | Desarrollo | `http://192.168.100.215:81/swagger` |
-| QA | `http://192.168.100.230:81/swagger` |
+| QA | `https://192.168.100.230:81/swagger` |
 
 **Antes de empezar:** botón **Authorize**, pegar el token, **Close**. Y usar un operador con
 **los dos permisos** (`APP_OPERADOR_MOVIL` y `APP_OPERADOR_CAPTURA`); sin el segundo, todos los

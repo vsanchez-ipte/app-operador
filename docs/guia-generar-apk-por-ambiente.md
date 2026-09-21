@@ -38,7 +38,7 @@ En una máquina cuyo usuario no lleve acentos no hacen falta, pero tampoco estor
 | Ambiente | A dónde apunta | Para qué |
 |---|---|---|
 | `Desarrollo` | `http://192.168.100.215:81` | Servidor de desarrollo |
-| `QA` | `http://192.168.100.230:81` | Servidor de calidad, donde prueba QA |
+| `QA` | `https://192.168.100.230:81` | Servidor de calidad, donde prueba QA. HTTPS con la CA interna declarada en `network_security_config.xml` |
 | `Simulado` | — sin servidor | Mostrar las pantallas sin nada levantado |
 | `Local` | el API de la propia máquina | Es el valor por omisión: si no se pone la propiedad, sale este |
 
