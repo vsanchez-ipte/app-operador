@@ -103,8 +103,19 @@ public sealed partial class PerfilViewModel : ObservableObject
 	/// <summary>Las cuatro capacidades que nombra JTT-292 CA 2, con su estado.</summary>
 	public ObservableCollection<CapacidadVista> Capacidades { get; } = [];
 
+	/// <summary>
+	/// Cuántas líneas de la bitácora se muestran de una vez. Decisión de Víctor (21-sep-2026):
+	/// en el teléfono nadie lee doscientas, y pintarlas todas al entrar era lo que hacía lenta
+	/// la pantalla. El resto sale con «Ver más», de quince en quince.
+	/// </summary>
+	public const int EventosPorPagina = 15;
+
 	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
 	public ObservableCollection<EventoAuditoriaVista> Eventos { get; } = [];
+
+	/// <summary>Quedan líneas conservadas que todavía no se muestran.</summary>
+	[ObservableProperty]
+	public partial bool HayMasEventos { get; set; }
 
 	public string Operador => _sesiones.Actual?.Operador ?? "-";
 
@@ -194,10 +205,8 @@ public sealed partial class PerfilViewModel : ObservableObject
 	private async Task ActualizarCargandoAsync()
 	{
 		Eventos.Clear();
-		foreach (var evento in await _bitacora.ObtenerEventosAsync())
-		{
-			Eventos.Add(new EventoAuditoriaVista(evento));
-		}
+		HayMasEventos = false;
+		await VerMasEventosAsync();
 
 		Almacenamiento = await _almacenamiento.EjecutarAsync();
 		EvidenciasPendientes.Clear();
@@ -228,6 +237,26 @@ public sealed partial class PerfilViewModel : ObservableObject
 		{
 			OnPropertyChanged(propiedad);
 		}
+	}
+
+	/// <summary>
+	/// Trae la siguiente página de la bitácora y la agrega al final de la lista.
+	/// </summary>
+	/// <remarks>
+	/// Se pide una línea de más para saber si hay otra página sin una consulta aparte: si
+	/// llega, no se muestra y enciende el botón.
+	/// </remarks>
+	[RelayCommand]
+	private async Task VerMasEventosAsync()
+	{
+		var pagina = await _bitacora.ObtenerEventosAsync(Eventos.Count, EventosPorPagina + 1);
+
+		foreach (var evento in pagina.Take(EventosPorPagina))
+		{
+			Eventos.Add(new EventoAuditoriaVista(evento));
+		}
+
+		HayMasEventos = pagina.Count > EventosPorPagina;
 	}
 
 	/// <summary>

@@ -63,7 +63,7 @@ public sealed class BitacoraAuditoriaSqliteTests
 
 		// Diez por encima del tope: la tabla no puede crecer sin límite en un dispositivo
 		// que pasa semanas sin mantenimiento.
-		for (var i = 0; i < BitacoraAuditoriaSqlite.EventosMaximos + 10; i++)
+		for (var i = 0; i < BitacoraAuditoriaSqlite.EventosConservados + 10; i++)
 		{
 			contexto.Reloj.Avanzar(TimeSpan.FromSeconds(1));
 			await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, $"evento {i}");
@@ -71,9 +71,30 @@ public sealed class BitacoraAuditoriaSqliteTests
 
 		var eventos = await contexto.Bitacora.ObtenerEventosAsync();
 
-		Assert.Equal(BitacoraAuditoriaSqlite.EventosMaximos, eventos.Count);
-		Assert.Equal($"evento {BitacoraAuditoriaSqlite.EventosMaximos + 9}", eventos[0].Mensaje);
+		Assert.Equal(BitacoraAuditoriaSqlite.EventosConservados, eventos.Count);
+		Assert.Equal($"evento {BitacoraAuditoriaSqlite.EventosConservados + 9}", eventos[0].Mensaje);
 		Assert.DoesNotContain(eventos, e => e.Mensaje == "evento 0");
+	}
+
+	[Fact]
+	public async Task ObtenerEventos_porPaginas_recorreDelMasRecienteAlMasAntiguoSinRepetir()
+	{
+		await using var contexto = new ContextoSqlite();
+
+		for (var i = 0; i < 7; i++)
+		{
+			await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, $"evento {i}");
+		}
+
+		var primera = await contexto.Bitacora.ObtenerEventosAsync(omitir: 0, cantidad: 3);
+		var segunda = await contexto.Bitacora.ObtenerEventosAsync(omitir: 3, cantidad: 3);
+		var tercera = await contexto.Bitacora.ObtenerEventosAsync(omitir: 6, cantidad: 3);
+		var vacia = await contexto.Bitacora.ObtenerEventosAsync(omitir: 9, cantidad: 3);
+
+		Assert.Equal(["evento 6", "evento 5", "evento 4"], primera.Select(e => e.Mensaje));
+		Assert.Equal(["evento 3", "evento 2", "evento 1"], segunda.Select(e => e.Mensaje));
+		Assert.Equal(["evento 0"], tercera.Select(e => e.Mensaje));
+		Assert.Empty(vacia);
 	}
 
 	// ---------- JTT-1392: quién y desde dónde, en cada línea ----------

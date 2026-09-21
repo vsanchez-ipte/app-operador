@@ -30,7 +30,17 @@ namespace AppOperador.Infrastructure.Sqlite;
 /// </remarks>
 public sealed class BitacoraAuditoriaSqlite : IAuditLog
 {
-	public const int EventosMaximos = 200;
+	/// <summary>
+	/// Cuántas líneas conserva el dispositivo, de todos los operadores, antes de tirar la más
+	/// antigua.
+	/// </summary>
+	/// <remarks>
+	/// Decisión propia (21-sep-2026): ningún criterio fija la retención local. Eran 200, y la
+	/// auditoría se lee mal si la app va tirando lo antiguo a la semana; mil líneas son unos
+	/// 300 KB y varias semanas de turno. Lo que se muestra de una vez es otra cifra, y la pone
+	/// quien lee.
+	/// </remarks>
+	public const int EventosConservados = 1000;
 
 	private readonly BaseDatosLocal _baseDatos;
 	private readonly IClock _reloj;
@@ -53,8 +63,16 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 	}
 
 	/// <inheritdoc />
-	public async Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken cancelacion = default)
+	public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken cancelacion = default) =>
+		ObtenerEventosAsync(0, EventosConservados, cancelacion);
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(
+		int omitir, int cantidad, CancellationToken cancelacion = default)
 	{
+		ArgumentOutOfRangeException.ThrowIfNegative(omitir);
+		ArgumentOutOfRangeException.ThrowIfNegativeOrZero(cantidad);
+
 		var operador = _sesiones.Actual?.Operador;
 		if (string.IsNullOrWhiteSpace(operador))
 		{
@@ -69,8 +87,8 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		var filas = await conexion.QueryAsync<EventoAuditoriaLocal>(
 			"SELECT * FROM evento_auditoria " +
 			"WHERE operador = ? OR (operador IS NULL AND origen IS NULL) " +
-			"ORDER BY id DESC LIMIT ?",
-			operador, EventosMaximos);
+			"ORDER BY id DESC LIMIT ? OFFSET ?",
+			operador, cantidad, omitir);
 
 		return filas.Select(Convertir).ToList();
 	}
@@ -157,8 +175,8 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		fila.MonotonicoTicks);
 
 	/// <summary>
-	/// Conserva las últimas <see cref="EventosMaximos"/> líneas del dispositivo, de todos los
-	/// operadores. El tope es provisional; la política definitiva es JTT-292.
+	/// Conserva las últimas <see cref="EventosConservados"/> líneas del dispositivo, de todos
+	/// los operadores.
 	/// </summary>
 	private static Task RecortarAsync(SQLite.SQLiteAsyncConnection conexion) =>
 		conexion.ExecuteAsync(
@@ -170,5 +188,5 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 				LIMIT ?
 			);
 			""",
-			EventosMaximos);
+			EventosConservados);
 }

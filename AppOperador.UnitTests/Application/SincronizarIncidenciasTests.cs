@@ -735,6 +735,9 @@ public sealed class SincronizarIncidenciasTests
 
 		public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<EventoAuditoria>>([]);
+
+		public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(int omitir, int cantidad, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EventoAuditoria>>([]);
 	}
 
 	private sealed class CatalogoFalso : ICatalogoRepository

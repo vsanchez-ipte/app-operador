@@ -25,6 +25,13 @@ public sealed class BitacoraEnMemoria : IAuditLog
 		return Task.FromResult(copia);
 	}
 
+	public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(int omitir, int cantidad, CancellationToken cancelacion = default)
+	{
+		IReadOnlyList<EventoAuditoria> pagina =
+			_eventos.OrderByDescending(e => e.InstanteUtc).Skip(omitir).Take(cantidad).ToList();
+		return Task.FromResult(pagina);
+	}
+
 	public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken cancelacion = default)
 	{
 		_eventos.Add(new EventoAuditoria(_reloj.UtcAhora, nivel, mensaje));

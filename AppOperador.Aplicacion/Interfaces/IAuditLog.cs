@@ -21,7 +21,8 @@ namespace AppOperador.Aplicacion.Interfaces;
 public interface IAuditLog
 {
 	/// <summary>
-	/// Eventos del operador con sesión abierta, del más reciente al más antiguo.
+	/// Todos los eventos conservados del operador con sesión abierta, del más reciente al más
+	/// antiguo.
 	/// </summary>
 	/// <remarks>
 	/// Filtrados por operador porque la pantalla que los muestra es el perfil, que el operador
@@ -29,6 +30,17 @@ public interface IAuditLog
 	/// tienen operador, se muestran a todos como historial previo.
 	/// </remarks>
 	Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken cancelacion = default);
+
+	/// <summary>
+	/// Una página de esos mismos eventos: <paramref name="cantidad"/> líneas a partir de la
+	/// posición <paramref name="omitir"/>, contando desde la más reciente.
+	/// </summary>
+	/// <remarks>
+	/// Es lo que lee el perfil: se conservan más líneas de las que nadie lee de una vez en el
+	/// teléfono, y pintarlas todas al entrar es lo que hacía lenta la pantalla.
+	/// </remarks>
+	Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(
+		int omitir, int cantidad, CancellationToken cancelacion = default);
 
 	/// <summary>Agrega un aviso general, sin operación concreta.</summary>
 	Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken cancelacion = default);

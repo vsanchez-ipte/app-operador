@@ -175,11 +175,22 @@
                                             </Border>
                                         </Grid>
                                         <Label Text="{Binding Mensaje}" Style="{StaticResource TextoDato}" />
+                                        <!-- Usuario, rol, permiso, unidad y sesión (JTT-1392 CA 1) -->
+                                        <Label Text="{Binding Contexto}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               FontSize="11" LineBreakMode="WordWrap"
+                                               IsVisible="{Binding HayContexto}" />
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
+
+                    <!-- De quince en quince: lo conservado es más de lo que se lee de una vez -->
+                    <Button Text="Ver mas"
+                            Style="{StaticResource BotonSecundario}"
+                            Command="{Binding VerMasEventosCommand}"
+                            IsVisible="{Binding HayMasEventos}" />
 
                 </VerticalStackLayout>
             </Border>
