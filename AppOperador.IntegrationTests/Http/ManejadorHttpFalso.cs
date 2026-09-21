@@ -42,6 +42,13 @@ internal sealed class ManejadorHttpFalso : HttpMessageHandler
 	public static ManejadorHttpFalso ConexionRechazada() =>
 		new(_ => throw new HttpRequestException("Connection refused"));
 
+	/// <summary>
+	/// Simula el mismo fallo, pero como lo entrega el handler de Android: un
+	/// <see cref="WebException"/>, no un <see cref="HttpRequestException"/>.
+	/// </summary>
+	public static ManejadorHttpFalso SocketCerradoEnAndroid() =>
+		new(_ => throw new WebException("Socket closed", WebExceptionStatus.ConnectFailure));
+
 	/// <summary>Simula que el servidor nunca contesta.</summary>
 	public static ManejadorHttpFalso TiempoAgotado() =>
 		new(_ => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout"));

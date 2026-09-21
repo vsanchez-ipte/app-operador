@@ -44,4 +44,19 @@ public interface IConnectivityService
     /// de comunicación es un desenlace normal y viaja dentro del resultado.
     /// </remarks>
     Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default);
+
+    /// <summary>
+    /// Toma nota del desenlace de una petición a Jacob CCO que no fue la sonda.
+    /// </summary>
+    /// <param name="jacobRespondio">
+    /// Si Jacob llegó a contestar, aunque fuera para rechazar. Un rechazo también prueba que
+    /// se le alcanza.
+    /// </param>
+    /// <remarks>
+    /// Lo usa el acceso: la preautenticación y la apertura de sesión hablan con Jacob antes
+    /// de que exista sesión que sondear, y sin esto el indicador podía decir «Sin conexión»
+    /// en la misma pantalla que acababa de anunciar «Credenciales validadas por Jacob CCO».
+    /// No genera tráfico.
+    /// </remarks>
+    void AnotarIntercambio(bool jacobRespondio);
 }

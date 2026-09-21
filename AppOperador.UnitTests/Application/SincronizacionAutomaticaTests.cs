@@ -160,6 +160,10 @@ public sealed class SincronizacionAutomaticaTests
 			Task.FromResult(HayEnlace
 				? ResultadoSondeo.Alcanzado()
 				: ResultadoSondeo.SinTransporte("Apagado por la prueba."));
+
+		public void AnotarIntercambio(bool jacobRespondio)
+		{
+		}
 	}
 
 	private sealed class SincronizadorFalso : ISincronizadorIncidencias

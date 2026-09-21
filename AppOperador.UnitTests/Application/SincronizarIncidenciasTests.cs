@@ -685,6 +685,10 @@ public sealed class SincronizarIncidenciasTests
 				? ResultadoSondeo.Alcanzado()
 				: ResultadoSondeo.SinTransporte("Apagado por la prueba."));
 		}
+
+		public void AnotarIntercambio(bool jacobRespondio)
+		{
+		}
 	}
 
 	private sealed class SesionFalsa : ISessionStore

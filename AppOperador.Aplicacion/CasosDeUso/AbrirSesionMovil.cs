@@ -27,6 +27,7 @@ public sealed class AbrirSesionMovil
 	private readonly IAccesoJacobClient _jacob;
 	private readonly CustodiaSesionLocal _custodia;
 	private readonly ActualizarCatalogoLocal? _catalogos;
+	private readonly IConnectivityService? _conectividad;
 	private readonly DatosDeInstalacion _instalacion;
 	private readonly IMonotonicClock _monotonico;
 
@@ -43,13 +44,19 @@ public sealed class AbrirSesionMovil
 	/// Refresco del catálogo local (JTT-1394 CA 4). Opcional para no obligar a las pruebas de
 	/// acceso, que no lo ejercitan, a proporcionarlo.
 	/// </param>
+	/// <param name="conectividad">
+	/// A quién contarle si Jacob contestó. Antes de la sesión la sonda no puede autenticarse,
+	/// así que los dos pasos del acceso son la única medida real del enlace que hay en esa
+	/// pantalla. Opcional por la misma razón que el catálogo.
+	/// </param>
 	public AbrirSesionMovil(
 		IAccesoJacobClient jacob,
 		CustodiaSesionLocal custodia,
 		DatosDeInstalacion instalacion,
 		IMonotonicClock monotonico,
 		IAuditLog bitacora,
-		ActualizarCatalogoLocal? catalogos = null)
+		ActualizarCatalogoLocal? catalogos = null,
+		IConnectivityService? conectividad = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
@@ -57,6 +64,7 @@ public sealed class AbrirSesionMovil
 		_monotonico = monotonico;
 		_bitacora = bitacora;
 		_catalogos = catalogos;
+		_conectividad = conectividad;
 	}
 
 	private readonly IAuditLog _bitacora;
@@ -84,6 +92,7 @@ public sealed class AbrirSesionMovil
 		CancellationToken cancelacion = default)
 	{
 		var resultado = await _jacob.PreautenticarAsync(email, contrasena, cancelacion);
+		AnotarEnlace(resultado.Motivo);
 		_desafio = resultado.Exitoso ? resultado.ChallengeId : null;
 		_emailEnCurso = email;
 
@@ -136,6 +145,7 @@ public sealed class AbrirSesionMovil
 		_desafio = null;
 
 		var resultado = await _jacob.CompletarAccesoAsync(desafio, unidad.Id, cancelacion);
+		AnotarEnlace(resultado.Motivo);
 		if (!resultado.Exitoso)
 		{
 			// El permiso se revalida al crear la sesión, no solo al preautenticar: puede
@@ -172,6 +182,16 @@ public sealed class AbrirSesionMovil
 
 	/// <summary>Olvida el desafío retenido, al abandonar el acceso.</summary>
 	public void Descartar() => _desafio = null;
+
+	/// <summary>
+	/// Traduce el desenlace de una petición del acceso a la señal de enlace.
+	/// </summary>
+	/// <remarks>
+	/// Solo la falta de comunicación niega el enlace. Una credencial rechazada o una cuenta
+	/// bloqueada las contestó Jacob, y contestar es justo lo que el enlace mide.
+	/// </remarks>
+	private void AnotarEnlace(MotivoRechazoAcceso? motivo) =>
+		_conectividad?.AnotarIntercambio(motivo != MotivoRechazoAcceso.SinComunicacion);
 
 	/// <summary>
 	/// Borra sesión y token locales cuando Jacob niega el permiso funcional (JTT-1379 CA 6).

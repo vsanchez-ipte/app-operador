@@ -69,7 +69,7 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 			return Convertir(sobre.Resultado);
 		}
 		catch (Exception excepcion) when (
-			excepcion is HttpRequestException or JsonException or UriFormatException)
+			FalloDeComunicacion.Es(excepcion) || excepcion is JsonException or UriFormatException)
 		{
 			// Sin red o con una respuesta ilegible se sigue con la copia local: es exactamente
 			// el caso que el CA 2 contempla, no una condición de error.

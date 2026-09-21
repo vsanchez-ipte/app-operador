@@ -78,7 +78,7 @@ public sealed class ClienteIncidenciasJacob : IIncidenciasJacobClient
 			// Cancelación pedida por quien llama, no un fallo del envío: se propaga.
 			throw;
 		}
-		catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+		catch (Exception ex) when (FalloDeComunicacion.Es(ex) || ex is TaskCanceledException or JsonException)
 		{
 			// Red caída, servidor inalcanzable, tiempo agotado o respuesta ilegible. Todo eso es
 			// técnico: el registro está bien y el problema es del camino.

@@ -220,6 +220,10 @@ public sealed class ConectividadControlada : IConnectivityService
 		Task.FromResult(HayEnlace
 			? ResultadoSondeo.Alcanzado()
 			: ResultadoSondeo.SinTransporte("Enlace apagado por la prueba."));
+
+	public void AnotarIntercambio(bool jacobRespondio)
+	{
+	}
 }
 
 /// <summary>Sesión abierta fija, para que las incidencias tengan operador y unidad.</summary>

@@ -97,7 +97,7 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 			return Interpretar(respuesta.StatusCode, cuerpo);
 		}
 		catch (Exception excepcion) when (
-			excepcion is HttpRequestException or JsonException or IOException or UriFormatException)
+			FalloDeComunicacion.Es(excepcion) || excepcion is JsonException or UriFormatException)
 		{
 			return FalloTecnico("No se pudo subir la evidencia. Se reintentará solo.");
 		}

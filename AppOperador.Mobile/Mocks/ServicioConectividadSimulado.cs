@@ -45,6 +45,11 @@ public sealed class ServicioConectividadSimulado : IConnectivityService
 			? ResultadoSondeo.Alcanzado()
 			: ResultadoSondeo.SinTransporte("Modo offline forzado desde el simulador."));
 
+	/// <summary>El simulador no habla con nadie: el estado solo lo cambia <see cref="Alternar"/>.</summary>
+	public void AnotarIntercambio(bool jacobRespondio)
+	{
+	}
+
 	/// <summary>Alterna el estado de enlace. Solo existe mientras trabajamos con simuladores.</summary>
 	public void Alternar() => HayEnlace = !HayEnlace;
 }
