@@ -336,12 +336,11 @@ public class RegistroColaTests
 		};
 
 		Assert.True(registro.HayEvidenciaSinEnviar);
-		Assert.Equal(
-			"2 evidencias sin llegar al CCO. Se reintentarán solas.", registro.AvisoEvidencia);
+		Assert.Equal("2 evidencias pendientes de enviar al CCO.", registro.AvisoEvidencia);
 	}
 
 	[Fact]
-	public void UnaEvidenciaRechazadaPorElCco_noPrometeReintento()
+	public void LaTarjetaSoloDiceQueEstaPendiente_niElMotivoNiUnReintento()
 	{
 		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado) with
 		{
@@ -349,7 +348,7 @@ public class RegistroColaTests
 			ReintentoEvidenciaUtc = null,
 		};
 
-		Assert.Equal("1 evidencia rechazada por el CCO: no se enviará.", registro.AvisoEvidencia);
+		Assert.Equal("1 evidencia pendiente de enviar al CCO.", registro.AvisoEvidencia);
 	}
 
 	[Fact]

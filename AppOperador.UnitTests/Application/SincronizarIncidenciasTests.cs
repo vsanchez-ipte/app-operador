@@ -27,6 +27,7 @@ public sealed class SincronizarIncidenciasTests
 	private readonly SesionFalsa _sesion = new();
 	private readonly EvidenciasFalsas _evidencias = new();
 	private readonly EvidenciasJacobFalso _jacobEvidencias = new();
+	private readonly BitacoraNula _bitacora = new();
 
 	private SincronizarIncidencias Crear() => new(
 		_cola,
@@ -35,7 +36,7 @@ public sealed class SincronizarIncidenciasTests
 		new TokenFalso(),
 		new CapacidadesDeLaSesion(_sesion),
 		_reloj,
-		new BitacoraNula(),
+		_bitacora,
 		new CatalogoFalso(),
 		_evidencias,
 		_jacobEvidencias,
@@ -725,8 +726,13 @@ public sealed class SincronizarIncidenciasTests
 
 	private sealed class BitacoraNula : IAuditLog
 	{
-		public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken c = default) =>
-			Task.CompletedTask;
+		public List<(NivelAuditoria Nivel, string Mensaje)> Escrito { get; } = [];
+
+		public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken c = default)
+		{
+			Escrito.Add((nivel, mensaje));
+			return Task.CompletedTask;
+		}
 
 		public Task AtribuirAsync(string alias, string operador, CancellationToken c = default) =>
 			Task.CompletedTask;
@@ -943,6 +949,32 @@ public sealed class SincronizarIncidenciasTests
 		await Crear().EjecutarAsync();
 
 		Assert.Equal([("ev-1", EstadoSincronizacion.Fallido)], _evidencias.Actualizadas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalla_dejaSuMotivoEnLaAuditoria()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico",
+			"El servidor respondió HTTP 500 InternalServerError sin explicación."));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Contains(_bitacora.Escrito, e =>
+			e.Nivel == NivelAuditoria.Advertencia
+			&& e.Mensaje == "Evidencia ev-1.jpg no llegó al CCO: El servidor respondió HTTP 500 " +
+				"InternalServerError sin explicación. [appincidencias.error.tecnico]");
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueLlega_noEnsuciaLaAuditoria()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.DoesNotContain(_bitacora.Escrito, e => e.Mensaje.StartsWith("Evidencia ev-1.jpg"));
 	}
 
 	// ── Dobles de evidencia (JTT-1398) ────────────────────────────────────────────────

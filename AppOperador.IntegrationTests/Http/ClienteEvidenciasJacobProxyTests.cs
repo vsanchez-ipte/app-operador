@@ -125,6 +125,29 @@ public sealed class ClienteEvidenciasJacobProxyTests : IDisposable
 		Assert.Equal("ev-1", resultado.Registrada!.IdEvidencia);
 	}
 
+	[Fact]
+	public async Task UnErrorDelApiConPaginaHtml_diceSuCodigoHttp()
+	{
+		var resultado = await SubirCon(
+			HttpStatusCode.InternalServerError, "<html><body>Internal Server Error</body></html>");
+
+		Assert.False(resultado.Exito);
+		Assert.Equal(FamiliaErrorSincronizacion.Tecnico, resultado.Familia);
+		Assert.Contains("HTTP 500", resultado.Mensaje);
+	}
+
+	[Fact]
+	public async Task UnErrorSinSobre_noSeLeeComoSiLoHubieraAceptado()
+	{
+		var resultado = await SubirCon(
+			HttpStatusCode.NotFound,
+			"""{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.5","title":"Not Found","status":404}""");
+
+		Assert.False(resultado.Exito);
+		Assert.Contains("HTTP 404", resultado.Mensaje);
+		Assert.DoesNotContain("aceptó", resultado.Mensaje);
+	}
+
 	private Task<ResultadoEnvioEvidencia> SubirCon(HttpStatusCode estado, string cuerpo)
 	{
 		var respuesta = new HttpResponseMessage(estado)

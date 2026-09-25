@@ -97,13 +97,13 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 			return Interpretar(respuesta.StatusCode, cuerpo);
 		}
 		catch (Exception excepcion) when (
-			FalloDeComunicacion.Es(excepcion) || excepcion is JsonException or UriFormatException)
+			FalloDeComunicacion.Es(excepcion) || excepcion is UriFormatException)
 		{
-			return FalloTecnico("No se pudo subir la evidencia. Se reintentará solo.");
+			return FalloTecnico($"No se pudo contactar al servidor ({excepcion.GetType().Name}).");
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
 		{
-			return FalloTecnico("El envío de la evidencia tardó demasiado. Se reintentará solo.");
+			return FalloTecnico("El envío de la evidencia tardó demasiado.");
 		}
 	}
 
@@ -133,7 +133,7 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 			return ResultadoEnvioEvidencia.Rechazada(
 				FamiliaErrorSincronizacion.Tecnico,
 				CodigosErrorJacob.EvidenciaRechazadaPorProxy,
-				"El servidor no acepta archivos de este tamaño todavía. Se reintentará solo.");
+				"El servidor no acepta archivos de este tamaño todavía (HTTP 413).");
 		}
 
 		// Un 502, un 503 o un 504 tampoco son Envelope: los produce el proxy cuando el API no
@@ -141,21 +141,29 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 		// con un rechazo del CCO.
 		if (EsDelProxy(estado))
 		{
-			return FalloTecnico("El servidor no está disponible. Se reintentará solo.");
+			return FalloTecnico($"El servidor no está disponible ({Http(estado)}).");
 		}
 
 		// Un cuerpo vacío -un 401 del middleware de JWT, por ejemplo- tampoco se puede
 		// deserializar, y hasta ahora también acababa en el catch de más arriba.
 		if (string.IsNullOrWhiteSpace(cuerpo))
 		{
-			return FalloTecnico($"El servidor respondió {(int)estado} sin explicación.");
+			return FalloTecnico($"El servidor respondió {Http(estado)} sin explicación.");
 		}
 
-		var sobre = JsonSerializer.Deserialize<Envelope<RespuestaEvidencia>>(cuerpo, OpcionesJson);
+		Envelope<RespuestaEvidencia>? sobre;
+		try
+		{
+			sobre = JsonSerializer.Deserialize<Envelope<RespuestaEvidencia>>(cuerpo, OpcionesJson);
+		}
+		catch (JsonException)
+		{
+			return FalloTecnico($"El servidor respondió {Http(estado)} con algo que no se pudo leer.");
+		}
 
 		if (sobre is null)
 		{
-			return FalloTecnico("El servidor respondió algo que no se pudo leer.");
+			return FalloTecnico($"El servidor respondió {Http(estado)} con algo que no se pudo leer.");
 		}
 
 		if (sobre.HayError)
@@ -166,6 +174,12 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 				CodigosErrorJacob.FamiliaDe(codigo),
 				codigo,
 				sobre.MensajeError ?? "El CCO rechazó la evidencia.");
+		}
+
+		// Un ProblemDetails se deserializa sin fallar y sin error declarado.
+		if ((int)estado is < 200 or > 299)
+		{
+			return FalloTecnico($"El servidor respondió {Http(estado)} sin explicación.");
 		}
 
 		var resultado = sobre.Resultado;
@@ -187,6 +201,8 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 		estado is HttpStatusCode.BadGateway
 			or HttpStatusCode.ServiceUnavailable
 			or HttpStatusCode.GatewayTimeout;
+
+	private static string Http(HttpStatusCode estado) => $"HTTP {(int)estado} {estado}";
 
 	private static ResultadoEnvioEvidencia FalloTecnico(string mensaje) =>
 		ResultadoEnvioEvidencia.Rechazada(

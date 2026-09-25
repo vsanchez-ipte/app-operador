@@ -220,29 +220,11 @@ public sealed record RegistroCola(
 	public bool HayEvidenciaSinEnviar =>
 		Estado == EstadoSincronizacion.Sincronizado && EvidenciasSinEnviar > 0;
 
-	public string AvisoEvidencia
-	{
-		get
-		{
-			if (!HayEvidenciaSinEnviar)
-			{
-				return string.Empty;
-			}
-
-			var una = EvidenciasSinEnviar == 1;
-
-			if (ReintentoEvidenciaUtc is null)
-			{
-				return una
-					? "1 evidencia rechazada por el CCO: no se enviará."
-					: $"{EvidenciasSinEnviar} evidencias rechazadas por el CCO: no se enviarán.";
-			}
-
-			return una
-				? "1 evidencia sin llegar al CCO. Se reintentará sola."
-				: $"{EvidenciasSinEnviar} evidencias sin llegar al CCO. Se reintentarán solas.";
-		}
-	}
+	public string AvisoEvidencia => !HayEvidenciaSinEnviar
+		? string.Empty
+		: EvidenciasSinEnviar == 1
+			? "1 evidencia pendiente de enviar al CCO."
+			: $"{EvidenciasSinEnviar} evidencias pendientes de enviar al CCO.";
 
 	/// <summary>
 	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.

@@ -560,6 +560,15 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		await _evidencias.ActualizarEnvioAsync(
 			evidencia.Uuid, destino, resultado.Codigo, resultado.Mensaje, cancelacion);
 
+		if (!resultado.Exito)
+		{
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"Evidencia {evidencia.NombreOriginal} no llegó al CCO: " +
+				$"{resultado.Mensaje ?? "sin mensaje"} [{resultado.Codigo ?? "sin código"}]",
+				cancelacion);
+		}
+
 		return resultado.Exito;
 	}
 }
