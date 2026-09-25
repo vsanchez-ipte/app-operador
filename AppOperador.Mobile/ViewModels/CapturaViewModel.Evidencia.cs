@@ -220,6 +220,46 @@ public sealed partial class CapturaViewModel
 		await RecargarEvidenciasAsync();
 	}
 
+	/// <summary>
+	/// Abre una evidencia con el visor del sistema.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Sirve igual para lo que no se ha enviado y para lo que ya se envió</b>, porque el
+	/// archivo local no se borra al sincronizar. Lo que no alcanza es la evidencia capturada en
+	/// otro dispositivo: esa solo existe en el servidor, y el canal móvil todavía no tiene por
+	/// dónde descargarla.
+	/// </para>
+	/// <para>
+	/// No cambia nada de la incidencia: es solo mirar. Por eso no toca <c>MensajeError</c> salvo
+	/// cuando falla, y no marca el campo en rojo.
+	/// </para>
+	/// </remarks>
+	[RelayCommand]
+	private async Task AbrirEvidenciaAsync(EvidenciaVista? evidencia)
+	{
+		if (evidencia is null)
+		{
+			return;
+		}
+
+		var resultado = await _visorEvidencia.AbrirAsync(
+			evidencia.Ruta, evidencia.Nombre, evidencia.TipoMime);
+
+		// Abrir bien no dice nada: el operador ya está viendo su evidencia. Lo demás sí, y cada
+		// caso distinto, porque se corrigen distinto.
+		MensajeError = resultado switch
+		{
+			ResultadoApertura.ArchivoNoEncontrado =>
+				"El archivo de esa evidencia ya no está en el dispositivo.",
+			ResultadoApertura.SinAplicacion =>
+				$"No hay una aplicación en el dispositivo para abrir un archivo {evidencia.Tipo}.",
+			ResultadoApertura.NoSePudo =>
+				"No se pudo abrir la evidencia.",
+			_ => MensajeError,
+		};
+	}
+
 	[RelayCommand]
 	private async Task QuitarEvidenciaAsync(EvidenciaVista? evidencia)
 	{

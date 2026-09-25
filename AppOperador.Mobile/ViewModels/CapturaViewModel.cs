@@ -96,6 +96,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 	private readonly ObtenerKilometroPorUbicacion _obtenerKilometro;
 	private readonly CapacidadesDeLaSesion _capacidades;
 	private readonly ISelectorEvidencia _selectorEvidencia;
+	private readonly IVisorEvidencia _visorEvidencia;
 	private readonly AdjuntarEvidencia _adjuntarEvidencia;
 	private readonly QuitarEvidencia _quitarEvidencia;
 	private readonly ObtenerEvidenciasDeIncidencia _obtenerEvidencias;
@@ -170,6 +171,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		CorregirIncidenciaRechazada corregirRechazada,
 		ISincronizadorIncidencias sincronizador,
 		ISelectorEvidencia selectorEvidencia,
+		IVisorEvidencia visorEvidencia,
 		AdjuntarEvidencia adjuntarEvidencia,
 		QuitarEvidencia quitarEvidencia,
 		ObtenerEvidenciasDeIncidencia obtenerEvidencias,
@@ -183,6 +185,7 @@ public sealed partial class CapturaViewModel : ObservableObject, IQueryAttributa
 		_obtenerKilometro = obtenerKilometro;
 		_capacidades = capacidades;
 		_selectorEvidencia = selectorEvidencia;
+		_visorEvidencia = visorEvidencia;
 		_adjuntarEvidencia = adjuntarEvidencia;
 		_quitarEvidencia = quitarEvidencia;
 		_obtenerEvidencias = obtenerEvidencias;

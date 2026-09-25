@@ -138,6 +138,12 @@ public static class MauiProgram
 		// versión simulada solo serviría para adjuntar archivos falsos que nadie va a probar.
 		servicios.AddSingleton<ISelectorEvidencia, SelectorEvidenciaDispositivo>();
 
+		// Ver una evidencia va al revés que guardarla: la copia que se le entrega al visor del
+		// sistema SÍ vive en la caché, porque es desechable y porque el proveedor de archivos
+		// del manifiesto no expone el directorio de datos. El original no se mueve.
+		servicios.AddSingleton<IVisorEvidencia>(
+			_ => new VisorEvidenciaDispositivo(FileSystem.CacheDirectory));
+
 		// El espacio se mide sobre el directorio de datos, que es donde caen la base y las
 		// evidencias (JTT-289 CA 8, JTT-292 CA 4).
 		servicios.AddSingleton<IEspacioDispositivo>(
