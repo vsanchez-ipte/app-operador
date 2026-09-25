@@ -160,7 +160,8 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		// puede tener todavía una foto sin subir, y esa foto sigue pendiente.
 		var filas = await conexion.QueryAsync<FilaEvidenciaPendiente>(
 			"SELECT e.uuid AS Uuid, e.nombre_original AS NombreOriginal, e.tipo_medio AS TipoMime, " +
-			"e.bytes AS Bytes, e.estado AS Estado, i.clave_local AS ClaveLocalIncidencia " +
+			"e.bytes AS Bytes, e.estado AS Estado, i.clave_local AS ClaveLocalIncidencia, " +
+			"e.ultimo_error_codigo AS UltimoErrorCodigo " +
 			"FROM evidencia_local e " +
 			"INNER JOIN incidencia_local i ON i.uuid = e.incidencia_uuid " +
 			"WHERE i.operador = ? AND e.estado != ? " +
@@ -171,8 +172,21 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		return filas
 			.Select(f => new EvidenciaPendiente(
 				f.Uuid, f.NombreOriginal, f.TipoMime, f.Bytes,
-				(EstadoSincronizacion)f.Estado, f.ClaveLocalIncidencia))
+				(EstadoSincronizacion)f.Estado, f.ClaveLocalIncidencia, f.UltimoErrorCodigo))
 			.ToList();
+	}
+
+	public async Task<IReadOnlyList<EvidenciaRezagada>> ObtenerRezagadasDelOperadorAsync(
+		string operador,
+		CancellationToken cancelacion = default)
+	{
+		if (string.IsNullOrWhiteSpace(operador))
+		{
+			return [];
+		}
+
+		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		return await ConsultaEvidenciasRezagadas.EjecutarAsync(conexion, operador);
 	}
 
 	/// <summary>Forma de la fila del cruce evidencia–incidencia. Solo para la consulta de arriba.</summary>
@@ -184,6 +198,7 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		public long Bytes { get; set; }
 		public int Estado { get; set; }
 		public string ClaveLocalIncidencia { get; set; } = string.Empty;
+		public string? UltimoErrorCodigo { get; set; }
 	}
 
 	private static EvidenciaAdjunta Convertir(EvidenciaLocal fila) => new(

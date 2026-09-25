@@ -111,6 +111,11 @@
                                                Style="{StaticResource TextoDato}"
                                                IsVisible="{Binding MuestraTrazabilidad}" />
 
+                                        <Label Text="{Binding TextoEvidenciaSinEnviar}"
+                                               Style="{StaticResource TextoSecundario}"
+                                               TextColor="{StaticResource AmbarTexto}"
+                                               IsVisible="{Binding MuestraEvidenciaSinEnviar}" />
+
                                         <!-- Por que no salio ESTE registro. El resumen de arriba
                                              cuenta cuantas hay de cada clase; con varias fallidas
                                              a la vez no dice cual es cual ni que corregir. El

@@ -72,9 +72,26 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 
 		var motivos = await ObtenerMotivosDeFalloAsync(conexion, filas);
 
+		var rezagadas = (await ConsultaEvidenciasRezagadas.EjecutarAsync(conexion, operador))
+			.ToLookup(r => r.Evidencia.IncidenciaUuid);
+
 		return filas
-			.Select(fila => MapeoIncidencia.ARegistroCola(
-				fila, motivos.GetValueOrDefault(fila.Uuid)))
+			.Select(fila =>
+			{
+				var registro = MapeoIncidencia.ARegistroCola(fila, motivos.GetValueOrDefault(fila.Uuid));
+				var deEsta = rezagadas[fila.Uuid].ToList();
+
+				return deEsta.Count == 0
+					? registro
+					: registro with
+					{
+						EvidenciasSinEnviar = deEsta.Count,
+						ReintentoEvidenciaUtc = deEsta
+							.Select(r => r.ProximoIntentoUtc)
+							.Where(p => p is not null)
+							.Min(),
+					};
+			})
 			.ToList();
 	}
 

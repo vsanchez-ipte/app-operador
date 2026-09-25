@@ -135,6 +135,10 @@ public sealed class RegistroColaVista
 	/// <summary>Si la tarjeta lleva la línea del reintento.</summary>
 	public bool MuestraReintento => Registro.HayReintentoProgramado;
 
+	public string TextoEvidenciaSinEnviar => Registro.AvisoEvidencia;
+
+	public bool MuestraEvidenciaSinEnviar => Registro.HayEvidenciaSinEnviar;
+
 	private static string FormatearHora(DateTime local) =>
 		local.Date == DateTime.Now.Date
 			? $"Capturada a las {local:HH:mm}."

@@ -93,7 +93,8 @@ public sealed class ContextoSqlite : IAsyncDisposable
 			Bitacora,
 			CrearCatalogo(),
 			CrearRepositorioEvidencias(),
-			jacobEvidencias ?? new EvidenciasControladas());
+			jacobEvidencias ?? new EvidenciasControladas(),
+			deQuien);
 	}
 
 	/// <summary>

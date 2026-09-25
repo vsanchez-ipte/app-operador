@@ -79,7 +79,6 @@ public sealed partial class PerfilViewModel : ObservableObject
 	// nuevas (JTT-1384, JTT-1385), y esta insignia es donde el operador viene a ver por qué.
 	private const string TextoPermisosVencidos = "Permisos vencidos o no validados";
 
-
 	/// <summary>
 	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
 	/// </summary>
@@ -523,8 +522,6 @@ public sealed record CapacidadVista(string Nombre, bool Permitida)
 
 /// <summary>Una evidencia pendiente, como línea del perfil (JTT-292 CA 6).</summary>
 /// <remarks>
-/// Dice «pendiente de enviar» o «con error» y nunca «enviada»: el criterio pide consultarla sin
-/// presentarla como recibida por el CCO.
 /// </remarks>
 public sealed class EvidenciaPendienteVista
 {
@@ -532,9 +529,7 @@ public sealed class EvidenciaPendienteVista
 	{
 		Nombre = pendiente.NombreOriginal;
 		Incidencia = pendiente.ClaveLocalIncidencia;
-		Estado = pendiente.Estado == Domain.Enums.EstadoSincronizacion.Fallido
-			? "con error, se reintentará"
-			: "pendiente de enviar";
+		Estado = pendiente.EstadoLegible;
 	}
 
 	public string Nombre { get; }

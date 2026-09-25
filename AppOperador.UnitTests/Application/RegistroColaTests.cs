@@ -324,6 +324,80 @@ public class RegistroColaTests
 		Assert.False(registro.TocaIntentarlo(DateTime.UtcNow));
 	}
 
+	private static readonly DateTime Las10 = new(2026, 9, 25, 10, 0, 0, DateTimeKind.Utc);
+
+	[Fact]
+	public void UnaSincronizadaConEvidenciaAtorada_loDiceEnLaTarjeta()
+	{
+		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado) with
+		{
+			EvidenciasSinEnviar = 2,
+			ReintentoEvidenciaUtc = Las10,
+		};
+
+		Assert.True(registro.HayEvidenciaSinEnviar);
+		Assert.Equal(
+			"2 evidencias sin llegar al CCO. Se reintentarán solas.", registro.AvisoEvidencia);
+	}
+
+	[Fact]
+	public void UnaEvidenciaRechazadaPorElCco_noPrometeReintento()
+	{
+		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado) with
+		{
+			EvidenciasSinEnviar = 1,
+			ReintentoEvidenciaUtc = null,
+		};
+
+		Assert.Equal("1 evidencia rechazada por el CCO: no se enviará.", registro.AvisoEvidencia);
+	}
+
+	[Fact]
+	public void SinEvidenciaAtorada_laTarjetaNoDiceNada()
+	{
+		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado);
+
+		Assert.False(registro.HayEvidenciaSinEnviar);
+		Assert.Equal(string.Empty, registro.AvisoEvidencia);
+	}
+
+	[Fact]
+	public void UnaNoSincronizada_noAvisaDeSuEvidencia()
+	{
+		var registro = Registro(folio: null, EstadoSincronizacion.Pendiente) with
+		{
+			EvidenciasSinEnviar = 1,
+			ReintentoEvidenciaUtc = Las10,
+		};
+
+		Assert.False(registro.HayEvidenciaSinEnviar);
+	}
+
+	[Fact]
+	public void UnaSincronizadaConEvidenciaQueYaToca_despiertaAlRelojDeLaCola()
+	{
+		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado) with
+		{
+			EvidenciasSinEnviar = 1,
+			ReintentoEvidenciaUtc = Las10,
+		};
+
+		Assert.True(registro.TocaIntentarlo(Las10));
+		Assert.False(registro.TocaIntentarlo(Las10.AddMinutes(-1)));
+	}
+
+	[Fact]
+	public void UnaSincronizadaConEvidenciaRechazada_noDespiertaAlReloj()
+	{
+		var registro = Registro("INC-APK-2026-0015", EstadoSincronizacion.Sincronizado) with
+		{
+			EvidenciasSinEnviar = 1,
+			ReintentoEvidenciaUtc = null,
+		};
+
+		Assert.False(registro.TocaIntentarlo(Las10.AddDays(1)));
+	}
+
 	private static RegistroCola Tecnica(int intentos, DateTime ultimoIntentoUtc) =>
 		Fallida(CodigosErrorJacob.ErrorTecnico, "No respondio.") with
 		{

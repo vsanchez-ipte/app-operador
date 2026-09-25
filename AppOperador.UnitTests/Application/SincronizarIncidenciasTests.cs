@@ -38,7 +38,8 @@ public sealed class SincronizarIncidenciasTests
 		new BitacoraNula(),
 		new CatalogoFalso(),
 		_evidencias,
-		_jacobEvidencias);
+		_jacobEvidencias,
+		_sesion);
 
 	// ── El envío que nunca terminó ────────────────────────────────────────────────────
 
@@ -759,7 +760,6 @@ public sealed class SincronizarIncidenciasTests
 			Task.CompletedTask;
 	}
 
-
 	// ── La evidencia va encadenada a su incidencia (JTT-1398 CA 11) ───────────────────
 
 	private static EvidenciaAdjunta EvidenciaDe(
@@ -862,6 +862,89 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Empty(_jacobEvidencias.Subidas);
 	}
 
+	private static EvidenciaRezagada Rezagada(
+		int intentos = 1,
+		DateTime? ultimoIntento = null,
+		string? ultimoError = "appincidencias.error.tecnico") =>
+		new(EvidenciaDe(ultimoError: ultimoError) with { Estado = EstadoSincronizacion.Fallido },
+			intentos, ultimoIntento);
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalloConSuIncidenciaYaConfirmada_seReintentaEnLaSiguienteTanda()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Single(_jacobEvidencias.Subidas);
+		Assert.Contains(_evidencias.Actualizadas,
+			a => a.Estado == EstadoSincronizacion.Sincronizado);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagada_esperaComoUnaIncidenciaAntesDeReintentarse()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddSeconds(-30)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagadaQueNuncaSeIntento_saleSinEsperar()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 0, ultimoIntento: null, ultimoError: null));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Single(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagadaRechazadaPorElCco_noSeReintenta()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(
+			intentos: 1,
+			ultimoIntento: Ahora.AddHours(-1),
+			ultimoError: "appevidencias.formato.nopermitido"));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task LasRezagadasSePidenParaElOperadorDeLaSesion()
+	{
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(["admin"], _evidencias.RezagadasPedidasPara);
+	}
+
+	[Fact]
+	public async Task SinEnlace_lasRezagadasTampocoSeIntentan()
+	{
+		_conectividad.HayEnlace = false;
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddHours(-1)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaRezagadaQueVuelveAFallar_quedaFallidaParaElSiguienteIntento()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Equal([("ev-1", EstadoSincronizacion.Fallido)], _evidencias.Actualizadas);
+	}
+
 	// ── Dobles de evidencia (JTT-1398) ────────────────────────────────────────────────
 
 	private sealed class EvidenciasFalsas : IRepositorioEvidencias
@@ -893,6 +976,17 @@ public sealed class SincronizarIncidenciasTests
 		public Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
 			string operador, CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
+
+		public List<EvidenciaRezagada> Rezagadas { get; } = [];
+
+		public List<string> RezagadasPedidasPara { get; } = [];
+
+		public Task<IReadOnlyList<EvidenciaRezagada>> ObtenerRezagadasDelOperadorAsync(
+			string operador, CancellationToken c = default)
+		{
+			RezagadasPedidasPara.Add(operador);
+			return Task.FromResult<IReadOnlyList<EvidenciaRezagada>>([.. Rezagadas]);
+		}
 
 		public Task ActualizarEnvioAsync(
 			string uuid, EstadoSincronizacion estado, string? codigoError, string? mensaje = null, CancellationToken c = default)
