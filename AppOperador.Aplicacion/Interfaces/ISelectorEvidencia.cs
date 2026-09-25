@@ -181,8 +181,24 @@ public interface ISelectorEvidencia
 	/// Ver <see cref="SeleccionEvidencia"/>: cancelar y no poder abrir el selector llegan
 	/// distintos a propósito, porque solo lo segundo hay que avisarlo.
 	/// </remarks>
+	/// <param name="origen">De dónde sale el archivo.</param>
+	/// <param name="topeBytes">
+	/// <para>
+	/// Tamaño máximo que se le pide a la cámara al <b>grabar</b>, o <c>0</c> para no pedir
+	/// ninguno. Solo lo usa <see cref="OrigenEvidencia.Video"/>: los demás orígenes entregan un
+	/// archivo que ya existe, y ahí el tope se comprueba después, como siempre.
+	/// </para>
+	/// <para>
+	/// <b>Por qué se pide aquí y no se valida al final.</b> Grabar es lo único que <i>crea</i> el
+	/// archivo mientras el operador mira: cuando la grabación termina, pasarse del tope ya no
+	/// tiene arreglo y lo grabado se pierde entero. Es el mismo razonamiento que
+	/// <c>HayEspacioParaVideo</c> aplicó al espacio en disco (JTT-289 CA 8) — decidir
+	/// <b>antes de grabar</b>—, ahora aplicado al tamaño.
+	/// </para>
+	/// </remarks>
 	Task<SeleccionEvidencia> ElegirAsync(
 		OrigenEvidencia origen,
+		long topeBytes = 0,
 		CancellationToken cancelacion = default);
 
 	/// <summary>

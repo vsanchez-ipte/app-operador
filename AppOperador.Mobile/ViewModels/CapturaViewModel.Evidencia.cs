@@ -87,7 +87,16 @@ public sealed partial class CapturaViewModel
 			: !ResumenEvidencias.HayEspacioParaVideo
 				// JTT-289 CA 8: se bloquea el video y se dice con qué se puede seguir.
 				? "No hay espacio en el dispositivo para un video. Puede continuar con texto o fotografía."
-				: string.Empty;
+				// Con el botón encendido el rótulo deja de explicar por qué no se puede y pasa a
+				// decir hasta dónde se puede. Es lo que QA levantó: el operador grababa, y hasta
+				// que soltaba el botón no se enteraba de que se había pasado del tope y de que
+				// el video se perdía entero.
+				//
+				// Dice el tope y no promete que la grabación se detendrá: se le pide a la cámara
+				// que corte (ver ISelectorEvidencia.ElegirAsync), pero hay fabricantes que
+				// ignoran esa petición, y prometer lo que no se cumple sería el mismo defecto al
+				// revés.
+				: $"El video no debe pasar de {ResumenEvidencias.Limites.TamanoMaximoMb} MB.";
 
 	public bool HayAvisoVideo => AvisoVideo.Length > 0;
 
@@ -138,7 +147,15 @@ public sealed partial class CapturaViewModel
 			return;
 		}
 
-		var seleccion = await _selectorEvidencia.ElegirAsync(origen);
+		// El tope solo viaja al grabar: es el único origen que crea el archivo en el momento y,
+		// por tanto, el único al que todavía se le puede poner un límite. Los demás entregan algo
+		// que ya existe y se comprueban después, con su tamaño real. Cuánto vale lo decide
+		// Aplicación, que es donde se puede probar.
+		var topeBytes = origen is OrigenEvidencia.Video
+			? ResumenEvidencias.TopeParaGrabarVideo
+			: 0;
+
+		var seleccion = await _selectorEvidencia.ElegirAsync(origen, topeBytes);
 
 		if (seleccion.Archivos.Count == 0)
 		{
