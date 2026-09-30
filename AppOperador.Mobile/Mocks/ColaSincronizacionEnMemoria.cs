@@ -4,14 +4,6 @@ using AppOperador.Domain.Enums;
 
 namespace AppOperador.Mobile.Mocks;
 
-/// <summary>
-/// Cola de sincronización simulada.
-/// </summary>
-/// <remarks>
-/// Lista lo guardado y cuenta pendientes; <b>no participa en el envío</b>. La orquestación
-/// vive en <c>SincronizarIncidencias</c> desde JTT-1401, y el recorrido simulado se elimina
-/// completo en rama propia: basta con que compile.
-/// </remarks>
 public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 {
 	private readonly AlmacenRegistrosEnMemoria _almacen;
@@ -25,7 +17,6 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 		_sesiones = sesiones;
 	}
 
-	/// <summary>Operador de la sesión abierta. Sin sesión, la cola se ve vacía.</summary>
 	private string? OperadorActual => _sesiones.Actual?.Operador;
 
 	public Task<IReadOnlyList<RegistroCola>> ObtenerRegistrosAsync(CancellationToken cancelacion = default)
@@ -41,18 +32,8 @@ public sealed class ColaSincronizacionEnMemoria : ISyncQueueService
 	public Task<int> ContarPendientesAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(_almacen.Contar(EstadoSincronizacion.Pendiente, OperadorActual));
 
-	// El recorrido simulado no puede morirse a media llamada, así que no hay nada que
-	// recuperar. Se implementa para cumplir el contrato y no para probar la regla.
 	public Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(0);
-
-	// ── Envío (JTT-1401) ──────────────────────────────────────────────────────────────
-	//
-	// Sin implementar a propósito. El recorrido simulado se elimina completo en rama propia
-	// —decisión del 21-ago—: nadie lo prueba y basta con que compile. Lo que vale para estos
-	// criterios es ColaSincronizacionSqlite con SincronizarIncidencias encima, que sí tienen
-	// pruebas. Una cola vacía de enviables es la respuesta honesta de un almacén que no
-	// participa en el envío.
 
 	public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(
 		CancellationToken cancelacion = default) =>

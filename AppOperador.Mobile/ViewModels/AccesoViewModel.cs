@@ -8,42 +8,29 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AppOperador.Mobile.ViewModels;
 
-/// <summary>
-/// Pantalla de acceso: credenciales, unidad y estado de comunicación.
-/// </summary>
-/// <remarks>
-/// Los mensajes de rechazo son los literales que exige JTT-279 y permanecen visibles
-/// hasta que el operador corrija los datos o vuelva a intentar.
-/// </remarks>
 public sealed partial class AccesoViewModel : ObservableObject
 {
-	// Textos fijados por JTT-279. No se reformulan ni se traducen.
+	// Literales fijados por Producto: no se reformulan.
 	private const string MensajeCredencialInvalida = "Usuario o contraseña no válidos";
 	private const string MensajeSinPermiso = "No tiene permiso para utilizar la APK";
 	private const string MensajeUbicacion = "Active la ubicación y autorice su uso para continuar";
 	private const string MensajeSesionExpirada = "Sesión offline expirada";
 	private const string MensajeSinComunicacion = "Sin conexión / Modo offline";
 
-	// Textos provisionales: JTT-279 no fijó literal para estos casos y el contrato del API
-	// los deja como pregunta abierta. Hay que acordarlos con Producto antes de QA.
+	// Provisionales: Producto aún no fija estos textos.
 	private const string MensajeCuentaInactiva = "La cuenta está inactiva. Contacte al CCO";
 	private const string MensajeCuentaBloqueada = "Cuenta bloqueada temporalmente. Intente más tarde";
 	private const string MensajeSinUnidades = "No tiene unidades asignadas. Contacte al CCO";
 	private const string MensajeErrorServicio = "No se pudo completar la validación. Intente de nuevo";
 
-	// JTT-1378 se detiene tras la preautenticación: no hay sesión que abrir todavía.
 	private const string MensajeCredencialValidada = "Credenciales validadas por Jacob CCO";
 
 	private const string MensajeElijaUnidad = "Elija la unidad con la que va a operar";
 
-	// Textos provisionales de JTT-1382. Tampoco los fijó JTT-279; van con los otros cuatro
-	// a la ronda de Producto.
 	private const string MensajeDesafioNoValido = "La sesión de acceso venció. Vuelva a iniciar sesión";
 	private const string MensajeUnidadNoAutorizada = "La unidad ya no está disponible. Elija otra";
 
-	// Detalle que acompaña al literal de ubicación (JTT-1380). El literal de JTT-279 es el
-	// que revisa QA y no se toca; esto explica *cuál* de los seis estados se encontró, que
-	// es lo que le dice al operador qué hacer.
+	// Acompañan al literal de ubicación, que no se toca, para decir cuál de los estados ocurrió.
 	private const string DetalleNoSolicitado =
 		"La app necesita su permiso para usar la ubicación del dispositivo.";
 	private const string DetalleRechazado =
@@ -59,19 +46,14 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private const string DetalleAjustesNoAbrieron =
 		"No se pudo abrir la configuración del dispositivo. Ábrala manualmente y vuelva a la app.";
 
-	// Qué se está haciendo mientras el operador espera. Van uno por paso y no un «Cargando…»
-	// común: el acceso son hasta tres esperas seguidas contra el servidor, y cada una puede
-	// tardar lo que dure el tiempo de espera del cliente. Decirle cuál va es la diferencia
-	// entre esperar y creer que la app se colgó.
+	// Un texto por paso: el acceso son hasta tres esperas y cada una puede tardar.
 	private const string PasoComprobandoEnlace = "Comprobando el enlace con Jacob CCO…";
 	private const string PasoComprobandoUbicacion = "Comprobando la ubicación del dispositivo…";
 	private const string PasoValidandoCredenciales = "Validando sus credenciales con Jacob CCO…";
 	private const string PasoAbriendoSesion = "Abriendo la sesión con la unidad elegida…";
 	private const string PasoReanudandoOffline = "Reanudando la última sesión guardada…";
 
-	// Cuando Android mata el proceso —al revocar un permiso desde Ajustes, por ejemplo— la app
-	// vuelve a abrirse aquí con la sesión intacta. Sin este aviso, el único rastro es el botón
-	// «Continuar offline», que con red no se lee como «reanudar mi sesión» (JTT-1681).
+	// Si Android mató el proceso, la sesión sigue guardada y «Continuar offline» no se lee como «reanudar».
 	private const string FormatoSesionGuardada =
 		"Hay una sesión guardada de {0}, vigente hasta el {1}. «Continuar offline» la reanuda "
 		+ "sin volver a autenticarse.";
@@ -88,8 +70,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 	private readonly VerificarUbicacionParaAcceso _ubicacion;
 	private readonly AbrirSesionMovil? _accesoJacob;
 
-	// Último veredicto de ubicación. Nulo mientras no se haya comprobado nada: sirve para no
-	// molestar al operador con el aviso antes de que intente entrar.
+	// Nulo hasta la primera comprobación, para no avisar antes de que intente entrar.
 	private ResultadoUbicacion? _ultimaUbicacion;
 
 	[ObservableProperty]
@@ -104,84 +85,31 @@ public sealed partial class AccesoViewModel : ObservableObject
 	[ObservableProperty]
 	public partial string? MensajeError { get; set; }
 
-	/// <summary>
-	/// Aviso informativo, no de rechazo. Hoy solo lo usa la preautenticación real para
-	/// confirmar que las credenciales fueron aceptadas.
-	/// </summary>
 	[ObservableProperty]
 	public partial string? MensajeAviso { get; set; }
 
-	/// <summary>
-	/// Aviso de que hay una sesión guardada que «Continuar offline» reanudaría, o
-	/// <see langword="null"/> si no la hay (JTT-1681).
-	/// </summary>
 	[ObservableProperty]
 	public partial string? AvisoSesionGuardada { get; set; }
 
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
 
-	/// <summary>
-	/// Qué está haciendo la pantalla ahora mismo, o <see langword="null"/> si no espera nada.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Sin esto la pantalla parece colgada.</b> <see cref="Ocupado"/> solo apagaba los
-	/// botones: el operador pulsaba «Iniciar sesión», todo se ponía gris y no ocurría nada
-	/// visible durante lo que tardara el servidor —hasta veinte segundos por llamada, y el
-	/// acceso real hace dos seguidas—. No había ningún indicador de actividad en la aplicación.
-	/// </para>
-	/// <para>
-	/// Va en el mismo bloque que <see cref="Ocupado"/> en cada camino, y se limpia en el mismo
-	/// <c>finally</c>: si los dos se separaran, quedaría un texto anunciando un trabajo que ya
-	/// terminó, que es peor que no decir nada.
-	/// </para>
-	/// </remarks>
+	// Sin esto la pantalla parece colgada. Va y se limpia junto con Ocupado.
 	[ObservableProperty]
 	public partial string? PasoEnCurso { get; set; }
 
-	/// <summary>
-	/// Explicación del estado de ubicación encontrado. Acompaña al literal de JTT-279, que
-	/// por sí solo no distingue un permiso rechazado de un GPS apagado.
-	/// </summary>
 	[ObservableProperty]
 	public partial string? DetalleUbicacion { get; set; }
 
-	/// <summary>
-	/// Texto del botón que resuelve el bloqueo de ubicación. Nulo cuando no hay nada que el
-	/// operador pueda hacer desde la app.
-	/// </summary>
 	[ObservableProperty]
 	public partial string? TextoAccionUbicacion { get; set; }
 
-	/// <summary>
-	/// Indica si se ofrece volver a comprobar la ubicación.
-	/// </summary>
-	/// <remarks>
-	/// Se muestra siempre que el acceso este bloqueado por ubicación, incluso cuando ya hay
-	/// otro botón. Dos estados —dispositivo sin ubicación y fallo al consultar— no tienen
-	/// ninguna otra accion, y sin esto el operador se quedaba sin nada que pulsar.
-	/// </remarks>
+	// Siempre que la ubicación bloquee: dos estados no ofrecen ninguna otra acción.
 	[ObservableProperty]
 	public partial bool PuedeRevalidarUbicacion { get; set; }
 
-	/// <summary>Texto del botón de revalidación.</summary>
 	public static string TextoRevalidarUbicacion => AccionRevalidar;
 
-	/// <param name="ubicacion">
-	/// Comprobación del prerrequisito de ubicación (JTT-279 PR3, JTT-1380). Se ejecuta antes
-	/// de cualquier camino de acceso, en línea o sin conexión.
-	/// </param>
-	/// <param name="accesoJacob">
-	/// Acceso real contra Jacob CCO, en sus dos pasos. Es opcional a propósito: solo se
-	/// registra cuando <c>ConfiguracionApi.UsarApiReal</c> está encendido. Si es nulo, la
-	/// pantalla funciona íntegramente contra el simulador, que es como se demuestran las
-	/// cinco pantallas mientras el canal móvil no esté desplegado.
-	/// </param>
-	/// <param name="reanudarOffline">
-	/// Reanudación de una sesión guardada (JTT-1383). Opcional como el acceso real: sin el
-	/// canal de Jacob no hay sesión persistida que reanudar y manda el simulador.
-	/// </param>
 	public AccesoViewModel(
 		IAuthenticationService autenticacion,
 		IConnectivityService conectividad,
@@ -202,51 +130,24 @@ public sealed partial class AccesoViewModel : ObservableObject
 		Contrasena = string.Empty;
 	}
 
-	/// <summary>
-	/// Unidades del catálogo vehicular. No se admite texto libre (JTT-279).
-	/// </summary>
-	/// <remarks>
-	/// Observable a propósito: el catálogo se carga después de que la vista ya se enlazó,
-	/// y con una lista simple el desplegable se quedaría vacío.
-	/// </remarks>
+	// Observable: el catálogo llega después de enlazar la vista.
 	public ObservableCollection<UnidadVehicular> Unidades { get; } = [];
 
-	/// <summary>Indica si hay algún mensaje de rechazo que mostrar.</summary>
 	public bool HayError => !string.IsNullOrEmpty(MensajeError);
 
-	/// <summary>Indica si hay un aviso informativo que mostrar.</summary>
 	public bool HayAviso => !string.IsNullOrEmpty(MensajeAviso);
 
-	/// <summary>Indica si hay una sesión guardada que anunciar.</summary>
 	public bool HaySesionGuardada => !string.IsNullOrEmpty(AvisoSesionGuardada);
 
-	/// <summary>Indica si hay explicación del estado de ubicación que mostrar.</summary>
 	public bool HayDetalleUbicacion => !string.IsNullOrEmpty(DetalleUbicacion);
 
-	/// <summary>Indica si hay un botón de ubicación que ofrecer.</summary>
 	public bool HayAccionUbicacion => !string.IsNullOrEmpty(TextoAccionUbicacion);
 
-	/// <summary>Indica si hay que mostrar el indicador de actividad y su texto.</summary>
 	public bool HayPasoEnCurso => !string.IsNullOrEmpty(PasoEnCurso);
 
-	/// <summary>Estado de comunicación con Jacob CCO, visible en la pantalla.</summary>
 	public string TextoEstadoEnlace => _conectividad.HayEnlace ? "Enlace CCO activo" : MensajeSinComunicacion;
 
-	/// <summary>
-	/// Deja la pantalla como recién instalada, sin rastro del operador anterior (JTT-1390).
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Se llama al <b>navegar</b> a la pantalla, no al reaparecer. La diferencia importa: al
-	/// volver de los ajustes del sistema tras conceder el permiso de ubicación, la pantalla
-	/// reaparece sin navegación, y borrar ahí lo tecleado obligaría a escribir el correo otra
-	/// vez (JTT-1380).
-	/// </para>
-	/// <para>
-	/// Descarta también el desafío: si quedó uno colgado de un acceso a medias, no puede
-	/// servirle a quien entre después.
-	/// </para>
-	/// </remarks>
+	// Al navegar y no al reaparecer (volver de Ajustes no debe borrar lo tecleado). Descarta el desafío.
 	public async Task ReiniciarAsync()
 	{
 		_accesoJacob?.Descartar();
@@ -261,26 +162,18 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 		await InicializarAsync();
 
-		// Se consulta cada vez que se llega a la pantalla, no una sola: la sesión que había al
-		// abrir la app puede haberse cerrado, y la que no había puede existir tras un acceso.
+		// Cada vez: la sesión guardada pudo aparecer o cerrarse.
 		AvisoSesionGuardada = await TextoSesionGuardadaAsync();
 
-		// Si se llegó aquí porque la sesión se cerró sola —ventana vencida, revalidación
-		// negada o permiso retirado— hay que decir por qué. Sin esto el operador aparecería
-		// en el formulario sin explicación (JTT-1384 CA 3).
+		// Si la sesión se cerró sola, hay que decir por qué.
 		var motivo = _aviso.Consumir();
 		if (motivo is not null)
 		{
 			MensajeError = TextoDe(motivo);
 		}
 
-		// El indicador de enlace de esta pantalla debe reflejar el estado real, no el último
-		// que se conociera (JTT-1391 CA 6). Sin sesión la sonda no puede autenticarse, así
-		// que lo que se comprueba aquí es la red.
-		//
-		// Se anuncia porque es la primera espera que encuentra el operador y ocurre sola, al
-		// llegar a la pantalla: sin aviso, la app se abre y se queda quieta sin explicación.
 		Ocupado = true;
+		// Sin sesión, lo que se comprueba es la red. Se anuncia: es la primera espera y ocurre sola.
 		PasoEnCurso = PasoComprobandoEnlace;
 		try
 		{
@@ -295,12 +188,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		OnPropertyChanged(nameof(TextoEstadoEnlace));
 	}
 
-	/// <summary>Carga el catálogo de unidades al abrir la pantalla.</summary>
-	/// <remarks>
-	/// Con el API real no se carga nada: las unidades verdaderas las devuelve la
-	/// preautenticación y JTT-1378 no las muestra. Enseñar mientras tanto las del simulador
-	/// daría a entender que son las del operador, que es peor que no mostrar ninguna.
-	/// </remarks>
+	// Con el API real no se muestran unidades del simulador: parecerían las del operador.
 	public async Task InicializarAsync()
 	{
 		if (UsaApiReal || Unidades.Count > 0)
@@ -316,55 +204,24 @@ public sealed partial class AccesoViewModel : ObservableObject
 		UnidadSeleccionada = Unidades.FirstOrDefault();
 	}
 
-	/// <summary>
-	/// Indica si la pantalla habla con Jacob CCO de verdad.
-	/// </summary>
-	/// <remarks>
-	/// La vista lo usa para decidir qué mostrar en cada paso: contra el simulador el
-	/// selector de unidad está desde el principio, y contra Jacob aparece cuando la
-	/// preautenticación devuelve las unidades del operador.
-	/// </remarks>
 	public bool UsaApiReal => _accesoJacob is not null;
 
-	/// <summary>
-	/// Indica si la pantalla está en el segundo paso: elegir unidad.
-	/// </summary>
-	/// <remarks>
-	/// Sigue siendo <b>una sola pantalla con estados</b>, como fija el documento de
-	/// arquitectura (§5.1): primero credenciales, después unidades. No se navega a otra
-	/// página, así que el desafío no tiene que viajar entre vistas.
-	/// </remarks>
+	// Una sola pantalla con estados: el desafío no viaja entre vistas.
 	[ObservableProperty]
 	public partial bool EnSeleccionDeUnidad { get; set; }
 
-	/// <summary>Indica si se muestran los campos de credenciales.</summary>
 	public bool MostrarCredenciales => !EnSeleccionDeUnidad;
 
-	/// <summary>
-	/// Indica si se muestra el selector de unidad.
-	/// </summary>
-	/// <remarks>
-	/// Contra el simulador se muestra desde el principio, como en la maqueta. Contra el API
-	/// real aparece solo en el segundo paso: antes de la preautenticación no se conocen las
-	/// unidades del operador, y enseñar las del simulador induciría a error.
-	/// </remarks>
+	// Con el API real, solo en el segundo paso: antes no se conocen las unidades.
 	public bool MostrarSelectorUnidad => !UsaApiReal || EnSeleccionDeUnidad;
 
-	/// <summary>Texto del botón principal, según el paso.</summary>
 	public string TextoBotonAcceso => EnSeleccionDeUnidad ? "Ingresar" : "Iniciar sesion";
 
-	/// <summary>Etiqueta del primer campo.</summary>
-	/// <remarks>
-	/// Jacob CCO autentica por <b>email</b>, no por nombre de usuario: la columna
-	/// <c>usuario</c> existe en la base pero el login no la consulta. Contra el API real
-	/// hay que pedir el correo; contra el simulador se conserva el texto de la maqueta.
-	/// </remarks>
+	// Jacob autentica por correo, no por nombre de usuario.
 	public string EtiquetaUsuario => UsaApiReal ? "CORREO" : "USUARIO";
 
-	/// <summary>Texto de ejemplo del primer campo, acorde a lo que se pide.</summary>
 	public string EjemploUsuario => UsaApiReal ? "operador@ipte.com.mx" : "usuario.campo";
 
-	/// <summary>Teclado del primer campo: el de correo incluye la arroba.</summary>
 	public Keyboard TecladoUsuario => UsaApiReal ? Keyboard.Email : Keyboard.Default;
 
 	[RelayCommand]
@@ -373,16 +230,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
-			// JTT-279 PR3: sin ubicación habilitada y autorizada no se continúa. Se comprueba
-			// antes de mandar nada a Jacob CCO — si el acceso no puede completarse, no tiene
-			// sentido poner las credenciales del operador en la red.
+			// Sin ubicación no se continúa, y no se mandan credenciales a la red en vano.
 			if (!await UbicacionAutorizadaAsync())
 			{
 				return;
 			}
 
-			// Segundo paso del acceso real: la unidad ya está a la vista y solo falta
-			// confirmarla. No se vuelve a preautenticar: el desafío sigue vigente.
+			// Segundo paso: el desafío sigue vigente, no se vuelve a preautenticar.
 			if (EnSeleccionDeUnidad)
 			{
 				PasoEnCurso = PasoAbriendoSesion;
@@ -413,14 +267,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>
-	/// Primer paso del acceso real: valida credenciales y obtiene el desafío.
-	/// </summary>
-	/// <remarks>
-	/// El desafío no lo toca esta clase: lo retiene el caso de uso, para que no pueda acabar
-	/// en un binding por descuido. El operador solo ve que sus credenciales fueron aceptadas
-	/// y las unidades que Jacob le devolvió.
-	/// </remarks>
+	// El desafío lo retiene el caso de uso, lejos de cualquier binding.
 	private async Task IdentificarAsync()
 	{
 		var resultado = await _accesoJacob!.IdentificarAsync(Usuario, Contrasena);
@@ -431,9 +278,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
-		// Sin unidades no se completa el acceso (JTT-1381 CA 14). El API debería haber
-		// respondido `appoperador.sin.vehiculos` en vez de un resultado correcto, pero si no
-		// lo hace, avanzar dejaría al operador en un desplegable vacío sin explicación.
+		// El API debió responder sin.vehiculos; si no, el operador quedaría ante un desplegable vacío.
 		if (resultado.Unidades.Count == 0)
 		{
 			_accesoJacob.Descartar();
@@ -448,7 +293,6 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MensajeAviso = $"{MensajeCredencialValidada}. {MensajeElijaUnidad}";
 	}
 
-	/// <summary>Pasa la pantalla al segundo paso con las unidades que devolvió Jacob.</summary>
 	private void MostrarUnidades(IReadOnlyList<UnidadVehicular> unidades)
 	{
 		Unidades.Clear();
@@ -457,21 +301,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 			Unidades.Add(unidad);
 		}
 
-		// Preseleccionar la primera evita que "Ingresar" no haga nada porque el operador no
-		// tocó el desplegable. Sigue siendo una unidad del catálogo: no hay texto libre.
+		// Preseleccionar evita que «Ingresar» no haga nada; sigue siendo del catálogo.
 		UnidadSeleccionada = Unidades.FirstOrDefault();
 		EnSeleccionDeUnidad = true;
 	}
 
-	/// <summary>
-	/// Segundo paso del acceso real: consume el desafío con la unidad elegida y entra.
-	/// </summary>
-	/// <remarks>
-	/// Un desafío vencido devuelve a las credenciales, que es la única salida real: es de un
-	/// solo uso y con cinco minutos de vigencia, así que reintentar aquí no llevaría a nada.
-	/// Una unidad que dejó de estar autorizada no exige eso —el desafío sigue sirviendo—,
-	/// solo elegir otra de la lista.
-	/// </remarks>
+	// Desafío vencido vuelve a credenciales; unidad no autorizada solo pide elegir otra.
 	private async Task AbrirSesionAsync()
 	{
 		if (UnidadSeleccionada is null)
@@ -502,15 +337,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 		await Shell.Current.GoToAsync("//principal/inicio");
 	}
 
-	/// <summary>
-	/// Vuelve al primer paso y descarta el desafío.
-	/// </summary>
-	/// <remarks>
-	/// Sin esta salida el segundo paso es un callejón sin salida: el desafío vence a los
-	/// cinco minutos y el operador tendría que cerrar la app para reintentar. Descartarlo al
-	/// volver evita además que quede un desafío colgado en memoria.
-	/// </remarks>
 	[RelayCommand]
+	// Sin esta salida, el segundo paso sería un callejón: el desafío vence a los cinco minutos.
 	private void VolverACredenciales()
 	{
 		_accesoJacob?.Descartar();
@@ -528,15 +356,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
-			// El prerrequisito es del dispositivo, no de la red: reanudar sin conexión también
-			// abre sesión, así que también exige ubicación.
+			// Reanudar también abre sesión, así que también exige ubicación.
 			if (!await UbicacionAutorizadaAsync())
 			{
 				return;
 			}
 
-			// Con el canal real, la reanudación consulta la sesión que quedó guardada y mide
-			// su vigencia sin fiarse del reloj (JTT-1383). Sin canal, sigue el simulador.
+			// Con canal real se mide la sesión guardada sin fiarse del reloj; sin él, el simulador.
 			PasoEnCurso = PasoReanudandoOffline;
 			var resultado = _reanudarOffline is not null
 				? await _reanudarOffline.ReanudarAsync()
@@ -544,8 +370,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 			await ProcesarResultadoAsync(resultado);
 
-			// Si no se pudo reanudar, el aviso ya no es cierto: la ventana pudo vencer entre
-			// que se consultó y que el operador tocó el botón.
+			// Si no se pudo reanudar, el aviso ya no es cierto.
 			if (!resultado.Autorizado)
 			{
 				AvisoSesionGuardada = null;
@@ -558,10 +383,6 @@ public sealed partial class AccesoViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>
-	/// Ejecuta lo que corresponda al estado de ubicación: pedir el permiso o llevar al
-	/// operador a la configuración del sistema.
-	/// </summary>
 	[RelayCommand]
 	private async Task EjecutarAccionUbicacionAsync()
 	{
@@ -579,8 +400,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 				return;
 			}
 
-			// Al volver de la configuración no se puede reevaluar aquí: la app queda en
-			// segundo plano. De eso se encarga RevisarUbicacionAsync al reaparecer la pantalla.
+			// No se reevalúa aquí: la app queda en segundo plano; lo hace RevisarUbicacionAsync al volver.
 			if (!await _ubicacion.AbrirAjustesAsync(_ultimaUbicacion.Accion))
 			{
 				DetalleUbicacion = DetalleAjustesNoAbrieron;
@@ -592,15 +412,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>
-	/// Vuelve a evaluar la ubicación al reaparecer la pantalla.
-	/// </summary>
-	/// <remarks>
-	/// Es lo que cierra el caso de "cambié el permiso en la configuración y volví": el
-	/// bloqueo desaparece solo, sin reiniciar la app. No se comprueba nada si la pantalla no
-	/// estaba mostrando un bloqueo, para no advertir de un permiso que todavía no se ha
-	/// pedido: eso ocurre cuando el operador pulsa Iniciar sesión, no al abrir la pantalla.
-	/// </remarks>
+	// Solo si había un bloqueo: no se avisa de un permiso que aún no se ha pedido.
 	public async Task RevisarUbicacionAsync()
 	{
 		if (_ultimaUbicacion is null || _ultimaUbicacion.PermiteAcceder)
@@ -611,15 +423,6 @@ public sealed partial class AccesoViewModel : ObservableObject
 		AplicarUbicacion(await _ubicacion.RevisarAsync());
 	}
 
-	/// <summary>
-	/// Vuelve a comprobar la ubicación a petición del operador.
-	/// </summary>
-	/// <remarks>
-	/// Es la accion explicita de revalidacion. No pide permisos ni abre nada: solo consulta
-	/// el estado otra vez. Sirve cuando el operador corrigio algo fuera de la app y la
-	/// pantalla no llego a reaparecer, y es la unica salida en los estados que no ofrecen
-	/// ninguna otra accion.
-	/// </remarks>
 	[RelayCommand]
 	private async Task RevalidarUbicacionAsync()
 	{
@@ -634,13 +437,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>Comprueba el prerrequisito y deja la pantalla contando lo que encontró.</summary>
-	/// <remarks>
-	/// El paso se anuncia aquí y no en cada quien la llama, porque los dos caminos de acceso
-	/// —en línea y sin conexión— pasan por ella y esperarían lo mismo sin explicación. Puede
-	/// tardar: si el permiso no está concedido, esta llamada abre el diálogo del sistema y no
-	/// vuelve hasta que el operador conteste.
-	/// </remarks>
+	// Anuncia el paso: puede tardar mientras el diálogo del sistema espera respuesta.
 	private async Task<bool> UbicacionAutorizadaAsync()
 	{
 		PasoEnCurso = PasoComprobandoUbicacion;
@@ -651,15 +448,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 		return resultado.PermiteAcceder;
 	}
 
-	/// <summary>Vuelca un veredicto de ubicación en la pantalla.</summary>
 	private void AplicarUbicacion(ResultadoUbicacion resultado)
 	{
 		_ultimaUbicacion = resultado;
 
 		if (resultado.PermiteAcceder)
 		{
-			// Solo se retira el rechazo por ubicación: si en pantalla hay otro error, sigue
-			// siendo cierto y no lo borra haber concedido el permiso.
+			// Solo se retira el rechazo por ubicación; otro error sigue siendo cierto.
 			if (string.Equals(MensajeError, MensajeUbicacion, StringComparison.Ordinal))
 			{
 				MensajeError = null;
@@ -671,14 +466,12 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
-		// El literal lo fija JTT-279 y es el que revisa QA; el detalle y el botón son los que
-		// distinguen los estados que pide JTT-1380.
+		// El literal no se toca; el detalle y el botón distinguen el estado.
 		MensajeError = MensajeUbicacion;
 		DetalleUbicacion = DetalleDe(resultado.Estado);
 		TextoAccionUbicacion = TextoAccionDe(resultado.Accion);
 
-		// Siempre que el acceso quede bloqueado por ubicación hay como volver a comprobar,
-		// aunque el estado no ofrezca ninguna otra accion.
+		// Siempre hay cómo volver a comprobar, aunque el estado no ofrezca otra acción.
 		PuedeRevalidarUbicacion = true;
 	}
 
@@ -700,14 +493,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		_ => null,
 	};
 
-	/// <summary>
-	/// Texto del aviso de sesión guardada, o <see langword="null"/> si no hay nada que anunciar.
-	/// </summary>
-	/// <remarks>
-	/// Sin el canal real no hay sesión persistida que consultar, y contra el simulador el aviso
-	/// mentiría. La hora se muestra como en el perfil y en el indicador de enlace, con fecha,
-	/// porque una ventana de ocho horas cruza la medianoche con frecuencia.
-	/// </remarks>
+	// Con fecha: una ventana de ocho horas cruza la medianoche con frecuencia.
 	private async Task<string?> TextoSesionGuardadaAsync()
 	{
 		if (_reanudarOffline is null)
@@ -751,15 +537,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 		MotivoRechazoAcceso.DesafioNoValido => MensajeDesafioNoValido,
 		MotivoRechazoAcceso.UnidadNoAutorizada => MensajeUnidadNoAutorizada,
 		MotivoRechazoAcceso.ErrorDelServicio => MensajeErrorServicio,
-		// Un motivo que no esté en la lista es un descuido de programación, no una
-		// credencial mala: decirle al operador que se equivocó sería mentirle.
+		// Un motivo fuera de la lista es un descuido del código, no una credencial mala.
 		_ => MensajeErrorServicio,
 	};
 
-	// El generador de CommunityToolkit.Mvvm llama a estos métodos al cambiar cada mensaje;
-	// así las banderas se recalculan sin que la vista tenga que enterarse de los dos nombres.
-	// Los dos mensajes son excluyentes: mostrar a la vez un rechazo y una confirmación
-	// dejaría al operador sin saber qué pasó.
+	// Error y aviso son excluyentes: los dos a la vez dejarían al operador sin saber qué pasó.
 	partial void OnMensajeErrorChanged(string? value)
 	{
 		OnPropertyChanged(nameof(HayError));
@@ -768,9 +550,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 			MensajeAviso = null;
 		}
 
-		// El detalle y el botón de ubicación solo tienen sentido junto a su literal. Si el
-		// mensaje pasa a ser otro —o ninguno—, se retiran: un botón "Permitir ubicación"
-		// debajo de "Usuario o contraseña no válidos" señalaría al problema equivocado.
+		// El detalle y el botón de ubicación solo valen junto a su literal.
 		if (!string.Equals(value, MensajeUbicacion, StringComparison.Ordinal))
 		{
 			DetalleUbicacion = null;

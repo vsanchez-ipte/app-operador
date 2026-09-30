@@ -4,21 +4,7 @@ using AppOperador.Aplicacion.Servicios;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
-/// <summary>
-/// Revalida la sesión al recuperar el enlace con Jacob CCO (JTT-1383 CA 9, 10 y 11).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Es el camino de vuelta del modo offline. Pregunta a Jacob si la sesión sigue siendo
-/// válida y, si lo es, adopta lo que devuelva: permisos, unidad y una ventana nueva. Ahí
-/// —y solo ahí— la vigencia se renueva, porque la calcula el servidor (CA 15).
-/// </para>
-/// <para>
-/// <b>Los tres desenlaces no son dos.</b> Que Jacob niegue la sesión obliga a autenticarse;
-/// que no conteste, no. Confundirlos sacaría al operador de una sesión offline vigente cada
-/// vez que el enlace parpadee, que es justo lo que el modo offline evita.
-/// </para>
-/// </remarks>
+// Negar la sesión obliga a autenticarse; no contestar, no. Solo aquí se renueva la vigencia.
 public sealed class RevalidarSesionMovil
 {
 	private readonly IAccesoJacobClient _jacob;
@@ -50,7 +36,6 @@ public sealed class RevalidarSesionMovil
 		_catalogos = catalogos;
 	}
 
-	/// <summary>Intenta revalidar la sesión guardada.</summary>
 	public async Task<ResultadoRevalidacion> RevalidarAsync(CancellationToken cancelacion = default)
 	{
 		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
@@ -78,14 +63,6 @@ public sealed class RevalidarSesionMovil
 		return await AplicarConfirmacionAsync(guardada, resultado, token, cancelacion);
 	}
 
-	/// <summary>
-	/// Adopta lo que devolvió Jacob y dispara la sincronización (CA 10).
-	/// </summary>
-	/// <remarks>
-	/// Los permisos se cotejan otra vez contra el token antes de adoptarlos, igual que en el
-	/// acceso (JTT-1379 CA 8). Si no cuadran, se trata como negativa: es preferible pedir
-	/// autenticación a conceder capacidades que el token no respalda.
-	/// </remarks>
 	private async Task<ResultadoRevalidacion> AplicarConfirmacionAsync(
 		SesionOfflinePersistida guardada,
 		ResultadoRevalidacion resultado,
@@ -94,6 +71,7 @@ public sealed class RevalidarSesionMovil
 	{
 		var permisos = resultado.Permisos!;
 
+		// Si los permisos no cuadran con el token, se trata como negativa.
 		if (!_claims.Respaldan(permisos, token))
 		{
 			return await AplicarRechazoAsync(
@@ -108,18 +86,14 @@ public sealed class RevalidarSesionMovil
 			Permisos = permisos,
 			Vigencia = resultado.Vigencia!,
 
-			// Referencia nueva para medir la ventana nueva. Sin actualizarla, el transcurso
-			// se seguiría contando desde el acceso original.
+			// Referencia nueva: si no, el transcurso se seguiría contando desde el acceso original.
 			MonotonicoAlValidar = _monotonico.Transcurrido,
 		};
 
-		// Sin token nuevo: la revalidación no emite uno y sobrescribirlo dejaría la sesión
-		// sin credencial.
+		// Sin token nuevo: la revalidación no emite uno.
 		await _custodia.AbrirAsync(renovada, accessToken: null, cancelacion);
 
-		// El catálogo se refresca aquí, que es la otra mitad del CA 4 de JTT-1394: la
-		// revalidación es la validación en línea que ocurre sin que el operador vuelva a
-		// entrar. Su fallo no se propaga: la sesión ya quedó renovada.
+		// La revalidación también es validación en línea, así que refresca el catálogo.
 		if (_catalogos is not null)
 		{
 			await _catalogos.EjecutarAsync(token, cancelacion);
@@ -135,14 +109,7 @@ public sealed class RevalidarSesionMovil
 		return resultado;
 	}
 
-	/// <summary>
-	/// Cierra la sesión local cuando Jacob la niega (CA 11).
-	/// </summary>
-	/// <remarks>
-	/// Bloquea nuevas operaciones quitando la sesión, pide autenticación y <b>no toca la
-	/// cola</b>: lo capturado en campo es del operador y se envía cuando alguien vuelva a
-	/// entrar.
-	/// </remarks>
+	// No toca la cola: lo capturado se envía cuando alguien vuelva a entrar.
 	private async Task<ResultadoRevalidacion> AplicarRechazoAsync(
 		ResultadoRevalidacion resultado,
 		CancellationToken cancelacion)
@@ -155,20 +122,12 @@ public sealed class RevalidarSesionMovil
 
 		await _custodia.RevocarAsync(cancelacion);
 
-		// Para que la pantalla de acceso pueda decir por qué se cerró la sesión, en vez de
-		// aparecer en blanco (JTT-1383 CA 11: «solicita autenticación»).
 		_aviso.Registrar(resultado.Motivo ?? MotivoRechazoAcceso.SesionRevocada);
 
 		return resultado;
 	}
 
-	/// <summary>
-	/// Envía lo que quedó pendiente durante el corte.
-	/// </summary>
-	/// <remarks>
-	/// Un fallo aquí no puede deshacer la revalidación: la sesión ya está renovada y la cola
-	/// se reintenta sola más adelante.
-	/// </remarks>
+	// Un fallo aquí no deshace la revalidación; la cola se reintenta sola.
 	private async Task SincronizarAsync(CancellationToken cancelacion)
 	{
 		try

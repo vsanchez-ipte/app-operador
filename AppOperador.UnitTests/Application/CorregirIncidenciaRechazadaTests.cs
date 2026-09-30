@@ -7,9 +7,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Corregir un registro que el CCO rechazó y devolverlo a la cola (JTT-291 CA 8).
-/// </summary>
 public sealed class CorregirIncidenciaRechazadaTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
@@ -47,8 +44,6 @@ public sealed class CorregirIncidenciaRechazadaTests
 	[Fact]
 	public async Task ConKilometroInvalido_noCorrige()
 	{
-		// Es el rechazo más probable —km fuera de corredor— y el que más se va a corregir: el
-		// formulario tiene que atajar un formato malo antes de mandar un segundo rechazo seguro.
 		var resultado = await EjecutarAsync(Objeto, kilometro: "130+", nota: "nota");
 
 		Assert.Equal(ResultadoCorreccionRechazada.KilometroInvalido, resultado);
@@ -88,8 +83,6 @@ public sealed class CorregirIncidenciaRechazadaTests
 	[Fact]
 	public async Task NoTocaElBorrador_niCreaOtraIncidencia()
 	{
-		// Corregir actúa sobre el registro rechazado: ni lo convierte como borrador ni guarda
-		// uno nuevo. Si no, quedarían dos registros del mismo hecho.
 		RepositorioContesta(true);
 
 		await EjecutarAsync(Objeto, "130+200", "nota");

@@ -3,9 +3,6 @@ using AppOperador.Domain.Enums;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Traducción de los códigos de Jacob a familias de error (JTT-1401 CA 8 y 9).
-/// </summary>
 public sealed class CodigosErrorJacobTests
 {
 	[Theory]
@@ -35,8 +32,6 @@ public sealed class CodigosErrorJacobTests
 	[Fact]
 	public void LaPlazaNoResueltaEsTecnicaAunqueSuenaADatoMalCapturado()
 	{
-		// Si fuera funcional, el operador vería un rechazo que no puede arreglar por más que
-		// edite: lo que falta es que alguien cargue los rangos de las plazas en ese ambiente.
 		Assert.Equal(
 			FamiliaErrorSincronizacion.Tecnico,
 			CodigosErrorJacob.FamiliaDe(CodigosErrorJacob.PlazaNoResuelta));
@@ -45,8 +40,6 @@ public sealed class CodigosErrorJacobTests
 	[Fact]
 	public void UnCodigoDesconocidoSeTrataComoTecnico()
 	{
-		// Es la opción prudente: se reintenta con espera creciente, que es gasto acotado, en vez
-		// de dejar el registro parado para siempre esperando una corrección que nadie pidió.
 		Assert.Equal(
 			FamiliaErrorSincronizacion.Tecnico,
 			CodigosErrorJacob.FamiliaDe("appincidencias.algo.que.no.existia"));

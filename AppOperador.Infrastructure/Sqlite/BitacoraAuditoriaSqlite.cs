@@ -4,43 +4,10 @@ using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Bitácora local en SQLite (JTT-1392).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Cada línea copia quién y desde dónde en el instante de escribirla</b>: operador, rol,
-/// permiso y unidad salen de la sesión abierta; el origen, de si hay enlace con el CCO. La
-/// sesión sí se referencia —<c>sesion_local</c> es historial desde el esquema 11—; lo demás se
-/// copia porque la línea del acceso se escribe antes de tener sesión y porque el operador de una
-/// línea se reescribe al atribuir un alias.
-/// </para>
-/// <para>
-/// <b>Se ordena por el orden de inserción, no por la hora.</b> Mover el reloj del dispositivo
-/// desordenaba el historial: entradas registradas después aparecían antes. El identificador
-/// autoincremental es el orden real en que se escribió cada línea y no lo mueve ni el reloj ni
-/// un reinicio —el contador monotónico sí se reinicia con el dispositivo, por eso no sirve para
-/// ordenar y se guarda solo como sello, igual que en las incidencias—.
-/// </para>
-/// <para>
-/// <b>Se lee lo del operador con sesión</b> más las líneas anteriores a la versión 10 del
-/// esquema —sin operador y sin origen—, que se muestran como historial previo. Una línea nueva
-/// que llegara sin operador no se le muestra a nadie: se distingue de las viejas porque sí
-/// tiene origen. Sin sesión no se lee nada.
-/// </para>
-/// </remarks>
+// Se ordena por id, no por hora: el reloj se puede mover y el monotónico se reinicia.
 public sealed class BitacoraAuditoriaSqlite : IAuditLog
 {
-	/// <summary>
-	/// Cuántas líneas conserva el dispositivo, de todos los operadores, antes de tirar la más
-	/// antigua.
-	/// </summary>
-	/// <remarks>
-	/// Decisión propia (21-sep-2026): ningún criterio fija la retención local. Eran 200, y la
-	/// auditoría se lee mal si la app va tirando lo antiguo a la semana; mil líneas son unos
-	/// 300 KB y varias semanas de turno. Lo que se muestra de una vez es otra cifra, y la pone
-	/// quien lee.
-	/// </remarks>
+	// De todos los operadores: unos 300 KB, varias semanas de turno.
 	public const int EventosConservados = 1000;
 
 	private readonly BaseDatosLocal _baseDatos;
@@ -63,11 +30,9 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		_conectividad = conectividad;
 	}
 
-	/// <inheritdoc />
 	public Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(CancellationToken cancelacion = default) =>
 		ObtenerEventosAsync(0, EventosConservados, cancelacion);
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<EventoAuditoria>> ObtenerEventosAsync(
 		int omitir, int cantidad, CancellationToken cancelacion = default)
 	{
@@ -80,11 +45,8 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			return [];
 		}
 
-		// «operador IS NULL AND origen IS NULL» es lo que reconoce una fila anterior al esquema
-		// 10: la migración deja las columnas nuevas en NULL, y una fila nueva sin operador sí
-		// trae origen. En SQL explícito porque la LINQ de sqlite-net no traduce bien un
-		// «== null» dentro de un OR.
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
+		// Sin operador ni origen = fila anterior al esquema 10. SQL a mano: la LINQ de sqlite-net traduce mal «== null» en un OR.
 		var filas = await conexion.QueryAsync<EventoAuditoriaLocal>(
 			"SELECT * FROM evento_auditoria " +
 			"WHERE operador = ? OR (operador IS NULL AND origen IS NULL) " +
@@ -94,11 +56,9 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		return filas.Select(Convertir).ToList();
 	}
 
-	/// <inheritdoc />
 	public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken cancelacion = default) =>
 		InsertarAsync(nivel, mensaje, OperacionAuditada.Otra, null, null, null, cancelacion);
 
-	/// <inheritdoc />
 	public Task RegistrarAsync(
 		OperacionAuditada operacion,
 		ResultadoAuditoria resultado,
@@ -132,11 +92,9 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			Operacion = (int)operacion,
 			Resultado = (int?)resultado,
 			MotivoCodigo = motivoCodigo,
-			// Con sesión manda la sesión; sin ella —el acceso— vale lo que diga quien registra.
 			Operador = sesion?.Operador ?? operadorSinSesion,
 			Rol = sesion?.Rol,
-			// Todos los permisos de la sesión, no uno elegido al azar: cuál aplica depende de la
-			// operación, y guardar la lista completa no obliga a adivinarlo.
+			// Todos los permisos: cuál aplica depende de la operación.
 			Permiso = sesion is null ? null : string.Join(",", sesion.Permisos),
 			UnidadClave = sesion?.UnidadVehicular,
 			SesionId = sesionId,
@@ -146,7 +104,6 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		await RecortarAsync(conexion);
 	}
 
-	/// <inheritdoc />
 	public async Task AtribuirAsync(string alias, string operador, CancellationToken cancelacion = default)
 	{
 		if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(operador) || alias == operador)
@@ -159,9 +116,8 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 			"UPDATE evento_auditoria SET operador = ? WHERE operador = ?", operador, alias);
 	}
 
+	// Se vuelve a sellar el Kind: sin él, el DateTime se compara como hora local.
 	private static EventoAuditoria Convertir(EventoAuditoriaLocal fila) => new(
-		// Se guardó como ticks UTC: al reconstruir hay que volver a sellar el Kind, porque un
-		// DateTime sin Kind se compara como hora local.
 		new DateTime(fila.InstanteUtcTicks, DateTimeKind.Utc),
 		(NivelAuditoria)fila.Nivel,
 		fila.Mensaje,
@@ -176,10 +132,6 @@ public sealed class BitacoraAuditoriaSqlite : IAuditLog
 		(OrigenAuditoria)(fila.Origen ?? (int)OrigenAuditoria.Desconocido),
 		fila.MonotonicoTicks);
 
-	/// <summary>
-	/// Conserva las últimas <see cref="EventosConservados"/> líneas del dispositivo, de todos
-	/// los operadores.
-	/// </summary>
 	private static Task RecortarAsync(SQLite.SQLiteAsyncConnection conexion) =>
 		conexion.ExecuteAsync(
 			"""

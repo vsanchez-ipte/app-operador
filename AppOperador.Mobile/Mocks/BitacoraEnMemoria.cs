@@ -3,12 +3,6 @@ using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Mobile.Mocks;
 
-/// <summary>
-/// Bitácora de auditoría guardada en memoria.
-/// </summary>
-/// <remarks>
-/// Se pierde al cerrar la app; la definitiva vive en SQLite (JTT-1345).
-/// </remarks>
 public sealed class BitacoraEnMemoria : IAuditLog
 {
 	private const int MaximoEventos = 50;

@@ -5,9 +5,6 @@ using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Creación del archivo, esquema y migración local.
-/// </summary>
 public sealed class BaseDatosLocalTests
 {
 	[Fact]
@@ -45,14 +42,6 @@ public sealed class BaseDatosLocalTests
 		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, await contexto.BaseDatos.ObtenerVersionEsquemaAsync());
 	}
 
-	/// <summary>
-	/// JTT-1394: la base ya no siembra catálogo. Nace vacía y la llena la primera descarga.
-	/// </summary>
-	/// <remarks>
-	/// Hasta JTT-1394 se sembraban seis tipos de la maqueta —OBJETO, VEHICULO…— que no existen
-	/// en ningún servidor. Ofrecerlos dejaba capturar incidencias que Jacob iba a rechazar, y
-	/// además hacía creer que el catálogo estaba resuelto.
-	/// </remarks>
 	[Fact]
 	public async Task BaseNueva_naceSinCatalogo()
 	{
@@ -81,9 +70,6 @@ public sealed class BaseDatosLocalTests
 		await segunda.DisposeAsync();
 	}
 
-	/// <summary>
-	/// El catálogo descargado sobrevive a cerrar y reabrir la app (JTT-1394 CA 2).
-	/// </summary>
 	[Fact]
 	public async Task CatalogoGuardado_sobreviveAReabrirLaBase()
 	{
@@ -106,8 +92,6 @@ public sealed class BaseDatosLocalTests
 
 		Assert.Equal(new DateOnly(2026, 8, 20), catalogo.Version);
 
-		// La nota obligatoria se reconoce por la bandera, nunca por el nombre ni por el id:
-		// el de «Otro» ni siquiera es el mismo en todos los ambientes (JTT-1397).
 		var otro = Assert.Single(catalogo.Tipos, t => t.ExigeDescripcion);
 		Assert.Equal(107, otro.Id);
 

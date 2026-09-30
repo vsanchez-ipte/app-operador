@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!--
-    Pantalla de acceso (JTT-279). Una sola pantalla con credenciales, unidad del catálogo
-    y estado de comunicación, como la maqueta.
--->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
@@ -13,7 +9,6 @@
 
     <Grid RowDefinitions="Auto,*">
 
-        <!-- Franja de identidad, presente en todas las pantallas de la maqueta -->
         <VerticalStackLayout Grid.Row="0" BackgroundColor="{StaticResource Blanco}" Padding="16,10" Spacing="2">
             <Label Text="APK OPERADOR DE CAMPO" Style="{StaticResource TituloBanner}" />
             <Label Text="Offline-first · Captura de evidencia · Cola local y sincronizacion"
@@ -35,11 +30,7 @@
                     <Border Style="{StaticResource Tarjeta}">
                         <VerticalStackLayout Spacing="14">
 
-                            <!--
-                                Contra Jacob CCO la credencial es el CORREO, no un nombre de
-                                usuario: el API autentica por email y esa decisión está cerrada.
-                                La etiqueta cambia con el modo para no pedir un dato equivocado.
-                            -->
+                            <!-- Contra Jacob se pide el correo: el API autentica por email -->
                             <VerticalStackLayout IsVisible="{Binding MostrarCredenciales}">
                                 <Label Text="{Binding EtiquetaUsuario}" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
@@ -59,14 +50,7 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <!--
-                                Selección del catálogo: JTT-279 no admite texto libre y
-                                JTT-1381 exige que el ID salga del catálogo, nunca del
-                                teclado. Contra el simulador se ve desde el principio, como
-                                en la maqueta; contra el API real aparece en el segundo paso,
-                                cuando la preautenticación ya devolvió las unidades reales
-                                del operador.
-                            -->
+                            <!-- Solo del catálogo, nunca texto libre -->
                             <VerticalStackLayout IsVisible="{Binding MostrarSelectorUnidad}">
                                 <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
                                 <Border Style="{StaticResource MarcoCampo}">
@@ -76,18 +60,11 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <!-- Mensaje de rechazo: literal y persistente junto al formulario -->
                             <Label Text="{Binding MensajeError}"
                                    Style="{StaticResource MensajeError}"
                                    IsVisible="{Binding HayError}" />
 
-                            <!--
-                                Ubicación (JTT-1380). El literal de arriba lo fija JTT-279 y
-                                es igual para los seis estados; estos dos elementos son los
-                                que distinguen cuál se encontró y qué puede hacer el operador.
-                                Sin ellos, "Active la ubicación..." no dice si hay que
-                                conceder un permiso, desbloquearlo o encender el GPS.
-                            -->
+                            <!-- El literal es igual para todos los estados; el detalle y el botón dicen cuál ocurrió y qué hacer -->
                             <Label Text="{Binding DetalleUbicacion}"
                                    Style="{StaticResource TextoSecundario}"
                                    IsVisible="{Binding HayDetalleUbicacion}" />
@@ -98,33 +75,21 @@
                                     IsVisible="{Binding HayAccionUbicacion}"
                                     IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
-                            <!--
-                                Accion explicita de revalidacion. Se ofrece siempre que el
-                                acceso este bloqueado por ubicacion: dos estados -dispositivo
-                                sin ubicacion y fallo al consultar- no tienen ninguna otra, y
-                                sin esto el operador se queda sin nada que pulsar.
-                            -->
+                            <!-- Siempre que la ubicación bloquee: dos estados no ofrecen otra acción -->
                             <Button Text="{Binding TextoRevalidarUbicacion}"
                                     Style="{StaticResource BotonSecundario}"
                                     Command="{Binding RevalidarUbicacionCommand}"
                                     IsVisible="{Binding PuedeRevalidarUbicacion}"
                                     IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
-                            <!-- Confirmación de la preautenticación. No muestra el desafío. -->
+                            <!-- No muestra el desafío -->
                             <Label Text="{Binding MensajeAviso}"
                                    Style="{StaticResource TextoSecundario}"
                                    TextColor="{StaticResource VerdeTexto}"
                                    FontAttributes="Bold"
                                    IsVisible="{Binding HayAviso}" />
 
-                            <!--
-                                Actividad en curso. Los botones deshabilitados no bastan: sin
-                                esto, pulsar "Iniciar sesion" apagaba la pantalla y no ocurria
-                                nada visible durante lo que tardara el servidor, hasta veinte
-                                segundos por llamada y con dos llamadas seguidas en el acceso
-                                real. El texto nombra el paso porque son varias esperas
-                                distintas y "Cargando..." no dice en cual va.
-                            -->
+                            <!-- Los botones apagados no bastan: sin esto la pantalla parece colgada -->
                             <HorizontalStackLayout Spacing="10"
                                                    HorizontalOptions="Center"
                                                    IsVisible="{Binding HayPasoEnCurso}">
@@ -138,12 +103,7 @@
                                        VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
-                            <!--
-                                Sesión guardada (JTT-1681). Cuando Android mata el proceso, la
-                                app vuelve a abrirse aquí con la sesión intacta; sin este aviso
-                                el único rastro era el botón de abajo, y con red "Continuar
-                                offline" no se lee como "reanudar mi sesión".
-                            -->
+                            <!-- Si Android mató el proceso, la sesión sigue guardada: se avisa -->
                             <Label Text="{Binding AvisoSesionGuardada}"
                                    Style="{StaticResource TextoSecundario}"
                                    IsVisible="{Binding HaySesionGuardada}" />
@@ -161,11 +121,7 @@
                                         IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
                             </Grid>
 
-                            <!--
-                                Salida del segundo paso. Sin ella la pantalla es un callejón
-                                sin salida: el desafío vence a los cinco minutos y el operador
-                                tendría que cerrar la app para reintentar.
-                            -->
+                            <!-- Sin esta salida, el desafío vence y el operador tendría que cerrar la app -->
                             <Button Text="Cambiar de cuenta"
                                     Style="{StaticResource BotonSecundario}"
                                     Command="{Binding VolverACredencialesCommand}"

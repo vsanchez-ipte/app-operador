@@ -4,15 +4,11 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// JTT-1394 CA 2: la copia local del catálogo que sostiene la captura sin conexión.
-/// </summary>
 public class RepositorioCatalogoSqliteTests
 {
 	private static readonly Guid IdCritico = Guid.Parse("11111111-1111-1111-1111-111111111111");
 	private static readonly Guid IdAdvertencia = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
-	/// <summary>Los que publica el servidor hoy, para las pruebas que los necesitan.</summary>
 	private static readonly LimitesEvidencia LimitesReales =
 		new(["image/jpeg", "image/png", "image/bmp", "application/pdf"], 5, 3);
 
@@ -63,13 +59,6 @@ public class RepositorioCatalogoSqliteTests
 		Assert.True(catalogo.EsUtilizable);
 	}
 
-	/// <summary>
-	/// Un tipo retirado del catálogo tiene que desaparecer, no acumularse.
-	/// </summary>
-	/// <remarks>
-	/// Es la razón por la que se reemplaza en vez de fusionar: fusionando, un tipo que Producto
-	/// retire seguiría ofreciéndose en el desplegable para siempre.
-	/// </remarks>
 	[Fact]
 	public async Task Reemplazar_retiraLoQueYaNoViene()
 	{
@@ -92,9 +81,6 @@ public class RepositorioCatalogoSqliteTests
 		Assert.Equal(new DateOnly(2026, 8, 21), catalogo.Version);
 	}
 
-	/// <summary>
-	/// Las severidades se leen ordenadas: de ese orden sale la prioridad de sincronización.
-	/// </summary>
 	[Fact]
 	public async Task Severidades_seLeenOrdenadasPorGravedad()
 	{
@@ -108,9 +94,6 @@ public class RepositorioCatalogoSqliteTests
 		Assert.Equal(IdCritico, catalogo.Severidades[0].Id);
 	}
 
-	/// <summary>
-	/// La bandera de nota obligatoria sobrevive al viaje por SQLite (JTT-1397).
-	/// </summary>
 	[Fact]
 	public async Task ExigeDescripcion_seConserva()
 	{
@@ -128,10 +111,7 @@ public class RepositorioCatalogoSqliteTests
 		Assert.Equal(107, otro.Id);
 	}
 
-	// ── Los límites de evidencia (JTT-1398) ───────────────────────────────────────────
-	//
-	// Viajan con el catálogo porque es lo que sostiene el CA 2 de JTT-1394: el formulario
-	// sigue funcionando sin conexión, y validar un adjunto también.
+	// ── Los límites de evidencia ───────────────────────────────────────────
 
 	[Fact]
 	public async Task LosLimitesDeEvidencia_sobrevivenAlViajePorSqlite()
@@ -154,9 +134,6 @@ public class RepositorioCatalogoSqliteTests
 	[Fact]
 	public async Task SinDescargar_losLimitesQuedanDesconocidos()
 	{
-		// Es el estado de una base recién creada, y también el de una que se actualizó desde
-		// una versión anterior sin haber vuelto a conectarse. No se puede adjuntar hasta que
-		// el servidor diga con qué números validar.
 		await using var contexto = new ContextoSqlite();
 
 		var limites = (await new RepositorioCatalogoSqlite(contexto.BaseDatos)
@@ -169,10 +146,6 @@ public class RepositorioCatalogoSqliteTests
 	[Fact]
 	public async Task UnCatalogoSinLimites_noPisaLosQueYaEstaban()
 	{
-		// Al revés de lo que parece: si una descarga nueva no los trae, se guarda «desconocido»
-		// y la app deja de admitir adjuntos. Es lo correcto —el servidor manda— pero conviene
-		// que esté fijado, porque la alternativa silenciosa sería conservar unos límites que el
-		// servidor ya no declara.
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioCatalogoSqlite(contexto.BaseDatos);
 

@@ -4,14 +4,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Comprueba el cifrado de credenciales contra una llave RSA real.
-/// </summary>
-/// <remarks>
-/// Las pruebas generan su propio par de llaves y descifran con la privada. Así se verifica
-/// el ciclo completo de verdad —formato de llave, relleno y codificación— en vez de dar por
-/// bueno que la llamada no lanzó excepción.
-/// </remarks>
 public sealed class CifradorRsaTests
 {
 	private static (string LlavePublicaBase64, RSA Privada) GenerarPar()
@@ -56,8 +48,6 @@ public sealed class CifradorRsaTests
 
 		var cifrado = Convert.FromBase64String(cifrador.Cifrar("secreto"));
 
-		// Si el cliente usara PKCS#1 u OAEP-SHA1, el API no podría descifrar y respondería
-		// 'credenciales.invalidas' sin explicar por qué. Esta prueba fija el relleno.
 		Assert.Throws<CryptographicException>(() => privada.Decrypt(cifrado, RSAEncryptionPadding.Pkcs1));
 		Assert.Throws<CryptographicException>(() => privada.Decrypt(cifrado, RSAEncryptionPadding.OaepSHA1));
 	}
@@ -72,8 +62,6 @@ public sealed class CifradorRsaTests
 		var email = cifrador.Cifrar("operador@ipte.com.mx");
 		var contrasena = cifrador.Cifrar("operador@ipte.com.mx");
 
-		// Mismo texto, resultados distintos: OAEP añade relleno aleatorio. Por eso el texto
-		// cifrado no sirve como identificador ni puede compararse entre peticiones.
 		Assert.NotEqual(email, contrasena);
 	}
 

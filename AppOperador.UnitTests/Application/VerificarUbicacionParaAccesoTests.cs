@@ -6,14 +6,6 @@ using NSubstitute.ExceptionExtensions;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Comprobación del prerrequisito de ubicación del acceso (JTT-1380).
-/// </summary>
-/// <remarks>
-/// Todo lo que toca el dispositivo está detrás de <see cref="ILocationPermissionService"/>,
-/// así que estas pruebas cubren la regla completa sin emulador: qué estado deja entrar, qué
-/// acción se le ofrece al operador en cada caso y qué pasa cuando el dispositivo falla.
-/// </remarks>
 public class VerificarUbicacionParaAccesoTests
 {
 	private readonly ILocationPermissionService _ubicacion = Substitute.For<ILocationPermissionService>();
@@ -41,8 +33,6 @@ public class VerificarUbicacionParaAccesoTests
 	[InlineData(EstadoUbicacion.ErrorAlConsultar)]
 	public async Task NingunEstadoQueNoSeaConcedido_DejaAcceder(EstadoUbicacion estado)
 	{
-		// Es el corazón de la historia: el prerrequisito es obligatorio y ninguna situación
-		// distinta de "concedido" puede dejar continuar el acceso.
 		_ubicacion.ConsultarEstadoAsync(Arg.Any<CancellationToken>()).Returns(estado);
 
 		var resultado = await CrearCasoDeUso().RevisarAsync();
@@ -61,9 +51,6 @@ public class VerificarUbicacionParaAccesoTests
 	[InlineData(EstadoUbicacion.ErrorAlConsultar, AccionUbicacion.Ninguna)]
 	public void CadaEstado_OfreceLaAccionQueLeCorresponde(EstadoUbicacion estado, AccionUbicacion esperada)
 	{
-		// Un permiso bloqueado no se arregla volviendo a pedirlo, y un GPS apagado no se
-		// arregla desde la ficha de la app: ofrecer la acción equivocada deja al operador
-		// pulsando un botón que no cambia nada.
 		var resultado = ResultadoUbicacion.Para(estado);
 
 		Assert.Equal(esperada, resultado.Accion);
@@ -115,9 +102,6 @@ public class VerificarUbicacionParaAccesoTests
 	[InlineData(EstadoUbicacion.NoDisponibleEnElDispositivo)]
 	public async Task Exigir_NoVuelveAPedirElPermisoCuandoYaHuboRespuesta(EstadoUbicacion estado)
 	{
-		// Insistir sobre una decisión ya tomada es acoso, y en Android un segundo diálogo
-		// automático puede resolverse en negativa sin llegar a mostrarse. El operador vuelve
-		// a pedirlo con el botón de la pantalla, no la app por su cuenta.
 		_ubicacion.ConsultarEstadoAsync(Arg.Any<CancellationToken>()).Returns(estado);
 
 		await CrearCasoDeUso().ExigirAsync();
@@ -128,8 +112,6 @@ public class VerificarUbicacionParaAccesoTests
 	[Fact]
 	public async Task Revisar_NuncaPideElPermiso()
 	{
-		// Es la comprobación de reingreso: mira y calla. Si pidiera el permiso, volver a la
-		// pantalla dispararía el diálogo del sistema sin que el operador hiciera nada.
 		_ubicacion.ConsultarEstadoAsync(Arg.Any<CancellationToken>()).Returns(EstadoUbicacion.NoSolicitado);
 
 		var resultado = await CrearCasoDeUso().RevisarAsync();
@@ -157,9 +139,6 @@ public class VerificarUbicacionParaAccesoTests
 	[Fact]
 	public async Task UnFalloDelDispositivoAlConsultar_NoSePresentaComoNegativaDelOperador()
 	{
-		// Mismo criterio que JTT-1378 CA 11: un error técnico no puede disfrazarse de otra
-		// cosa. Bloquea igual, pero se le dice al operador que reintente, no que conceda un
-		// permiso que quizá ya concedió.
 		_ubicacion.ConsultarEstadoAsync(Arg.Any<CancellationToken>())
 			.Throws(new InvalidOperationException("el servicio de ubicación no respondió"));
 
@@ -220,8 +199,6 @@ public class VerificarUbicacionParaAccesoTests
 	[Fact]
 	public async Task AbrirAjustes_CuandoElDispositivoNoLosAbre_LoDiceEnVezDeLanzar()
 	{
-		// La pantalla necesita saberlo para avisar: un botón que no hace nada visible es peor
-		// que no tener botón.
 		_ubicacion.AbrirAjustesDeUbicacionAsync(Arg.Any<CancellationToken>())
 			.Throws(new InvalidOperationException("no hay actividad que atienda el intent"));
 
@@ -233,8 +210,6 @@ public class VerificarUbicacionParaAccesoTests
 	[Fact]
 	public async Task AbrirAjustes_NoReevaluaElEstado()
 	{
-		// No podría: la app queda en segundo plano mientras el operador está en la
-		// configuración. La reevaluación es cosa de RevisarAsync al volver.
 		_ubicacion.AbrirAjustesDeLaAppAsync(Arg.Any<CancellationToken>()).Returns(true);
 
 		await CrearCasoDeUso().AbrirAjustesAsync(AccionUbicacion.AbrirAjustesDeLaApp);

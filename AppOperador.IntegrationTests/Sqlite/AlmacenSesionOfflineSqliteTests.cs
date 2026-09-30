@@ -5,9 +5,6 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Sesión persistida entre arranques de la app (JTT-1383).
-/// </summary>
 public sealed class AlmacenSesionOfflineSqliteTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 11, 8, 0, 0, DateTimeKind.Utc);
@@ -51,7 +48,7 @@ public sealed class AlmacenSesionOfflineSqliteTests
 	[Fact]
 	public async Task Conserva_la_ventana_offline_tal_como_se_guardo()
 	{
-		// La calcula el servidor y la app no la recalcula (JTT-1382 CA 3 y 4).
+		// La calcula el servidor y la app no la recalcula.
 		await using var contexto = new ContextoSqlite();
 		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
 
@@ -65,7 +62,7 @@ public sealed class AlmacenSesionOfflineSqliteTests
 	[Fact]
 	public async Task Conserva_la_referencia_monotonica()
 	{
-		// Es lo que permite detectar despues que movieron el reloj (CA 5).
+		// Es lo que permite detectar despues que movieron el reloj.
 		await using var contexto = new ContextoSqlite();
 		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
 
@@ -77,7 +74,7 @@ public sealed class AlmacenSesionOfflineSqliteTests
 	[Fact]
 	public async Task La_sesion_sobrevive_al_reinicio_de_la_aplicacion()
 	{
-		// CA 6: reanudar solo tiene sentido si la sesion resiste cerrar la app.
+		// Reanudar solo tiene sentido si la sesion resiste cerrar la app.
 		await using var contexto = new ContextoSqlite();
 		await new AlmacenSesionOfflineSqlite(contexto.BaseDatos).GuardarAsync(Sesion());
 
@@ -93,9 +90,6 @@ public sealed class AlmacenSesionOfflineSqliteTests
 	[Fact]
 	public async Task Guardar_de_nuevo_deja_vigente_solo_la_ultima()
 	{
-		// Reanudar mira la ultima validacion y nada mas. La anterior no se borra —desde el
-		// esquema 11 la sesion es historial y lo capturado apunta a ella—, pero deja de ser la
-		// vigente, asi que no hay forma de reanudarla.
 		await using var contexto = new ContextoSqlite();
 		var almacen = new AlmacenSesionOfflineSqlite(contexto.BaseDatos);
 

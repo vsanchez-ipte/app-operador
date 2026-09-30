@@ -3,13 +3,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Aviso de cierre de sesión: <c>POST ITS/AppLogin/Logout</c> (JTT-1390).
-/// </summary>
-/// <remarks>
-/// A diferencia de los dos pasos del acceso, este endpoint exige el token en la cabecera y
-/// no devuelve nada que interpretar: basta el código de estado.
-/// </remarks>
 public class ClienteAccesoJacobLogoutTests
 {
 	private const string Token = "jwt-de-la-sesion";
@@ -47,8 +40,6 @@ public class ClienteAccesoJacobLogoutTests
 	[Fact]
 	public async Task El_token_no_viaja_en_el_cuerpo()
 	{
-		// Va en la cabecera y en ningun otro sitio: un cuerpo con el token acabaria en
-		// cualquier traza intermedia.
 		var (cliente, manejador) = Construir(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
 
 		await cliente.CerrarSesionAsync(Token);

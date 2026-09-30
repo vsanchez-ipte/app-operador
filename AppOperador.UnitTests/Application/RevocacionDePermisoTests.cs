@@ -8,14 +8,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Qué pasa en la app cuando Jacob retira el permiso funcional (JTT-1379 CA 6).
-/// </summary>
-/// <remarks>
-/// La revocación se decide en el servidor y llega en la siguiente validación en línea. Sin
-/// borrar lo guardado, el operador revocado seguiría trabajando sin conexión con la sesión
-/// de su último acceso correcto.
-/// </remarks>
 public class RevocacionDePermisoTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 11, 12, 0, 0, DateTimeKind.Utc);
@@ -68,8 +60,6 @@ public class RevocacionDePermisoTests
 	[Fact]
 	public async Task Preauth_sin_permiso_borra_tambien_la_sesion_persistida()
 	{
-		// Esto se quedaba fuera: la revocacion limpiaba sesion y token pero dejaba en disco
-		// la sesion guardada para reanudar sin conexion.
 		PreautenticacionDevuelve(
 			ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinPermiso, "appoperador.permiso.requerido"));
 
@@ -86,8 +76,6 @@ public class RevocacionDePermisoTests
 	[InlineData(MotivoRechazoAcceso.SinUnidades)]
 	public async Task Otro_rechazo_no_toca_lo_guardado(MotivoRechazoAcceso motivo)
 	{
-		// Una contraseña mal escrita o una caída de red no dicen nada sobre la autorización
-		// del operador. Cerrarle la sesión por eso convertiría cualquier tropiezo en salida.
 		PreautenticacionDevuelve(ResultadoPreauth.Rechazado(motivo));
 
 		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");
@@ -110,8 +98,6 @@ public class RevocacionDePermisoTests
 	[Fact]
 	public async Task Login_sin_permiso_borra_la_sesion_y_el_token_locales()
 	{
-		// El permiso se revalida al crear la sesión, no solo al preautenticar: puede
-		// retirarse entre un paso y el otro.
 		var casoDeUso = await ConDesafioEmitidoAsync();
 		LoginDevuelve(ResultadoLogin.Rechazado(MotivoRechazoAcceso.SinPermiso, "appoperador.permiso.requerido"));
 
@@ -136,8 +122,6 @@ public class RevocacionDePermisoTests
 	[Fact]
 	public async Task Un_acceso_correcto_reemplaza_los_permisos_por_los_que_manda_Jacob()
 	{
-		// La otra mitad del CA 6: los permisos de la sesión nueva son los del servidor, no
-		// una mezcla con los que hubiera guardados.
 		var casoDeUso = await ConDesafioEmitidoAsync();
 		LoginDevuelve(ResultadoLogin.Creada(new SesionValidada(
 			sessionId: "s-1",

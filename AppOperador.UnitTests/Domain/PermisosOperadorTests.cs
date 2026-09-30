@@ -2,9 +2,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Domain;
 
-/// <summary>
-/// Permisos que solo puede conceder Jacob CCO (JTT-1379 CA 7 y CA 8).
-/// </summary>
 public class PermisosOperadorTests
 {
 	private const string Modulo = "APP_OPERADOR_MOVIL";
@@ -64,13 +61,11 @@ public class PermisosOperadorTests
 		Assert.False(permisos.Contiene("SYNC"));
 	}
 
-	// ---------- CA 7: no se puede modificar desde la app ----------
+	// ---------- No se puede modificar desde la app ----------
 
 	[Fact]
 	public void Copia_la_lista_y_no_refleja_cambios_posteriores()
 	{
-		// El fallo real que esto cierra: con IReadOnlyList se conservaba la lista de quien
-		// llamaba, así que mutarla después cambiaba los permisos de la sesión ya abierta.
 		var original = new List<string> { "CAPTURA" };
 		var permisos = PermisosOperador.DelServidor(original);
 
@@ -110,7 +105,7 @@ public class PermisosOperadorTests
 		Assert.False(PermisosOperador.DelServidor([Modulo]).Contiene(permiso!));
 	}
 
-	// ---------- CA 8: respaldo del token ----------
+	// ---------- Respaldo del token ----------
 
 	[Fact]
 	public void Estan_respaldados_si_el_token_trae_los_mismos_modulos()
@@ -121,8 +116,6 @@ public class PermisosOperadorTests
 	[Fact]
 	public void Estan_respaldados_si_el_token_trae_ademas_otros_modulos()
 	{
-		// Que el token conceda de más no es problema de la app: la app solo usa lo que Jacob
-		// puso en el cuerpo, y aquí se comprueba que no exceda al token.
 		var permisos = PermisosOperador.DelServidor([Modulo]);
 
 		Assert.True(permisos.RespaldadosPor([Modulo, "OTRO_MODULO"]));

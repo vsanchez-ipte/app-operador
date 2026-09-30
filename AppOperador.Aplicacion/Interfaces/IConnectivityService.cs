@@ -2,61 +2,16 @@ using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Aplicacion.Interfaces;
 
-/// <summary>
-/// Estado de comunicación de la app con Jacob CCO.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>No informa si hay red genérica, sino si se puede hablar con Jacob</b> (JTT-1391 CA 2).
-/// En campo se dan las dos situaciones por separado: cobertura sin servidor alcanzable, y
-/// servidor levantado al que no se llega. Un indicador basado solo en el WiFi mentiría en
-/// las dos.
-/// </para>
-/// <para>
-/// La maqueta muestra ese estado como "ENLACE" u "OFFLINE" y de él dependen la cola y la
-/// sincronización. El nombre está fijado en inglés por el documento de arquitectura.
-/// </para>
-/// </remarks>
+// Mide si se alcanza a Jacob, no si hay red: en campo hay cobertura sin servidor y servidor sin cobertura.
 public interface IConnectivityService
 {
-    /// <summary>
-    /// Último estado conocido del enlace con Jacob CCO.
-    /// </summary>
-    /// <remarks>
-    /// Es una lectura cacheada, no una comprobación: consultarla no genera tráfico. Para
-    /// forzar una comprobación está <see cref="ComprobarAsync"/>.
-    /// </remarks>
+    // Lectura en caché: no genera tráfico.
     bool HayEnlace { get; }
 
-    /// <summary>Se dispara cuando el enlace se establece o se pierde.</summary>
     event EventHandler<bool>? EnlaceCambio;
 
-    /// <summary>
-    /// Comprueba ahora mismo si se alcanza a Jacob CCO y actualiza el estado.
-    /// </summary>
-    /// <returns>
-    /// El estado resultante del enlace y, si no lo hay, por qué. Quien presenta necesita esa
-    /// causa: decir "sin conexión" cuando el servidor sí contestó manda a buscar el problema
-    /// donde no está.
-    /// </returns>
-    /// <remarks>
-    /// La usan el reintento manual del operador y la recuperación de red. No lanza: un fallo
-    /// de comunicación es un desenlace normal y viaja dentro del resultado.
-    /// </remarks>
     Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default);
 
-    /// <summary>
-    /// Toma nota del desenlace de una petición a Jacob CCO que no fue la sonda.
-    /// </summary>
-    /// <param name="jacobRespondio">
-    /// Si Jacob llegó a contestar, aunque fuera para rechazar. Un rechazo también prueba que
-    /// se le alcanza.
-    /// </param>
-    /// <remarks>
-    /// Lo usa el acceso: la preautenticación y la apertura de sesión hablan con Jacob antes
-    /// de que exista sesión que sondear, y sin esto el indicador podía decir «Sin conexión»
-    /// en la misma pantalla que acababa de anunciar «Credenciales validadas por Jacob CCO».
-    /// No genera tráfico.
-    /// </remarks>
+    // El acceso habla con Jacob antes de que haya sesión que sondear; un rechazo también prueba el enlace.
     void AnotarIntercambio(bool jacobRespondio);
 }

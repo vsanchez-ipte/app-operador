@@ -6,28 +6,11 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// El envío de la cola, contra una base real y un Jacob controlable (JTT-1401).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Entran por <c>SincronizarIncidencias</c> y no por la cola.</b> Hasta JTT-1401 la
-/// orquestación vivía dentro de <c>ColaSincronizacionSqlite</c> y estas pruebas la llamaban ahí;
-/// al moverla a la capa de aplicación, el punto de entrada cambió. <b>Lo que comprueban es lo
-/// mismo</b>, y siguen tocando SQLite de verdad: importa que los estados y el folio queden
-/// escritos, no solo decididos.
-/// </para>
-/// <para>
-/// Antes el envío lo simulaba la propia cola devolviendo siempre un folio inventado, así que
-/// ningún rechazo era comprobable. Ahora Jacob es un doble que la prueba programa.
-/// </para>
-/// </remarks>
 public sealed class ColaSincronizacionSqliteTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
-	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3
-	// (JTT-1394). Sustituyen al enum Gravedad, que la app se inventaba.
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3.
 	private static readonly SeveridadIncidencia Critica =
 		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
 
@@ -103,8 +86,6 @@ public sealed class ColaSincronizacionSqliteTests
 		var jacob = new JacobControlado();
 		await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		// La compuerta es lo que evita quemar batería intentando contra una red que no lleva
-		// a ninguna parte (CA 2).
 		Assert.Empty(jacob.Recibidos);
 	}
 
@@ -131,7 +112,7 @@ public sealed class ColaSincronizacionSqliteTests
 		var jacob = new JacobControlado();
 		var resultado = await contexto.CrearSincronizador(jacob).EjecutarAsync();
 
-		// CA 11: un borrador no se envía nunca, ni siquiera por error de filtro.
+		// Un borrador no se envía nunca, ni siquiera por error de filtro.
 		Assert.Empty(jacob.Recibidos);
 		Assert.Equal(0, resultado.Confirmados);
 		Assert.Single(await contexto.CrearRepositorio().ObtenerBorradoresAsync());
@@ -155,11 +136,6 @@ public sealed class ColaSincronizacionSqliteTests
 	}
 
 	// ── El envío que quedó a medias ───────────────────────────────────────────────────
-	//
-	// Un registro entra en Enviando justo antes de la llamada a Jacob. Si el proceso muere ahí
-	// —la app se cierra, se apaga el teléfono, el sistema la mata— nadie escribe el estado
-	// final. Estas tres pruebas cubren lo que pasaba entonces: quedaba fuera de la cola, fuera
-	// del contador y sin nadie que lo reintentara, visible como «ENVIANDO» para siempre.
 
 	[Fact]
 	public async Task UnEnvioInterrumpido_vuelveAPendienteYSeSincroniza()
@@ -180,8 +156,6 @@ public sealed class ColaSincronizacionSqliteTests
 	[Fact]
 	public async Task UnEnvioInterrumpido_cuentaComoSinEnviar()
 	{
-		// El contador lo dejaba fuera, así que la pantalla decía menos de lo que había. Es la
-		// peor dirección para equivocarse en una cola: el operador cree que ya salió todo.
 		await using var contexto = new ContextoSqlite();
 		var clave = await GuardarAsync(contexto, Advertencia);
 		await DejarEnviandoAsync(contexto, clave);
@@ -192,8 +166,6 @@ public sealed class ColaSincronizacionSqliteTests
 	[Fact]
 	public async Task UnEnvioInterrumpido_noSeLoLlevaElCierreDeLaApp()
 	{
-		// La recuperación tiene que servir también al caso real: la app se cerró, se vuelve a
-		// abrir y la base ya venía con el registro colgado de la sesión anterior.
 		await using var contexto = new ContextoSqlite();
 		var clave = await GuardarAsync(contexto, Advertencia);
 		await DejarEnviandoAsync(contexto, clave);
@@ -216,8 +188,6 @@ public sealed class ColaSincronizacionSqliteTests
 	[Fact]
 	public async Task UnRegistroFallido_llevaElMotivoQueDioJacob()
 	{
-		// Sin esto la tarjeta solo puede decir «FALLIDO», que es justo lo que el operador ya ve
-		// en la insignia. El mensaje no está en la incidencia: vive en intento_sincronizacion.
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
 
@@ -247,8 +217,6 @@ public sealed class ColaSincronizacionSqliteTests
 	[Fact]
 	public async Task ElMotivoDelFallo_sobreviveAlReinicioDeLaAplicacion()
 	{
-		// Es cuando más falta hace: el operador cierra la app con la cola atorada y al abrirla
-		// necesita seguir sabiendo por qué. Se lee de la tabla de intentos, no de memoria.
 		await using var contexto = new ContextoSqlite();
 		await GuardarAsync(contexto, Advertencia);
 
@@ -279,8 +247,6 @@ public sealed class ColaSincronizacionSqliteTests
 	[Fact]
 	public async Task ConVariasFallidas_cadaUnaLlevaSuPropioMotivo()
 	{
-		// Es el caso que motivó el arreglo: con tres tarjetas en FALLIDO, el resumen de arriba
-		// dice cuántas hay de cada clase pero no cuál es cuál ni qué corregir en cada una.
 		await using var contexto = new ContextoSqlite();
 		var primera = await GuardarAsync(contexto, Advertencia);
 		var segunda = await GuardarAsync(contexto, Informacion);
@@ -309,7 +275,6 @@ public sealed class ColaSincronizacionSqliteTests
 			severidad,
 			"nota de prueba");
 
-	/// <summary>Deja el registro en Enviando, como si el proceso hubiera muerto a media llamada.</summary>
 	private static async Task DejarEnviandoAsync(ContextoSqlite contexto, string clave)
 	{
 		var cola = contexto.CrearCola();

@@ -2,9 +2,6 @@ using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// JTT-1386 CA 2, 10 y 11: qué estado de comunicación ve el operador.
-/// </summary>
 public class ReglaEstadoComunicacionTests
 {
 	[Fact]
@@ -25,9 +22,6 @@ public class ReglaEstadoComunicacionTests
 		Assert.Equal(EstadoComunicacion.SinConexion, estado);
 	}
 
-	/// <summary>
-	/// La distinción que costó una sesión de diagnóstico: un <c>404</c> no es falta de conexión.
-	/// </summary>
 	[Fact]
 	public void Si_el_servidor_contesto_con_error_es_error_de_servicio()
 	{
@@ -48,9 +42,6 @@ public class ReglaEstadoComunicacionTests
 		Assert.Equal(EstadoComunicacion.Revalidando, estado);
 	}
 
-	/// <summary>
-	/// Un sondeo bueno entierra la causa anterior: no se sigue mostrando un error ya superado.
-	/// </summary>
 	[Fact]
 	public void Con_enlace_la_causa_anterior_ya_no_cuenta()
 	{
@@ -60,10 +51,6 @@ public class ReglaEstadoComunicacionTests
 		Assert.Equal(EstadoComunicacion.EnLinea, estado);
 	}
 
-	/// <summary>
-	/// CA 11: «En línea» exige comunicación con Jacob, no que el dispositivo tenga red. Aquí se
-	/// fija que sin enlace no hay manera de llegar a ese estado, sea cual sea la causa.
-	/// </summary>
 	[Theory]
 	[InlineData(CausaSinEnlace.Ninguna)]
 	[InlineData(CausaSinEnlace.SinTransporte)]

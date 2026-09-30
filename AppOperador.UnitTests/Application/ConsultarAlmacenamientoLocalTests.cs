@@ -8,7 +8,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>Espacio libre y evidencias pendientes para el perfil (JTT-292 CA 4 y 6).</summary>
 public sealed class ConsultarAlmacenamientoLocalTests
 {
 	private readonly ISessionStore _sesiones = Substitute.For<ISessionStore>();

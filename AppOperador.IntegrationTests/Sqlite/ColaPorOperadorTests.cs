@@ -4,19 +4,9 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// La cola pertenece a quien tiene la sesión abierta (JTT-1390 CA 5, 7 y 8).
-/// </summary>
-/// <remarks>
-/// Lo que se protege aquí es la combinación de dos criterios que tiran en direcciones
-/// opuestas: los pendientes <b>no se borran</b> al cerrar sesión, pero el operador
-/// siguiente <b>no debe verlos</b>. Ambas cosas a la vez solo funcionan si los registros
-/// siguen en la base y la consulta los filtra.
-/// </remarks>
 public sealed class ColaPorOperadorTests
 {
-
-	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3 (JTT-1394).
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3.
 	private static readonly SeveridadIncidencia Critica =
 		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
 
@@ -56,7 +46,7 @@ public sealed class ColaPorOperadorTests
 	[Fact]
 	public async Task Las_operaciones_pendientes_conservan_su_identidad_original()
 	{
-		// CA 8: la clave local nace con el registro y no cambia porque alguien entre o salga.
+		// La clave local nace con el registro y no cambia porque alguien entre o salga.
 		await using var contexto = new ContextoSqlite();
 		var clave = await GuardarAsync(contexto);
 		var sesion = contexto.Sesion;
@@ -89,8 +79,6 @@ public sealed class ColaPorOperadorTests
 		await GuardarAsync(contexto);
 		contexto.Sesion.Limpiar();
 
-		// Sin sesión no hay capacidades concedidas, así que la compuerta del CA 1 lo detiene
-		// antes de llegar a la red.
 		var resultado = await contexto.CrearSincronizador().EjecutarAsync();
 		Assert.Equal(0, resultado.Confirmados);
 		Assert.NotNull(resultado.MotivoBloqueo);

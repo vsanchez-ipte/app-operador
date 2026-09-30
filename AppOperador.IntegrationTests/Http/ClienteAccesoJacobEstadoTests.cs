@@ -4,14 +4,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Sonda de comunicación: <c>GET ITS/AppLogin/Estado</c> (JTT-1391 CA 3).
-/// </summary>
-/// <remarks>
-/// Es la comprobación liviana del indicador de enlace. No devuelve datos del operador ni de
-/// la unidad, y está pensada para invocarse a menudo: por eso basta el código de estado y no
-/// se interpreta el cuerpo.
-/// </remarks>
 public class ClienteAccesoJacobEstadoTests
 {
 	private const string Token = "jwt-de-la-sesion";
@@ -69,8 +61,6 @@ public class ClienteAccesoJacobEstadoTests
 	[InlineData(HttpStatusCode.NotFound)]
 	public async Task Cualquier_respuesta_que_no_sea_correcta_es_falta_de_enlace(HttpStatusCode codigo)
 	{
-		// Para el indicador, "la sesion se acabo" y "el servidor fallo" significan lo mismo:
-		// no se puede operar contra Jacob. La causa si los separa.
 		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(codigo));
 
 		Assert.False((await cliente.ComprobarEnlaceAsync(Token)).HayEnlace);
@@ -91,8 +81,6 @@ public class ClienteAccesoJacobEstadoTests
 	[Fact]
 	public async Task Si_el_servidor_no_contesta_a_tiempo_no_hay_enlace()
 	{
-		// El caso que separa "tengo WiFi" de "alcanzo a Jacob" (CA 2): hay red, pero el
-		// servidor no responde.
 		var cliente = Nuevo(ManejadorHttpFalso.TiempoAgotado());
 
 		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
@@ -110,10 +98,6 @@ public class ClienteAccesoJacobEstadoTests
 	[InlineData(HttpStatusCode.ServiceUnavailable)]
 	public async Task Un_error_del_servidor_no_se_confunde_con_falta_de_comunicacion(HttpStatusCode codigo)
 	{
-		// El fallo que esto fija: la app apuntaba a un servidor que no publicaba
-		// ITS/AppLogin/Estado, respondia 404, y la pantalla decia "Sin conexion / Modo
-		// offline". Mando a revisar la red durante una sesion entera cuando el problema era
-		// de despliegue. Si el servidor contesto, hubo comunicacion.
 		var (cliente, _) = Construir(ManejadorHttpFalso.SinCuerpo(codigo));
 
 		var sondeo = await cliente.ComprobarEnlaceAsync(Token);
@@ -156,10 +140,6 @@ public class ClienteAccesoJacobEstadoTests
 	[Fact]
 	public async Task La_peticion_sigue_viva_mientras_el_envio_esta_en_curso()
 	{
-		// El fallo que esto fija: el metodo devolvia la tarea de SendAsync sin esperarla, asi
-		// que el using desechaba la peticion con el envio todavia en vuelo. Con red estable
-		// no se notaba; al reconectar, el camino lento perdia la carrera y salia
-		// "Cannot access a disposed object" al pulsar Reintentar.
 		var manejador = ManejadorHttpFalso.Lento(ManejadorHttpFalso.SinCuerpo(HttpStatusCode.OK));
 		var cliente = Nuevo(manejador);
 

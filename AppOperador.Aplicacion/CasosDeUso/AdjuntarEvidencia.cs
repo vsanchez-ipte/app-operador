@@ -5,27 +5,7 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
-/// <summary>
-/// Adjunta un archivo a una incidencia: valida, copia y registra (JTT-1398 CA 1, 5 y 9).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Único dueño del criterio</b>, como <c>ConvertirBorradorEnIncidencia</c> lo es del suyo.
-/// Adjuntar tiene tres pasos que solo valen en un orden, y repartirlos entre la pantalla y el
-/// repositorio dejaría el orden a merced de quien llame: se valida contra los límites del
-/// servidor, se copia al espacio privado, y solo entonces se registra la fila.
-/// </para>
-/// <para>
-/// <b>Por qué ese orden y no otro.</b> Validar al final copiaría archivos que van a rechazarse
-/// —quince megabytes de video en un teléfono de campo—. Registrar antes de copiar dejaría filas
-/// apuntando a un archivo que quizá no llegó, que es la forma de romper la cola: al sincronizar
-/// no habría qué subir y el registro no sabría que está roto.
-/// </para>
-/// <para>
-/// <b>No decide a qué incidencia pertenece.</b> Recibe el identificador ya resuelto, porque el
-/// CA 1 permite adjuntar <i>antes</i> de guardar y quién resuelve esa identidad es la pantalla.
-/// </para>
-/// </remarks>
+// El orden importa: validar, comprobar espacio, copiar y solo entonces registrar la fila.
 public sealed class AdjuntarEvidencia
 {
 	private readonly IRepositorioEvidencias _evidencias;
@@ -51,13 +31,6 @@ public sealed class AdjuntarEvidencia
 		_bitacora = bitacora;
 	}
 
-	/// <summary>Intenta adjuntar el archivo elegido a la incidencia indicada.</summary>
-	/// <param name="incidenciaUuid">La incidencia a la que se ata la evidencia.</param>
-	/// <param name="archivo">Lo que entregó el selector, con su origen.</param>
-	/// <param name="claveLocal">
-	/// Clave visible de la incidencia, <c>LOC-######</c>, con la que se nombra lo capturado.
-	/// Opcional: sin ella se conserva el nombre del sistema.
-	/// </param>
 	public async Task<ResultadoAdjuntar> EjecutarAsync(
 		string incidenciaUuid,
 		ArchivoElegido archivo,
@@ -78,9 +51,7 @@ public sealed class AdjuntarEvidencia
 			return ResultadoAdjuntar.Rechazada(motivo);
 		}
 
-		// Con el tamaño real ya conocido, que quepa en el dispositivo (JTT-289 CA 8). Se
-		// comprueba antes de copiar: una copia a medias en un disco lleno deja un archivo
-		// truncado que después se subiría como si estuviera entero.
+		// Antes de copiar: una copia a medias en un disco lleno se subiría como si estuviera entera.
 		if (!ReglaEspacioParaEvidencia.Cabe(_espacio.Medir().BytesLibres, archivo.Bytes))
 		{
 			await _bitacora.RegistrarAsync(
@@ -91,17 +62,12 @@ public sealed class AdjuntarEvidencia
 			return ResultadoAdjuntar.Rechazada(MotivoEvidenciaRechazada.SinEspacio);
 		}
 
-		// La identidad se genera aquí y no en la base: es también la clave de idempotencia
-		// frente al servidor, así que tiene que existir antes de que el archivo se copie y
-		// sobrevivir a cualquier reintento.
+		// Se genera aquí porque también es la clave de idempotencia con el servidor.
 		var uuid = Guid.NewGuid().ToString();
 		var ruta = await _almacen.GuardarAsync(uuid, archivo, cancelacion);
 
 		if (string.IsNullOrWhiteSpace(ruta))
 		{
-			// El archivo no se pudo leer: lo borraron, se revocó el acceso o el
-			// almacenamiento está lleno. No se registra nada, para no dejar una fila
-			// apuntando a un archivo que no existe.
 			await _bitacora.RegistrarAsync(
 				NivelAuditoria.Advertencia,
 				"No se pudo copiar la evidencia al espacio privado de la app.",
@@ -129,19 +95,7 @@ public sealed class AdjuntarEvidencia
 		return ResultadoAdjuntar.Aceptada(evidencia);
 	}
 
-	/// <summary>
-	/// Con qué nombre se guarda y se envía la evidencia.
-	/// </summary>
-	/// <remarks>
-	/// <b>Solo se compone lo capturado.</b> Una fotografía o un video recién tomados llegan con el
-	/// nombre que el sistema inventa para su archivo temporal —un GUID—, que no dice nada a nadie
-	/// y era lo que se veía en el CCO. Lo que el operador <i>eligió</i> ya trae nombre propio, y un
-	/// <c>acta-1234.pdf</c> informa mucho más que cualquier cosa que compusiéramos aquí.
-	/// <para>
-	/// El origen viaja en el archivo, así que esto no adivina: no se mira si el nombre «parece un
-	/// GUID», se sabe de dónde vino.
-	/// </para>
-	/// </remarks>
+	// Solo se renombra lo capturado con la cámara: lo elegido ya trae un nombre que dice más.
 	private string NombreParaMostrar(ArchivoElegido archivo, string? claveLocal) =>
 		archivo.Origen is OrigenEvidencia.Camara or OrigenEvidencia.Video
 			? NombreEvidencia.Componer(claveLocal, _reloj.UtcAhora, archivo.NombreOriginal)

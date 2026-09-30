@@ -7,14 +7,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Lectura de las respuestas del endpoint de creación de incidencias (JTT-1401).
-/// </summary>
-/// <remarks>
-/// <b>Estas pruebas nacen de un defecto real</b>, encontrado en el emulador el 21-ago: el API
-/// creaba la incidencia con su folio y respondía 200, y la app la marcaba fallida. El contrato
-/// afirmaba que el éxito llegaba sin sobre y llega envuelto.
-/// </remarks>
 public sealed class ClienteIncidenciasJacobTests
 {
 	private static readonly EnvioIncidencia Envio = new(
@@ -72,8 +64,6 @@ public sealed class ClienteIncidenciasJacobTests
 	[Fact]
 	public async Task Un200SinFolioSeTrataComoFalloTecnico()
 	{
-		// Sin folio la incidencia quedaría marcada como sincronizada y sin la referencia que el
-		// operador necesita para dictarla por radio.
 		var resultado = await Crear(HttpStatusCode.OK, """{"resultado":null}""")
 			.RegistrarAsync(Envio, "token");
 

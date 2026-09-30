@@ -1,36 +1,9 @@
 namespace AppOperador.Infrastructure.Sqlite.Esquema;
 
-/// <summary>
-/// El esquema de la base local, versión 11: trece tablas y nueve llaves foráneas.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Referencia donde hay historial; instantánea donde el dato se reemplaza.</b> Operador,
-/// unidad y sesión son historial y se referencian. El catálogo se descarga entero y se
-/// reemplaza, así que la incidencia guarda el nombre del tipo y de la severidad tal como
-/// estaban al capturar, sin llave: una llave al catálogo impediría actualizarlo mientras
-/// quedara una incidencia pendiente de un tipo retirado (JTT-1394).
-/// </para>
-/// <para>
-/// <b>Las tablas van en orden de padres a hijos.</b> La migración las recorre en ese orden
-/// para que cada llave encuentre a quién apuntar, y la prueba de mapeo las recorre todas.
-/// </para>
-/// <para>
-/// <b>Todas las llaves son <c>ON DELETE RESTRICT</c>.</b> Borrar un operador, una unidad o una
-/// sesión no puede llevarse incidencias ni bitácora; y borrar un borrador exige quitar antes su
-/// evidencia, que es lo que hace <c>EliminarBorrador</c>.
-/// </para>
-/// </remarks>
+// Referencia donde hay historial; nombre copiado donde el catálogo se reemplaza. Todas las llaves son ON DELETE RESTRICT.
 internal static class EsquemaLocal
 {
-	/// <summary>
-	/// Versión que este código espera en <c>PRAGMA user_version</c>.
-	/// </summary>
-	/// <remarks>
-	/// De 0 a 10 el esquema creció por columnas, y lo aplicaba sqlite-net al crear las tablas.
-	/// La 11 lo reconstruye entero con llaves foráneas (<see cref="MigradorEsquema"/>). Un
-	/// cambio futuro sube este número y agrega su paso allí; las tablas se describen aquí.
-	/// </remarks>
+	// Un cambio futuro sube este número y agrega su paso en MigradorEsquema.
 	public const int Version = 11;
 
 	public static readonly DefinicionTabla OperadorLocal = new(
@@ -54,11 +27,7 @@ internal static class EsquemaLocal
 		],
 		Indices: []);
 
-	/// <summary>
-	/// Pasa de una sola fila que se sobrescribía a un historial: una fila por sesión validada,
-	/// con <c>vigente = 1</c> solo en la que la app usa ahora. El índice parcial único es lo que
-	/// garantiza que nunca haya dos vigentes.
-	/// </summary>
+	// Historial: el índice único parcial impide dos vigentes.
 	public static readonly DefinicionTabla SesionLocal = new(
 		"sesion_local",
 		ClavePrimaria: "session_id",
@@ -84,12 +53,7 @@ internal static class EsquemaLocal
 		],
 		NombreAnterior: "SesionLocal");
 
-	/// <summary>
-	/// <c>operador</c>, <c>unidad_vehicular</c> y <c>sesion_origen</c> son las mismas columnas de
-	/// siempre, ahora como llaves. No se duplicaron en columnas <c>_id</c> a propósito: el mismo
-	/// dato dos veces es justo lo que este esquema vino a quitar. Van nulables porque las filas
-	/// capturadas sin sesión —simuladas o anteriores a JTT-1383— no tienen a quién apuntar.
-	/// </summary>
+	// Llaves nulables: las filas capturadas sin sesión no tienen a quién apuntar.
 	public static readonly DefinicionTabla IncidenciaLocal = new(
 		"incidencia_local",
 		ClavePrimaria: "uuid",
@@ -156,11 +120,7 @@ internal static class EsquemaLocal
 			"CREATE INDEX \"ix_evidencia_estado\" ON \"evidencia_local\"(\"estado\");",
 		]);
 
-	/// <summary>
-	/// Mitad de la antigua <c>intento_sincronizacion</c>, cuya columna <c>registro_uuid</c>
-	/// apuntaba a una incidencia o a una evidencia según <c>clase</c>: una llave foránea no
-	/// puede apuntar a dos tablas, así que cada clase tiene ahora la suya.
-	/// </summary>
+	// Salió de intento_sincronizacion: una llave foránea no puede apuntar a dos tablas.
 	public static readonly DefinicionTabla IntentoIncidencia = new(
 		"intento_incidencia",
 		ClavePrimaria: "id",
@@ -195,11 +155,7 @@ internal static class EsquemaLocal
 		Autoincremento: true,
 		NombreAnterior: "intento_sincronizacion");
 
-	/// <summary>
-	/// Solo <c>sesion_id</c> es llave. Operador, rol, permiso y unidad se quedan como
-	/// instantánea: la línea del acceso se escribe antes de que exista la sesión, y el operador
-	/// de una línea puede reescribirse al atribuir un alias (JTT-1392).
-	/// </summary>
+	// Solo sesion_id es llave: la línea del acceso se escribe antes de que exista la sesión.
 	public static readonly DefinicionTabla EventoAuditoria = new(
 		"evento_auditoria",
 		ClavePrimaria: "id",
@@ -285,7 +241,7 @@ internal static class EsquemaLocal
 		],
 		Indices: []);
 
-	/// <summary>Todas, de padres a hijos.</summary>
+	// De padres a hijos: la migración las crea en este orden.
 	public static readonly IReadOnlyList<DefinicionTabla> Tablas =
 	[
 		OperadorLocal,

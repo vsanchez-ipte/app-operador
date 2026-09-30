@@ -6,14 +6,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Eliminar un borrador se lleva sus adjuntos, archivo y fila, antes que la fila del borrador.
-/// </summary>
-/// <remarks>
-/// Antes del esquema 11 borrar solo el borrador dejaba evidencias huérfanas; ahora la base lo
-/// rechaza, y este caso de uso es quien pone las cosas en el orden que la llave exige. Y deja
-/// una línea en la bitácora que dice cuántas se fueron con él.
-/// </remarks>
 public sealed class EliminarBorradorTests
 {
 	private const string Clave = "LOC-673530";
@@ -114,8 +106,6 @@ public sealed class EliminarBorradorTests
 	[Fact]
 	public async Task Si_el_borrador_no_es_del_operador_no_toca_nada()
 	{
-		// El repositorio no devuelve borradores ajenos (JTT-1388 CA 9), y sin borrador no hay
-		// nada que quitar: ni siquiera se pregunta por evidencias.
 		_incidencias.ObtenerBorradorAsync(Clave, Arg.Any<CancellationToken>())
 			.Returns((BorradorIncidencia?)null);
 

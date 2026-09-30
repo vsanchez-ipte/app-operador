@@ -4,33 +4,9 @@ using SQLite;
 
 namespace AppOperador.Infrastructure.Sqlite.Esquema;
 
-/// <summary>
-/// Lleva el archivo local hasta <see cref="EsquemaLocal.Version"/>, desde cualquier versión
-/// anterior o desde cero.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>SQLite no sabe agregar una llave foránea a una tabla que ya existe</b>, así que cada
-/// tabla se reconstruye: se crea la nueva, se copian las filas, se tira la vieja y se renombra.
-/// Es el procedimiento que documenta SQLite para <c>ALTER TABLE</c>, con las llaves apagadas
-/// mientras dura y <c>PRAGMA foreign_key_check</c> antes de confirmar.
-/// </para>
-/// <para>
-/// <b>Una sola migración para todas las versiones.</b> La copia toma solo las columnas que la
-/// base vieja tenga; lo que le falte queda con su valor por omisión. Así una base de la versión
-/// 3 y una de la 10 llegan a la 11 por el mismo camino, y una base nueva también: sin nada que
-/// copiar, solo crea.
-/// </para>
-/// <para>
-/// <b>O queda en la versión nueva completa o queda como estaba.</b> Todo corre en una
-/// transacción, y además se copia el archivo antes de empezar: si algo falla, se restaura la
-/// copia y la excepción sale. El arranque siguiente lo vuelve a intentar. Con datos de campo
-/// en el teléfono, una base intacta en la versión vieja vale más que una a medias en la nueva.
-/// </para>
-/// </remarks>
+// SQLite no agrega llaves a una tabla existente: se reconstruye. Una sola migración para cualquier versión, todo o nada.
 internal sealed class MigradorEsquema
 {
-	/// <summary>Sufijo de la tabla provisional mientras se reconstruye una.</summary>
 	private const string SufijoProvisional = "__migracion";
 
 	private readonly string _ruta;
@@ -44,10 +20,6 @@ internal sealed class MigradorEsquema
 		_clave = clave;
 	}
 
-	/// <summary>
-	/// Aplica lo que haga falta. Devuelve la versión desde la que se migró, o
-	/// <see langword="null"/> si el archivo ya estaba al día.
-	/// </summary>
 	public int? Aplicar()
 	{
 		int version;
@@ -61,16 +33,14 @@ internal sealed class MigradorEsquema
 			return null;
 		}
 
-		// Una base en la versión 0 acaba de nacer: no hay nada que respaldar.
+		// Una base en versión 0 acaba de nacer: nada que respaldar.
 		var respaldo = version >= 1 ? Respaldar(version) : null;
 
 		try
 		{
 			using var conexion = Abrir();
 
-			// Apagadas mientras se reconstruye, como manda el procedimiento de SQLite: con
-			// ellas encendidas, tirar una tabla padre fallaría por los hijos que la apuntan.
-			// El PRAGMA no tiene efecto dentro de una transacción, por eso va antes.
+			// Apagadas mientras se reconstruye; el PRAGMA no surte efecto dentro de una transacción.
 			conexion.Execute("PRAGMA foreign_keys = OFF;");
 			conexion.RunInTransaction(() => Migrar(conexion, version));
 			conexion.Execute("PRAGMA foreign_keys = ON;");
@@ -99,10 +69,7 @@ internal sealed class MigradorEsquema
 		return respaldo;
 	}
 
-	/// <summary>
-	/// Devuelve el archivo a como estaba. Si ni eso se puede, el respaldo se queda en su sitio
-	/// para recuperarlo a mano.
-	/// </summary>
+	// Si ni eso se puede, el respaldo queda para recuperarlo a mano.
 	private void Restaurar(string? respaldo)
 	{
 		if (respaldo is null || !File.Exists(respaldo))
@@ -116,9 +83,7 @@ internal sealed class MigradorEsquema
 
 	private static void Migrar(SQLiteConnection conexion, int versionAnterior)
 	{
-		// De 3 a 4 (JTT-1394): el catálogo de tipos cambió de llave, de una clave de texto
-		// inventada en la maqueta al entero de Jacob. No hay correspondencia posible, así que se
-		// tira y lo llena la primera descarga del catálogo real.
+		// El catálogo de tipos cambió de llave de texto a entero: se tira y lo llena la primera descarga.
 		if (versionAnterior < 4)
 		{
 			conexion.Execute("DROP TABLE IF EXISTS \"catalogo_tipo_incidencia\";");
@@ -130,8 +95,7 @@ internal sealed class MigradorEsquema
 		{
 			Reconstruir(conexion, tabla);
 
-			// Va aquí y no al final porque los intentos de evidencia, que vienen después, solo
-			// deben copiarse para las evidencias que se quedan.
+			// Aquí y no al final: los intentos de evidencia solo se copian para las que se quedan.
 			if (tabla == EsquemaLocal.EvidenciaLocal)
 			{
 				informe.EvidenciasSinIncidencia = DescartarEvidenciasSinIncidencia(conexion);
@@ -140,10 +104,9 @@ internal sealed class MigradorEsquema
 
 		PoblarReferencias(conexion, informe);
 
-		// Las tablas de la versión anterior que cambiaron de nombre ya se vaciaron en las
-		// nuevas; las de arriba las leyeron todas, así que ahora sí se pueden tirar.
 		foreach (var tabla in EsquemaLocal.Tablas)
 		{
+			// Las tablas renombradas ya se copiaron a las nuevas; ahora se pueden tirar.
 			if (tabla.NombreAnterior is not null)
 			{
 				conexion.Execute($"DROP TABLE IF EXISTS \"{tabla.NombreAnterior}\";");
@@ -152,7 +115,7 @@ internal sealed class MigradorEsquema
 
 		ComprobarLlaves(conexion);
 
-		// Una base recién nacida no tiene nada que contar; una migrada, sí.
+		// Una base recién nacida no tiene nada que contar.
 		if (versionAnterior > 0)
 		{
 			DejarConstancia(conexion, versionAnterior, informe);
@@ -161,16 +124,11 @@ internal sealed class MigradorEsquema
 		conexion.Execute($"PRAGMA user_version = {EsquemaLocal.Version};");
 	}
 
-	/// <summary>
-	/// Deja la tabla con su forma definitiva, conservando lo que hubiera en ella o en la tabla
-	/// de la versión anterior de la que viene.
-	/// </summary>
 	private static void Reconstruir(SQLiteConnection conexion, DefinicionTabla tabla)
 	{
 		if (ExisteTabla(conexion, tabla.Nombre))
 		{
-			// Ya existe con su nombre: se reconstruye sobre sí misma, para agregarle las
-			// llaves, los valores por omisión y las columnas que le falten.
+			// Ya existe: se reconstruye sobre sí misma para sumarle llaves, valores por omisión y columnas.
 			var provisional = tabla.Nombre + SufijoProvisional;
 
 			conexion.Execute($"DROP TABLE IF EXISTS \"{provisional}\";");
@@ -210,15 +168,7 @@ internal sealed class MigradorEsquema
 		}
 	}
 
-	/// <summary>
-	/// Qué filas de la tabla anterior pasan a esta, cuando no son todas.
-	/// </summary>
-	/// <remarks>
-	/// <c>intento_sincronizacion</c> se reparte por <c>clase</c> entre las dos tablas de
-	/// intentos, y solo pasan los intentos cuyo registro sigue existiendo: los demás no tendrían
-	/// a quién apuntar. La sesión guardada pasa solo si tiene operador, porque sin él no hay
-	/// llave que la sostenga.
-	/// </remarks>
+	// Solo pasan los intentos cuyo registro existe y la sesión que tiene operador.
 	private static string? CondicionDesdeAnterior(DefinicionTabla tabla)
 	{
 		if (tabla == EsquemaLocal.IntentoIncidencia)
@@ -241,21 +191,7 @@ internal sealed class MigradorEsquema
 		return null;
 	}
 
-	/// <summary>
-	/// Crea los operadores, unidades y sesiones a los que las filas ya guardadas tienen que
-	/// apuntar, y desengancha lo que no se pueda sostener.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Antes de la versión 11 la sesión era una sola fila que se sobrescribía: las sesiones de
-	/// turnos anteriores solo sobreviven como texto en las incidencias y en la bitácora. De ahí
-	/// se reconstruyen, con <c>vigente = 0</c> y con lo poco que esas filas saben de ellas.
-	/// </para>
-	/// <para>
-	/// <b>El vacío pasa a <c>NULL</c></b> en toda columna que sea llave: una llave foránea admite
-	/// no apuntar a nada, pero no apuntar a una cadena vacía que no existe.
-	/// </para>
-	/// </remarks>
+	// Crea los operadores, unidades y sesiones a que apuntan las filas. El vacío pasa a NULL en las llaves.
 	private static void PoblarReferencias(SQLiteConnection conexion, InformeMigracion informe)
 	{
 		foreach (var tabla in EsquemaLocal.Tablas)
@@ -270,8 +206,7 @@ internal sealed class MigradorEsquema
 			}
 		}
 
-		// La sesión que estaba guardada es la única que trae el identificador técnico y la
-		// descripción de su unidad; va primero para que nadie la pise con un vacío.
+		// La sesión guardada es la única que sabe id y descripción de su unidad: va primero.
 		if (ExisteTabla(conexion, "SesionLocal"))
 		{
 			conexion.Execute(
@@ -295,8 +230,7 @@ internal sealed class MigradorEsquema
 			SELECT "operador", "rol" FROM "sesion_local";
 			""");
 
-		// Del más reciente al más antiguo: con OR IGNORE, el rol que queda es el último que se
-		// le vio a cada operador.
+		// Del más reciente al más antiguo: con OR IGNORE queda el último rol visto.
 		conexion.Execute(
 			"""
 			INSERT OR IGNORE INTO "operador_local" ("cuenta", "rol")
@@ -324,8 +258,7 @@ internal sealed class MigradorEsquema
 			WHERE "unidad_clave" IS NOT NULL AND "unidad_clave" <> '';
 			""");
 
-		// Sesiones de turnos anteriores, reconstruidas desde la bitácora —que sabe rol, permiso
-		// y unidad— y desde las incidencias —que saben unidad y versión de catálogo—.
+		// Sesiones de turnos anteriores, reconstruidas desde la bitácora y las incidencias.
 		conexion.Execute(
 			"""
 			INSERT OR IGNORE INTO "sesion_local"
@@ -354,8 +287,7 @@ internal sealed class MigradorEsquema
 			GROUP BY "sesion_origen";
 			""");
 
-		// Lo que apunta a una sesión de la que no se sabe ni el operador se desengancha: es
-		// preferible una incidencia sin sesión a una base que no abre.
+		// Lo que apunta a una sesión desconocida se desengancha: mejor eso que una base que no abre.
 		informe.ReferenciasSinSesion += conexion.Execute(
 			"""
 			UPDATE "incidencia_local" SET "sesion_origen" = NULL
@@ -379,10 +311,7 @@ internal sealed class MigradorEsquema
 		}
 	}
 
-	/// <summary>
-	/// Una evidencia cuya incidencia ya no existe no tiene dueño ni forma de enviarse: es lo
-	/// que dejaba borrar un borrador sin quitar antes sus adjuntos.
-	/// </summary>
+	// Sin incidencia no tienen dueño ni forma de enviarse.
 	private static int DescartarEvidenciasSinIncidencia(SQLiteConnection conexion) =>
 		conexion.Execute(
 			"""
@@ -405,10 +334,7 @@ internal sealed class MigradorEsquema
 		}
 	}
 
-	/// <summary>
-	/// Escribe en la bitácora qué pasó, sin operador ni origen para que la vea cualquiera:
-	/// así se reconocen las líneas anteriores al esquema 10, y así se muestra esta.
-	/// </summary>
+	// Sin operador ni origen, para que la vea cualquiera.
 	private static void DejarConstancia(SQLiteConnection conexion, int versionAnterior, InformeMigracion informe)
 	{
 		var mensaje = new StringBuilder();
@@ -453,7 +379,6 @@ internal sealed class MigradorEsquema
 			.Select(c => c.name)
 			.ToHashSet(StringComparer.Ordinal);
 
-	/// <summary>Lo que se le cuenta al operador en la bitácora al terminar.</summary>
 	private sealed class InformeMigracion
 	{
 		public int EvidenciasSinIncidencia { get; set; }
@@ -463,13 +388,11 @@ internal sealed class MigradorEsquema
 		public int ReferenciasSinSesion { get; set; }
 	}
 
-	/// <summary>Forma de una fila de <c>PRAGMA table_info</c>. Solo interesa el nombre.</summary>
 	private sealed class InfoColumna
 	{
 		public string name { get; set; } = string.Empty;
 	}
 
-	/// <summary>Forma de una fila de <c>PRAGMA foreign_key_check</c>.</summary>
 	private sealed class ViolacionLlave
 	{
 		[Column("table")]

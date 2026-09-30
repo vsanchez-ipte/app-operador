@@ -4,17 +4,10 @@ using NetArchTest.Rules;
 
 namespace AppOperador.UnitTests.Architecture;
 
-/// <summary>
-/// Prueba A: verifica sobre el ensamblado compilado de <c>AppOperador.Domain</c> que la
-/// capa de dominio no depende de ninguna capa externa ni de ninguna tecnología.
-/// </summary>
 public class DependenciasDelDominioTests
 {
 	private static readonly Assembly EnsambladoDeDominio = typeof(Kilometer).Assembly;
 
-	/// <summary>
-	/// Espacios de nombres prohibidos en el dominio, con el motivo de cada veto.
-	/// </summary>
 	public static TheoryData<string, string> DependenciasProhibidas => new()
 	{
 		{ "AppOperador.Aplicacion", "las dependencias apuntan hacia el dominio, no al revés" },
@@ -56,9 +49,7 @@ public class DependenciasDelDominioTests
 	[Fact]
 	public void ElDetectorDeDependencias_RealmenteDetecta()
 	{
-		// Contra-prueba: si NetArchTest no viera las dependencias del ensamblado, todas
-		// las reglas "ShouldNot" de arriba pasarían sin comprobar nada. Kilometer usa
-		// System.Text.RegularExpressions, así que prohibirlo TIENE que fallar.
+		// Contraprueba: Kilometer usa RegularExpressions, así que prohibirlo tiene que fallar.
 		var resultado = Types.InAssembly(EnsambladoDeDominio)
 			.ShouldNot()
 			.HaveDependencyOn("System.Text.RegularExpressions")
@@ -77,17 +68,12 @@ public class DependenciasDelDominioTests
 	[Fact]
 	public void ElEnsambladoDeDominio_TieneTiposQueAnalizar()
 	{
-		// Una regla "ShouldNot" sobre un ensamblado vacío pasaría siempre. Este control
-		// evita que las pruebas anteriores queden en verde por no tener nada que revisar.
+		// Control: una regla ShouldNot sobre un ensamblado vacío pasaría siempre.
 		var tipos = Types.InAssembly(EnsambladoDeDominio).GetTypes().ToArray();
 
 		Assert.NotEmpty(tipos);
 	}
 
-	/// <summary>
-	/// Construye un mensaje que nombra los tipos infractores, en vez de limitarse a
-	/// decir que la regla falló.
-	/// </summary>
 	private static string ConstruirMensaje(TestResult resultado, IReadOnlyCollection<string> prohibidas, string motivo)
 	{
 		var infractores = resultado.FailingTypeNames?.ToArray() ?? [];

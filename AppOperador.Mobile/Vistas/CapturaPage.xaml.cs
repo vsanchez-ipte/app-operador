@@ -12,8 +12,7 @@ public partial class CapturaPage : ContentPage
 		_modelo = modelo;
 		BindingContext = modelo;
 
-		// El ViewModel dice qué campo falló; la página sabe dónde está y se desplaza hasta él.
-		// Con el formulario largo, un aviso al pie no se ve y el operador no sabe qué corregir.
+		// En un formulario largo, un aviso al pie no se ve: la página se desplaza al campo.
 		_modelo.CampoConError += AlSenalarCampo;
 	}
 
@@ -30,8 +29,7 @@ public partial class CapturaPage : ContentPage
 
 		await Desplazable.ScrollToAsync(elemento, ScrollToPosition.Center, animated: true);
 
-		// El KM es el único campo que se teclea corto: se pone el cursor ahí, listo para
-		// corregir. En la nota no, porque abrir el teclado taparía el aviso que se acaba de leer.
+		// Solo el KM recibe el foco: en la nota, el teclado taparía el aviso.
 		if (campo == CampoCaptura.Kilometro)
 		{
 			EntradaKilometro.Focus();
@@ -42,8 +40,7 @@ public partial class CapturaPage : ContentPage
 	{
 		base.OnAppearing();
 
-		// La ventana offline pudo vencer mientras la app estaba abierta (JTT-1384).
-		// Si vencio, la sesion ya se cerro y no hay nada que cargar.
+		// La ventana offline pudo vencer con la app abierta; entonces no hay nada que cargar.
 		if (!await _modelo.Enlace.ComprobarSesionAsync())
 		{
 			return;

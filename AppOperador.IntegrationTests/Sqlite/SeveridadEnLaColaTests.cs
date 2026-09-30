@@ -5,25 +5,10 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// La severidad que la Cola muestra es la que se capturó, contra una base real (JTT-1398).
-/// </summary>
-/// <remarks>
-/// <b>Existe por un defecto que ninguna prueba podía atrapar.</b> La pantalla mostraba la
-/// <c>Prioridad</c> rotulada como severidad, y la prioridad solo tiene dos valores: toda
-/// severidad que no fuera crítica —Advertencia, Información, Normal— se leía «Normal». El
-/// operador que capturaba una Advertencia veía otra cosa en la Cola.
-/// <para>
-/// <b>Y el dato nunca faltó:</b> <c>SeveridadNombre</c> llevaba guardado en la fila desde
-/// JTT-1394. Lo que no había era quien lo llevara de la base al modelo, así que la prueba tiene
-/// que ir contra la base: en memoria, el mapeo que fallaba no participa.
-/// </para>
-/// </remarks>
 public sealed class SeveridadEnLaColaTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
-	/// <summary>Las tres que compartían prioridad Normal y se veían iguales.</summary>
 	[Theory]
 	[InlineData("Advertencia", 2)]
 	[InlineData("Información", 3)]
@@ -39,8 +24,6 @@ public sealed class SeveridadEnLaColaTests
 
 		Assert.Equal(nombre, registro.SeveridadLegible);
 
-		// La prioridad sigue siendo Normal en las tres: es justo lo que las hacía
-		// indistinguibles cuando la pantalla mostraba prioridad en su lugar.
 		Assert.Equal(SyncPriority.Normal, registro.Prioridad);
 	}
 

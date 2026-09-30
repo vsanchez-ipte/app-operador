@@ -9,9 +9,6 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AppOperador.Mobile.ViewModels;
 
-/// <summary>
-/// Cola local de registros pendientes de sincronizar (JTT-290 y JTT-291).
-/// </summary>
 public sealed partial class ColaViewModel : ObservableObject
 {
 	private readonly ISyncQueueService _cola;
@@ -21,15 +18,7 @@ public sealed partial class ColaViewModel : ObservableObject
 
 	private bool _escuchandoLaSincronizacionAutomatica;
 
-	/// <summary>
-	/// Cada cuánto se comprueba si a algún registro ya le tocó su reintento.
-	/// </summary>
-	/// <remarks>
-	/// <b>Espaciado a propósito.</b> La tarjeta muestra la hora del reintento y no una cuenta
-	/// atrás, así que no hay nada que repintar cada segundo: esto solo mira si venció alguno. La
-	/// espera más corta es de un minuto, de modo que medio minuto de resolución basta para que el
-	/// envío ocurra cuando la pantalla dice que va a ocurrir.
-	/// </remarks>
+	// La espera más corta es de un minuto: medio minuto de resolución basta.
 	private static readonly TimeSpan CadaCuantoSeRevisaElReintento = TimeSpan.FromSeconds(30);
 
 	private IDispatcherTimer? _relojDeReintentos;
@@ -40,27 +29,11 @@ public sealed partial class ColaViewModel : ObservableObject
 	[ObservableProperty]
 	public partial bool Ocupado { get; set; }
 
-	/// <summary>
-	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
-	/// </summary>
-	/// <remarks>
-	/// Va aparte de <c>Ocupado</c> —que apaga botones mientras el operador espera una acción
-	/// suya— porque esto ocurre solo, al entrar, y lo que hay que decir es que la pantalla
-	/// todavía no está lista, no que un botón está trabajando.
-	/// </remarks>
+	// Aparte de Ocupado: esto es la pantalla cargando al entrar, no un botón trabajando.
 	[ObservableProperty]
 	public partial bool Cargando { get; set; }
 
-
-	/// <summary>
-	/// Qué pasó en la última sincronización, o <see langword="null"/> si no se ha pulsado
-	/// (JTT-1401 CA 10).
-	/// </summary>
-	/// <remarks>
-	/// <b>Sin esto, pulsar «Sincronizar» sin enlace no produce ningún cambio visible</b> y el
-	/// operador no puede distinguir un botón que no respondió de una cola que no tenía nada que
-	/// enviar. El criterio pide que la app muestre el motivo.
-	/// </remarks>
+	// Sin aviso, pulsar «Sincronizar» sin enlace no cambiaría nada visible.
 	[ObservableProperty]
 	public partial string? MensajeSincronizacion { get; set; }
 
@@ -78,14 +51,6 @@ public sealed partial class ColaViewModel : ObservableObject
 		Enlace = enlace;
 	}
 
-	/// <summary>
-	/// Lleva un registro rechazado al formulario para corregirlo y reenviarlo (JTT-291 CA 8).
-	/// </summary>
-	/// <remarks>
-	/// La Cola no corrige nada: navega a la captura con la clave, y es la captura la que carga
-	/// el registro, muestra el motivo del rechazo y lo devuelve a la cola. Aquí solo se decide
-	/// a quién se le ofrece el botón, y eso lo dice <c>RegistroCola.SePuedeCorregir</c>.
-	/// </remarks>
 	[RelayCommand]
 	private async Task CorregirAsync(RegistroColaVista? vista)
 	{
@@ -99,15 +64,7 @@ public sealed partial class ColaViewModel : ObservableObject
 			new Dictionary<string, object> { [CapturaViewModel.ParametroCorregir] = vista.ClaveLocal });
 	}
 
-	/// <summary>
-	/// Empieza a atender los envíos que ocurren solos (JTT-1406).
-	/// </summary>
-	/// <remarks>
-	/// <b>Lo llama la página al aparecer, y no el constructor</b>: este ViewModel es transitorio
-	/// y cada visita a la pantalla crea uno nuevo. Suscribir en el constructor dejaría vivos a
-	/// todos los anteriores, colgados de un servicio que dura lo que la aplicación. Además, el
-	/// refresco solo tiene sentido mientras la lista se está viendo.
-	/// </remarks>
+	// Desde la página y no el constructor: el ViewModel es transitorio y quedaría colgado del servicio.
 	public void Escuchar()
 	{
 		if (_escuchandoLaSincronizacionAutomatica)
@@ -121,26 +78,10 @@ public sealed partial class ColaViewModel : ObservableObject
 		IniciarRelojDeReintentos();
 	}
 
-	/// <summary>
-	/// Arranca la comprobación de reintentos vencidos.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Sin esto la hora que muestra la tarjeta sería una promesa vacía.</b> Los disparadores
-	/// del envío son el botón, la revalidación de sesión y la recuperación del enlace; con señal
-	/// estable, ninguno de los tres ocurre, así que la espera de un registro fallido vence y ahí
-	/// se queda. Un aviso que dice «Reintento a las 17:42» y a las 17:42 no hace nada es peor que
-	/// no decir nada.
-	/// </para>
-	/// <para>
-	/// <b>Solo corre mientras la pantalla está a la vista</b>, y hay que decirlo: fuera de aquí el
-	/// reintento sigue dependiendo de que vuelva el enlace.
-	/// </para>
-	/// </remarks>
+	// Sin este reloj, con señal estable nada envía cuando vence la espera anunciada.
 	private void IniciarRelojDeReintentos()
 	{
-		// En algún destino puede no haber despachador todavía; sin él, la pantalla sigue
-		// funcionando y solo se pierde el disparo por vencimiento.
+		// Puede no haber despachador todavía; entonces solo se pierde el disparo por vencimiento.
 		_relojDeReintentos ??= Application.Current?.Dispatcher.CreateTimer();
 		if (_relojDeReintentos is null)
 		{
@@ -153,30 +94,10 @@ public sealed partial class ColaViewModel : ObservableObject
 		_relojDeReintentos.Start();
 	}
 
-	/// <summary>
-	/// Envía lo que toca —lo que cumplió su espera y lo que quedó a medias—, si hay enlace.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Se comprueba primero en la lista que ya está en memoria, sin tocar la base: la inmensa
-	/// mayoría de las veces no hay nada vencido y no tiene sentido pagar una consulta cada medio
-	/// minuto.
-	/// </para>
-	/// <para>
-	/// Sin enlace no se intenta. El sincronizador lo comprobaría igual, pero dejaría una línea en
-	/// la bitácora en cada vuelta: media hora sin señal la llenaría de ruido idéntico.
-	/// </para>
-	/// <para>
-	/// <b>El enlace se sondea, no se consulta.</b> Ver las notas de dentro: leer el estado
-	/// guardado dejaba sin cumplir la hora anunciada justo en el caso que la produce.
-	/// </para>
-	/// </remarks>
+	// Sin enlace no se intenta: cada vuelta dejaría una línea idéntica en la bitácora.
 	private async void AlTocarRevisarReintentos(object? origen, EventArgs argumentos)
 	{
-		// No enciende Ocupado: el sondeo puede tardar lo que dure el tiempo de espera del
-		// cliente, y con Jacob caído dejaría el botón apagado casi todo el tiempo. Si el
-		// operador toca «Sincronizar ahora» mientras tanto, el cerrojo del sincronizador
-		// atiende a uno y le dice al otro que ya está en marcha.
+		// No enciende Ocupado: con Jacob caído dejaría el botón apagado casi siempre.
 		if (_revisandoReintentos || Ocupado || !HayAlgoQueIntentar())
 		{
 			return;
@@ -185,29 +106,17 @@ public sealed partial class ColaViewModel : ObservableObject
 		_revisandoReintentos = true;
 		try
 		{
-			// Se pregunta de nuevo por el enlace en vez de leer el estado guardado. Cuando lo
-			// que se cayó fue Jacob —el API, el túnel, el CCO reiniciándose— y no la red, el
-			// teléfono nunca perdió la señal: Android no anuncia nada, nadie vuelve a sondear y
-			// el estado guardado se queda en «sin enlace» indefinidamente. El reloj llegaba a la
-			// hora anunciada, leía ese valor viejo y se abstenía, vuelta tras vuelta.
-			//
-			// No es el sondeo periódico que se descartó por batería: solo ocurre si ya hay algo
-			// vencido que de verdad toca enviar. Con la cola limpia —el caso normal— no se
-			// sondea nunca.
+			// Se sondea: si cayó Jacob y no la red, el estado guardado se quedaría en «sin enlace».
 			if (!await Enlace.ComprobarElEnlaceAsync())
 			{
-				// Sin enlace no se envía, pero la lista puede estar enseñando un envío a medias
-				// que en la base ya terminó: la pantalla solo se repinta cuando termina una
-				// tanda, y la del registro recién capturado no pasa por aquí. Sin esto, una
-				// tarjeta se queda en ENVIANDO a la vista aunque el estado guardado sea otro.
+				// Sin enlace se repinta igual: la lista puede mostrar un envío que ya terminó.
 				await RefrescarAsync();
 				return;
 			}
 
 			var resultado = await _sincronizador.EjecutarAsync();
 
-			// Solo se avisa de lo que cambió algo, igual que con el envío automático: el operador
-			// no pidió esta sincronización y anunciarla cada vez llenaría la pantalla.
+			// Solo se avisa de lo que cambió algo: el operador no pidió esta sincronización.
 			if (resultado.Confirmados > 0)
 			{
 				MensajeSincronizacion = TextoDe(resultado);
@@ -215,11 +124,9 @@ public sealed partial class ColaViewModel : ObservableObject
 
 			await RefrescarAsync();
 		}
+		// Lo dispara un temporizador: nadie recogería una excepción.
 		catch (Exception)
 		{
-			// Lo dispara un temporizador y nadie espera el resultado: una excepción que se
-			// escapara de aquí no tendría quién la recogiera. El registro conserva su estado y
-			// al operador le queda el botón.
 		}
 		finally
 		{
@@ -230,15 +137,6 @@ public sealed partial class ColaViewModel : ObservableObject
 	// Evita que dos vueltas del reloj se encimen; no es Ocupado a propósito, ver arriba.
 	private bool _revisandoReintentos;
 
-	/// <summary>
-	/// Indica si algún registro de la lista tiene un envío que toca ahora.
-	/// </summary>
-	/// <remarks>
-	/// <b>La decisión es de <see cref="RegistroCola.TocaIntentarlo"/></b>, que es la misma que
-	/// toma la tanda al recorrer la cola y la única que tiene pruebas. Aquí solo se pregunta por
-	/// la lista que ya está pintada, sin tocar la base: la inmensa mayoría de las veces no hay
-	/// nada que intentar y no tiene sentido pagar una consulta cada medio minuto.
-	/// </remarks>
 	private bool HayAlgoQueIntentar()
 	{
 		var ahora = DateTime.UtcNow;
@@ -246,7 +144,6 @@ public sealed partial class ColaViewModel : ObservableObject
 		return Registros.Any(r => r.Registro.TocaIntentarlo(ahora));
 	}
 
-	/// <summary>Deja de atenderlos. Lo llama la página al desaparecer.</summary>
 	public void DejarDeEscuchar()
 	{
 		if (!_escuchandoLaSincronizacionAutomatica)
@@ -260,28 +157,11 @@ public sealed partial class ColaViewModel : ObservableObject
 		_relojDeReintentos?.Stop();
 	}
 
-	/// <summary>
-	/// Repinta la cola cuando el envío ocurrió sin que el operador lo pidiera.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Sin esto, recuperar la señal con la pantalla abierta enviaría los registros y la lista
-	/// seguiría enseñándolos como pendientes hasta que alguien saliera y volviera a entrar. El
-	/// operador leería que no salió nada cuando ya está en el CCO.
-	/// </para>
-	/// <para>
-	/// Llega desde el hilo en el que corrió la sincronización, no del principal, así que la
-	/// actualización de la lista se marshalea: tocar la colección enlazada desde otro hilo hace
-	/// fallar el pintado.
-	/// </para>
-	/// </remarks>
+	// Llega de otro hilo: la lista se toca en el principal.
 	private void AlTerminarUnEnvioAutomatico(object? origen, ResultadoSincronizacion resultado)
 	{
 		MainThread.BeginInvokeOnMainThread(async () =>
 		{
-			// Solo se avisa de lo que cambió algo. Una tanda automática que no encontró nada que
-			// enviar es el caso corriente —el enlace va y viene todo el día— y anunciarla
-			// llenaría la pantalla de mensajes que el operador no pidió.
 			if (resultado.Confirmados > 0)
 			{
 				MensajeSincronizacion = TextoDe(resultado);
@@ -291,41 +171,23 @@ public sealed partial class ColaViewModel : ObservableObject
 			{
 				await RefrescarAsync();
 			}
+			// async void en el hilo principal: lo que escape cierra la app.
 			catch (Exception)
 			{
-				// Es un async void sobre el hilo principal: lo que escape de aquí tira la app.
-				// La lista se queda como estaba y el operador conserva el botón.
 			}
 		});
 	}
 
-	/// <summary>Indica si la sesión autoriza ver la cola (JTT-1385 CA 3 y 4).</summary>
 	public bool PuedeConsultar => _capacidades.Puede(CapacidadOperador.ConsultarCola);
 
-	/// <summary>Indica si la sesión autoriza sincronizar y no hay un envío en curso.</summary>
 	public bool PuedeSincronizar =>
 		!Ocupado && _capacidades.Puede(CapacidadOperador.Sincronizar);
 
-	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
 	public EstadoEnlaceViewModel Enlace { get; }
 
-	/// <summary>Registros de la cola, listos para mostrarse. Los borradores no aparecen aquí.</summary>
 	public ObservableCollection<RegistroColaVista> Registros { get; } = [];
 
-	/// <summary>Resumen que encabeza la pantalla.</summary>
-	/// <remarks>
-	/// <para>
-	/// Dice <b>«sin enviar»</b> y no «pendientes de sincronizar». La cuenta incluye las
-	/// rechazadas, que no van a salir solas, y decir de ellas que están «pendientes de
-	/// sincronizar» contradice el aviso de abajo, que avisa justamente de que no se reintentan.
-	/// Las dos frases eran ciertas y juntas se leían como un error de la aplicación.
-	/// </para>
-	/// <para>
-	/// «Sin enviar» es lo único que vale para los tres estados que cuenta —pendiente, fallida y
-	/// el envío que quedó a medias— y es además lo que el operador necesita saber: cuántas de
-	/// las suyas no están todavía en el CCO.
-	/// </para>
-	/// </remarks>
+	// «Sin enviar» y no «pendientes»: la cuenta incluye rechazadas que no salen solas.
 	public string TextoPendientes => Pendientes switch
 	{
 		0 => "No hay incidencias sin enviar.",
@@ -333,19 +195,10 @@ public sealed partial class ColaViewModel : ObservableObject
 		_ => $"{Pendientes} incidencias sin enviar al CCO.",
 	};
 
-	/// <summary>Concuerda el número con su sustantivo. «1 incidencias» se lee como descuido.</summary>
 	private static string Incidencias(int cuantas) =>
 		cuantas == 1 ? "1 incidencia" : $"{cuantas} incidencias";
 
-	/// <summary>
-	/// Explica por qué no salió nada, nombrando <b>las dos</b> razones cuando las dos se dan.
-	/// </summary>
-	/// <remarks>
-	/// La suma de lo que se nombra aquí tiene que cuadrar con el «sin enviar» del encabezado.
-	/// Que no cuadre es lo que hace que el operador desconfíe de la pantalla, y la diferencia
-	/// entre las dos razones es la que decide qué hacer: <b>las que esperan salen solas y las
-	/// rechazadas no</b>.
-	/// </remarks>
+	// Nombra las dos razones cuando se dan, para que cuadre con el encabezado.
 	private static string MotivoDeLoOmitido(int porCorregir, int enEspera)
 	{
 		var rechazadas = $"{Incidencias(porCorregir)} sin enviar: el CCO las rechazó y no saldrán "
@@ -364,16 +217,8 @@ public sealed partial class ColaViewModel : ObservableObject
 
 	public bool HayRegistros => Registros.Count > 0;
 
-	/// <summary>Indica si hay algo que decir sobre la última sincronización.</summary>
 	public bool HayMensajeSincronizacion => !string.IsNullOrEmpty(MensajeSincronizacion);
 
-	/// <summary>
-	/// Recarga la cola desde el almacenamiento local.
-	/// </summary>
-	/// <remarks>
-	/// Sin autorización no se lee nada y la pantalla queda vacía: los registros llevan datos de
-	/// operación y no deben quedar a la vista de una sesión que ya no vale (CA 4).
-	/// </remarks>
 	public async Task ActualizarAsync()
 	{
 		Cargando = true;
@@ -387,12 +232,7 @@ public sealed partial class ColaViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>Vuelve a leer la cola y sustituye la lista de una vez.</summary>
-	/// <remarks>
-	/// Se lee primero y se sustituye después, sin ningún <c>await</c> entre vaciar y llenar: el
-	/// reloj, el envío automático y la página pueden pedir el refresco casi a la vez, y con un
-	/// vaciado seguido de una espera dos refrescos encimados dejaban cada tarjeta dos veces.
-	/// </remarks>
+	// Se lee y luego se sustituye, sin await en medio: dos refrescos encimados duplicaban tarjetas.
 	private async Task RefrescarAsync()
 	{
 		if (!PuedeConsultar)
@@ -417,14 +257,7 @@ public sealed partial class ColaViewModel : ObservableObject
 		NotificarAutorizacion();
 	}
 
-	/// <summary>
-	/// Envía los pendientes a Jacob CCO.
-	/// </summary>
-	/// <remarks>
-	/// La comprobación se repite aquí aunque el botón ya esté deshabilitado: ocultar el control
-	/// es presentación, y la sesión puede cerrarse entre que la pantalla se pintó y alguien
-	/// pulsa. La autorización se decide al ejecutar, no al dibujar.
-	/// </remarks>
+	// La autorización se revisa al ejecutar, no al dibujar el botón.
 	[RelayCommand(CanExecute = nameof(PuedeSincronizar))]
 	private async Task SincronizarAsync()
 	{
@@ -436,15 +269,7 @@ public sealed partial class ColaViewModel : ObservableObject
 		Ocupado = true;
 		try
 		{
-			// Se sondea el enlace antes de correr, por lo mismo que el reloj: el estado guardado
-			// puede ser viejo. Con Jacob caído y levantado de nuevo, el dispositivo nunca perdió
-			// la red, así que nadie volvió a sondear y el primer toque del botón contestaba «Sin
-			// enlace con el CCO» teniendo el servidor delante. Hacían falta dos toques: el
-			// primero para nada y el segundo para enviar.
-			//
-			// No se mira lo que devuelve: quien decide es el sincronizador, que exige las tres
-			// condiciones juntas y ya tiene un mensaje para cada una. Esto solo se asegura de que
-			// las decida sobre algo medido ahora.
+			// Sondear antes: el estado guardado puede ser viejo y haría falta un segundo toque.
 			await Enlace.ComprobarElEnlaceAsync();
 
 			var resultado = await _sincronizador.EjecutarAsync();
@@ -457,14 +282,6 @@ public sealed partial class ColaViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>
-	/// Traduce el resultado de la sincronización al aviso que lee el operador (CA 10).
-	/// </summary>
-	/// <remarks>
-	/// Los literales son provisionales: Producto no ha fijado los de esta pantalla. Lo que no es
-	/// provisional es que <b>cada motivo diga algo distinto</b>: «no se pudo sincronizar» deja al
-	/// operador sin saber si esperar, buscar señal o llamar al CCO.
-	/// </remarks>
 	private static string TextoDe(ResultadoSincronizacion resultado) => resultado.MotivoBloqueo switch
 	{
 		MotivoNoSincroniza.SinPermiso =>
@@ -473,17 +290,10 @@ public sealed partial class ColaViewModel : ObservableObject
 			"Sin conexión con CCO. Lo capturado se conserva y se enviará al recuperar la señal.",
 		MotivoNoSincroniza.SinSesion =>
 			"La sesión expiró. Vuelva a ingresar para sincronizar.",
-		// No es un fallo: el envío ya está corriendo, disparado por la reconexión o por un
-		// toque anterior. Decir «no se pudo» mandaría a pulsar otra vez algo que ya funciona.
+		// No es un fallo: el envío ya está corriendo.
 		MotivoNoSincroniza.YaEnCurso =>
 			"El envío ya está en marcha. Espere a que termine.",
-		// Nada se intentó, pero eso NO significa que no haya nada. Decir «no hay pendientes»
-		// con tres en la lista de arriba es contradecirse en la misma pantalla, y deja al
-		// operador sin saber si el botón funcionó.
-		// Las dos razones de saltarse un registro pueden darse a la vez, y antes ganaba la
-		// primera rama del switch: con dos rechazadas y una esperando, la pantalla decía «3 sin
-		// enviar» arriba y hablaba solo de 2 abajo. La que faltaba era justo la que sí va a
-		// salir sola, así que el operador la daba por perdida.
+		// Nada se intentó, pero puede haber registros esperando o rechazados.
 		_ when resultado.Intentados == 0
 			&& (resultado.OmitidosPorCorregir > 0 || resultado.OmitidosEnEspera > 0) =>
 			MotivoDeLoOmitido(resultado.OmitidosPorCorregir, resultado.OmitidosEnEspera),
@@ -492,22 +302,19 @@ public sealed partial class ColaViewModel : ObservableObject
 			"No hay incidencias sin enviar.",
 		_ when resultado.Confirmados == resultado.Intentados =>
 			$"{Incidencias(resultado.Confirmados)} enviadas al CCO.",
-		// Ninguna salió y el fallo fue del camino: Jacob no llegó a evaluarlas. Decir que las
-		// rechazó mandaría al operador a revisar capturas que están bien.
+		// El fallo fue del camino: Jacob no llegó a evaluarlas.
 		_ when resultado.Confirmados == 0
 			&& resultado.FamiliaUltimoError == FamiliaErrorSincronizacion.Tecnico =>
 			"No se pudo contactar al CCO. Lo pendiente se conserva y se reintentará.",
 
-		// Ninguna salió y Jacob las rechazó: se muestra SU mensaje, que dice qué corregir.
+		// Jacob las rechazó: se muestra su mensaje.
 		_ when resultado.Confirmados == 0 && resultado.MensajeUltimoError is { } motivo =>
 			$"El CCO rechazó el envío: {motivo}",
 
-		// Que unas salgan y otras no es lo normal, no un fallo: el CA 13 pide justamente que
-		// una falla no detenga a las demás. Se dice el reparto en vez de un «error» a secas.
+		// Que unas salgan y otras no es lo normal: se dice el reparto.
 		_ => $"{resultado.Confirmados} de {resultado.Intentados} enviadas. El resto sigue pendiente.",
 	};
 
-	/// <summary>Reevalúa lo que la sesión autoriza. La sesión puede haber cambiado.</summary>
 	private void NotificarAutorizacion()
 	{
 		OnPropertyChanged(nameof(PuedeConsultar));

@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!--
-    Navegación de la app. La maqueta define una barra inferior de cuatro pestañas, y el
-    acceso queda fuera de ella: mientras no haya sesión no debe verse ninguna pestaña.
--->
+<!-- El acceso queda fuera de las pestañas: sin sesión no se ve ninguna -->
 <Shell
     x:Class="AppOperador.Mobile.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -17,7 +14,7 @@
     Shell.TabBarUnselectedColor="{StaticResource TextoEtiqueta}"
     Title="App Operador">
 
-    <!-- Primera ruta declarada: es la pantalla con la que arranca la app -->
+    <!-- La primera ruta es con la que arranca la app -->
     <ShellContent
         Route="acceso"
         ContentTemplate="{DataTemplate vistas:AccesoPage}"
@@ -25,12 +22,7 @@
 
     <TabBar Route="principal">
 
-        <!--
-            Los iconos se declaran como .png aunque el archivo fuente sea .svg: el SDK
-            los convierte al compilar, generando una imagen por densidad de pantalla.
-            Android los tiñe con los colores de la barra, así que el color del SVG no
-            se ve: manda TabBarTitleColor / TabBarUnselectedColor.
-        -->
+        <!-- Iconos .png aunque la fuente sea .svg: el SDK los convierte. Android los tiñe con TabBarTitleColor -->
         <ShellContent
             Title="Inicio"
             Icon="tab_inicio.png"

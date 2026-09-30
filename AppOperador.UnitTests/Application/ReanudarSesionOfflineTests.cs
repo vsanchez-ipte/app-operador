@@ -8,9 +8,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Reanudar una sesión guardada sin conexión (JTT-1383).
-/// </summary>
 public class ReanudarSesionOfflineTests
 {
 	private const string Modulo = "APP_OPERADOR_MOVIL";
@@ -52,7 +49,7 @@ public class ReanudarSesionOfflineTests
 		MonotonicoAlValidar: MonotonicoAlValidar,
 		Instalacion: new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)));
 
-	// ---------- CA 6: dentro de la ventana se reanuda ----------
+	// ---------- Dentro de la ventana se reanuda ----------
 
 	[Fact]
 	public async Task Dentro_de_la_ventana_autoriza_y_publica_la_sesion()
@@ -68,7 +65,7 @@ public class ReanudarSesionOfflineTests
 	[Fact]
 	public async Task No_renueva_la_vigencia_al_reanudar()
 	{
-		// CA 15: solo el servidor puede correr la ventana.
+		// Solo el servidor puede correr la ventana.
 		SesionOperador? publicada = null;
 		_sesiones.When(s => s.Guardar(Arg.Any<SesionOperador>()))
 			.Do(c => publicada = c.Arg<SesionOperador>());
@@ -79,7 +76,7 @@ public class ReanudarSesionOfflineTests
 		Assert.Equal(Validacion, publicada.Vigencia.LastValidatedAtUtc);
 	}
 
-	// ---------- CA 1: sin validación previa no hay modo offline ----------
+	// ---------- Sin validación previa no hay modo offline ----------
 
 	[Fact]
 	public async Task Sin_sesion_guardada_rechaza()
@@ -103,7 +100,7 @@ public class ReanudarSesionOfflineTests
 		Assert.False(resultado.Autorizado);
 	}
 
-	// ---------- CA 2: fuera de la ventana no se reanuda ----------
+	// ---------- Fuera de la ventana no se reanuda ----------
 
 	[Fact]
 	public async Task Pasadas_las_ocho_horas_rechaza()
@@ -117,13 +114,12 @@ public class ReanudarSesionOfflineTests
 		Assert.Equal(MotivoRechazoAcceso.SesionOfflineExpirada, resultado.Motivo);
 	}
 
-	// ---------- CA 5, 13 y 14: el reloj no manda solo ----------
+	// ---------- El reloj no manda solo ----------
 
 	[Fact]
 	public async Task Atrasar_el_reloj_no_reabre_una_ventana_vencida()
 	{
-		// El operador atrasa el telefono para seguir trabajando; el contador monotonico
-		// dice que ya pasaron nueve horas.
+		// El operador atrasa el teléfono; el monotónico dice que ya pasaron nueve horas.
 		_reloj.UtcAhora = Validacion.AddHours(-5);
 		_monotonico.Transcurrido = MonotonicoAlValidar + TimeSpan.FromHours(9);
 
@@ -176,7 +172,7 @@ public class ReanudarSesionOfflineTests
 	[Fact]
 	public async Task Si_los_permisos_guardados_exceden_al_token_rechaza_y_borra_la_sesion()
 	{
-		// El archivo local es editable; el token va firmado (JTT-1379 CA 8).
+		// El archivo local es editable; el token va firmado.
 		_persistida.ObtenerAsync(Arg.Any<CancellationToken>())
 			.Returns(Guardada(PermisosOperador.DelServidor([Modulo, "ADMINISTRAR"])));
 
@@ -210,7 +206,7 @@ public class ReanudarSesionOfflineTests
 			Arg.Any<CancellationToken>());
 	}
 
-	// ---------- Consultar sin reanudar (JTT-1681) ----------
+	// ---------- Consultar sin reanudar ----------
 
 	[Fact]
 	public async Task Consultar_dentro_de_la_ventana_dice_de_quien_es_y_hasta_cuando()

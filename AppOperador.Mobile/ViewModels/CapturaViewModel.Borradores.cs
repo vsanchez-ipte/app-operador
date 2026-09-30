@@ -12,13 +12,11 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AppOperador.Mobile.ViewModels;
 
-/// <summary>Borradores: guardar, abrir, editar, convertir y eliminar (JTT-1399).</summary>
 public sealed partial class CapturaViewModel
 {
 	[ObservableProperty]
 	public partial string? BorradorEnEdicion { get; set; }
 
-	/// <summary>Borradores guardados, listados bajo el formulario.</summary>
 	public ObservableCollection<RegistroColaVista> Borradores { get; } = [];
 
 	public bool HayBorradores => Borradores.Count > 0;
@@ -26,22 +24,19 @@ public sealed partial class CapturaViewModel
 	[RelayCommand(CanExecute = nameof(PuedeRegistrar))]
 	private async Task GuardarBorradorAsync()
 	{
-		// Un borrador es captura a medias, así que necesita la misma autorización que registrar.
+		// Un borrador es captura a medias: exige la misma autorización que registrar.
 		if (!_capacidades.Puede(CapacidadOperador.RegistrarIncidencia))
 		{
-			// Mismo caso que en el guardado: se refresca para que el aviso explique el bloqueo.
 			NotificarAutorizacion();
 			return;
 		}
 
-		// Un borrador se guarda tal cual esté: no se valida, porque su razón de ser es
-		// permitir dejar la captura a medias sin perderla.
+		// Sin validar: un borrador existe para dejar la captura a medias sin perderla.
 		MensajeError = null;
 
 		if (BorradorEnEdicion is { } claveEnEdicion)
 		{
-			// Editar actualiza el que ya existe. Crear uno nuevo dejaría al operador con dos
-			// borradores del mismo hecho cada vez que guardara su avance (CA 8, «editarlo»).
+			// Editar actualiza el existente; crear otro duplicaría el mismo hecho.
 			await _incidencias.ActualizarBorradorAsync(
 				claveEnEdicion, TipoSeleccionado, Kilometro, SeveridadSeleccionada, Nota.Trim());
 			CancelarEdicionBorrador();
@@ -56,14 +51,7 @@ public sealed partial class CapturaViewModel
 		await RecargarBorradoresAsync();
 	}
 
-	/// <summary>
-	/// Convierte el borrador abierto, delegando el CA 9 en el caso de uso.
-	/// </summary>
-	/// <remarks>
-	/// <b>La pantalla no revalida por su cuenta.</b> El caso de uso es el único dueño de las
-	/// validaciones de envío; aquí solo se traduce su respuesta a un aviso. Repetir las
-	/// comprobaciones daría dos redacciones del mismo criterio, que es como se separan.
-	/// </remarks>
+	// Las validaciones son del caso de uso; aquí solo se traduce su respuesta.
 	private async Task ConvertirBorradorAbiertoAsync(string clave)
 	{
 		var resultado = await _convertirBorrador.EjecutarAsync(
@@ -79,8 +67,7 @@ public sealed partial class CapturaViewModel
 		{
 			SenalarError(CampoDe(resultado), MensajeDe(resultado));
 
-			// Si ya no existe, el formulario tiene que soltarlo: seguir editando un borrador
-			// que desapareció deja al operador escribiendo sobre nada.
+			// Si ya no existe, el formulario lo suelta.
 			if (resultado == ResultadoConversionBorrador.NoEncontrado)
 			{
 				BorradorEnEdicion = null;
@@ -94,25 +81,16 @@ public sealed partial class CapturaViewModel
 		CancelarEdicionBorrador();
 		await RecargarBorradoresAsync();
 
-		// Convertir también crea una incidencia, así que también intenta salir en el momento.
+		// Convertir crea una incidencia, así que también intenta salir en el momento.
 		await IntentarEnviarRecienGuardadaAsync(clave);
 	}
 
-	/// <summary>Indica si el formulario está editando un borrador ya guardado.</summary>
 	public bool EstaEditandoBorrador => BorradorEnEdicion is not null;
 
-	/// <inheritdoc cref="TextoBotonPrimario" />
 	public string TextoBotonSecundario =>
 		EstaEditandoBorrador ? "Actualizar borrador" : "Guardar borrador";
 
-	/// <summary>
-	/// Carga un borrador en el formulario para seguir capturándolo (JTT-1399 CA 8, «abrirlo»).
-	/// </summary>
-	/// <remarks>
-	/// <b>Se reutiliza el mismo formulario en vez de abrir otra pantalla.</b> Editar un borrador
-	/// es exactamente capturar, y una segunda pantalla obligaría a mantener dos veces las mismas
-	/// validaciones y el mismo diseño.
-	/// </remarks>
+	// Mismo formulario: editar un borrador es capturar.
 	[RelayCommand]
 	private async Task AbrirBorradorAsync(RegistroColaVista? vista)
 	{
@@ -124,22 +102,19 @@ public sealed partial class CapturaViewModel
 		var borrador = await _incidencias.ObtenerBorradorAsync(vista.ClaveLocal);
 		if (borrador is null)
 		{
-			// Pudo eliminarse desde otro punto, o pertenecer a otra sesión.
+			// Pudo eliminarse o ser de otra sesión.
 			MensajeError = MensajeBorradorNoEncontrado;
 			await RecargarBorradoresAsync();
 			return;
 		}
 
-		// Un borrador abierto desplaza a cualquier rechazado que estuviera en corrección: los
-		// dos modos no coexisten, y con los dos encendidos el botón diría «Reenviar» y convertiría.
+		// Borrador y corrección de rechazado no coexisten.
 		RechazadaEnCorreccion = null;
 		MotivoRechazoEnCorreccion = null;
 		MensajeError = null;
 		BorradorEnEdicion = borrador.ClaveLocal;
 
-		// Sus evidencias vienen con él: se adjuntaron a este UUID y siguen siendo suyas.
-		// Reponer el UUID no basta —la lista y el contador siguen los del formulario anterior,
-		// que SoltarEvidencias dejó vacíos—, así que hay que releerlas del repositorio.
+		// Sus evidencias siguen siendo suyas; hay que releerlas porque la lista quedó vacía.
 		_uuidParaEvidencias = borrador.Uuid;
 		await RecargarEvidenciasAsync();
 
@@ -147,20 +122,13 @@ public sealed partial class CapturaViewModel
 		SeveridadSeleccionada = Severidades.FirstOrDefault(s => s.Id == borrador.SeveridadId);
 		Nota = borrador.Nota;
 
-		// El kilómetro se repone tal cual se guardó, aunque esté a medio escribir, y como
-		// manual: reponerlo no es una lectura del GPS por mucho que lo fuera al capturarlo.
+		// Se repone como manual: reponerlo no es una lectura del GPS.
 		Kilometro = borrador.Kilometro ?? string.Empty;
 		FuenteKilometro = KilometerSource.Manual;
 		_posicionGps = null;
 	}
 
-	/// <summary>
-	/// Abandona la edición sin tocar el borrador (JTT-1399 CA 8).
-	/// </summary>
-	/// <remarks>
-	/// Sin esta salida, quien abriera un borrador por error quedaría atrapado: los dos botones
-	/// actuarían sobre él y no habría forma de volver a capturar uno nuevo.
-	/// </remarks>
+	// Sin esta salida, quien abriera un borrador por error quedaría atrapado en él.
 	[RelayCommand]
 	private void CancelarEdicionBorrador()
 	{
@@ -169,9 +137,6 @@ public sealed partial class CapturaViewModel
 		LimpiarFormulario();
 	}
 
-	/// <summary>
-	/// Elimina el borrador que se está editando, con sus adjuntos (JTT-1399 CA 8, «eliminarlo»).
-	/// </summary>
 	[RelayCommand]
 	private async Task EliminarBorradorAsync()
 	{

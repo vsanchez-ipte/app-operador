@@ -7,18 +7,9 @@ using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Exportación de diagnóstico: la base cifrada se convierte en una copia SQLite legible.
-/// </summary>
-/// <remarks>
-/// Lo que estas pruebas protegen es que la copia sirva para lo que se pidió: abrirla en un
-/// equipo, sin clave, y confiar en lo que muestra. Una copia incompleta o desfasada es peor
-/// que ninguna, porque se revisa semanas después y nada delata que falte algo.
-/// </remarks>
 public sealed class ExportacionBaseDatosTests
 {
-
-	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3 (JTT-1394).
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3.
 	private static readonly SeveridadIncidencia Critica =
 		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
 
@@ -29,16 +20,12 @@ public sealed class ExportacionBaseDatosTests
 		new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Información", 3, "#120AF2");
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
-	/// <summary>Clave fija para las pruebas. En el dispositivo sale del almacén seguro.</summary>
 	private sealed class ClaveFija : IDatabaseKeyProvider
 	{
 		public Task<string> ObtenerAsync(CancellationToken cancelacion = default) =>
 			Task.FromResult("clave-de-prueba-32-bytes-abcdefgh");
 	}
 
-	/// <summary>
-	/// Base cifrada sobre archivo temporal, con su directorio propio para las exportaciones.
-	/// </summary>
 	private sealed class Escenario : IAsyncDisposable
 	{
 		public Escenario(string? nombreDirectorio = null)
@@ -68,7 +55,6 @@ public sealed class ExportacionBaseDatosTests
 
 		public ExportadorBaseDatosSqlite Exportador { get; }
 
-		/// <summary>Deja dentro una incidencia real, para que la copia tenga filas propias.</summary>
 		public Task<string> GuardarIncidenciaAsync() =>
 			new RepositorioIncidenciasSqlite(BaseDatos, Reloj, Sesion).GuardarAsync(
 				Objeto,
@@ -91,7 +77,6 @@ public sealed class ExportacionBaseDatosTests
 		}
 	}
 
-	/// <summary>Abre la copia sin clave: si hace falta una, la exportación no sirvió.</summary>
 	private static SQLiteConnection AbrirSinClave(string ruta) =>
 		new(ruta, SQLiteOpenFlags.ReadOnly);
 
@@ -113,7 +98,7 @@ public sealed class ExportacionBaseDatosTests
 
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
-		// Desde JTT-1394 la base no siembra catálogo: nace vacío y lo llena la primera descarga.
+		// La base no siembra catálogo: nace vacío y lo llena la primera descarga.
 		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
 		Assert.Equal(1, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM incidencia_local;"));
 		Assert.Equal(clave, copia.ExecuteScalar<string>("SELECT clave_local FROM incidencia_local;"));
@@ -129,8 +114,6 @@ public sealed class ExportacionBaseDatosTests
 
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
-		// sqlcipher_export no traslada los pragmas del archivo: sin copiarla a mano, la copia
-		// nacería en 0 y aparentaría venir de un esquema anterior.
 		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, copia.ExecuteScalar<int>("PRAGMA user_version;"));
 		Assert.Equal(BaseDatosLocal.VersionEsquemaActual, exportacion.VersionEsquema);
 	}
@@ -148,8 +131,7 @@ public sealed class ExportacionBaseDatosTests
 		using var copia = AbrirSinClave(exportacion.RutaTemporal);
 
 		Assert.Equal(LeerEstructura(origen), LeerEstructura(copia));
-		// Trece desde el esquema 11: operador, unidad y sesión como historial, y los intentos
-		// partidos en dos tablas.
+		// Trece tablas desde el esquema 11.
 		Assert.Equal(13, exportacion.Tablas.Count);
 		Assert.Contains("incidencia_local", exportacion.Tablas);
 	}
@@ -205,13 +187,10 @@ public sealed class ExportacionBaseDatosTests
 
 		// Sin incidencias, pero con las seis tablas y el catálogo sembrado.
 		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM incidencia_local;"));
-		// Desde JTT-1394 la base no siembra catálogo: nace vacío y lo llena la primera descarga.
+		// La base no siembra catálogo: nace vacío y lo llena la primera descarga.
 		Assert.Equal(0, copia.ExecuteScalar<int>("SELECT COUNT(*) FROM catalogo_tipo_incidencia;"));
 	}
 
-	/// <summary>
-	/// La ruta del destino va dentro del texto del <c>ATTACH</c>, que no admite parámetros.
-	/// </summary>
 	[Fact]
 	public async Task Una_ruta_con_comilla_no_rompe_la_exportacion()
 	{

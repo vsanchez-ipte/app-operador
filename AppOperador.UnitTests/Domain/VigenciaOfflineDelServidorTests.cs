@@ -2,9 +2,6 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.UnitTests.Domain;
 
-/// <summary>
-/// La ventana offline cuando la calcula Jacob CCO y la app solo la adopta (JTT-1382 CA 3 y CA 4).
-/// </summary>
 public class VigenciaOfflineDelServidorTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 10, 12, 0, 0, DateTimeKind.Utc);
@@ -23,9 +20,6 @@ public class VigenciaOfflineDelServidorTests
 	[Fact]
 	public void DelServidor_NoRecalculaLaVentanaConLaDuracionDeLaApp()
 	{
-		// El corazón del CA: si el servidor dijera seis horas, la app respeta seis. Volver a
-		// sumar ocho sobre el reloj del telefono daria una vigencia que el servidor no
-		// reconoce, y el operador seguiria capturando creyendose dentro de plazo.
 		var hasta = Validacion.AddHours(6);
 
 		var vigencia = VigenciaOffline.DelServidor(Validacion, hasta);
@@ -57,8 +51,6 @@ public class VigenciaOfflineDelServidorTests
 	[Fact]
 	public void DelServidor_ConVentanaDeDuracionCero_EsValidaPeroYaVencida()
 	{
-		// El servidor manda. Una ventana nula es rara, pero no es incoherente: significa que
-		// no hay margen offline, y eso la app lo tiene que poder representar.
 		var vigencia = VigenciaOffline.DelServidor(Validacion, Validacion);
 
 		Assert.Equal(Validacion, vigencia.OfflineUntilUtc);
@@ -68,8 +60,6 @@ public class VigenciaOfflineDelServidorTests
 	[Fact]
 	public void DelServidor_ConLaVentanaTerminandoAntesDeLaValidacion_Lanza()
 	{
-		// Solo puede ser un error de integracion. Aceptarlo daria una sesion nacida vencida
-		// sin que nadie se entere.
 		var excepcion = Assert.Throws<ArgumentException>(
 			() => VigenciaOffline.DelServidor(Validacion, Validacion.AddSeconds(-1)));
 

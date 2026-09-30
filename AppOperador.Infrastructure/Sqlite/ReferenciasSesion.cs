@@ -3,29 +3,9 @@ using SQLite;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Garantiza que el operador, la unidad y la sesión a los que va a apuntar una fila existan.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Con llaves foráneas activas, guardar una incidencia o una línea de bitácora con una sesión
-/// que no esté en <c>sesion_local</c> falla. En la app real la sesión ya está —la custodia la
-/// persiste antes de anunciarla—, pero una captura no puede depender de ese orden: si algo lo
-/// rompiera, el operador se quedaría sin poder guardar en campo. Aquí se asegura con
-/// <c>INSERT OR IGNORE</c>, que no toca nada si ya existe.
-/// </para>
-/// <para>
-/// Una sesión creada por este camino queda con <c>vigente = 0</c>: vigente es la que la custodia
-/// guardó, no una que se supo de paso.
-/// </para>
-/// </remarks>
+// Una captura no puede fallar porque falte su sesión en la base; la sesión creada así queda no vigente.
 internal static class ReferenciasSesion
 {
-	/// <summary>
-	/// Deja creados operador, unidad y sesión de <paramref name="sesion"/>, si hay sesión.
-	/// Devuelve el identificador de sesión que sellar en la fila, o <see langword="null"/> si
-	/// no hay sesión o no tiene identificador.
-	/// </summary>
 	public static async Task<string?> AsegurarAsync(SQLiteAsyncConnection conexion, SesionOperador? sesion)
 	{
 		if (sesion is null || string.IsNullOrWhiteSpace(sesion.Operador))
@@ -66,7 +46,6 @@ internal static class ReferenciasSesion
 		return sesion.SessionId;
 	}
 
-	/// <summary>Crea el operador o le actualiza el rol, que es el último conocido.</summary>
 	public static Task AsegurarOperadorAsync(SQLiteAsyncConnection conexion, string cuenta, string rol) =>
 		conexion.ExecuteAsync(
 			"""
@@ -76,11 +55,7 @@ internal static class ReferenciasSesion
 			cuenta,
 			rol);
 
-	/// <summary>
-	/// Crea la unidad o completa lo que le faltaba. El identificador técnico y la descripción
-	/// solo los sabe la sesión; una unidad vista desde una incidencia llega con la clave y nada
-	/// más, y no debe pisar lo que otra sesión ya dejó.
-	/// </summary>
+	// Una unidad vista desde una incidencia solo trae la clave y no debe pisar lo que dejó una sesión.
 	public static Task AsegurarUnidadAsync(SQLiteAsyncConnection conexion, string clave, string? id, string? descripcion) =>
 		conexion.ExecuteAsync(
 			"""

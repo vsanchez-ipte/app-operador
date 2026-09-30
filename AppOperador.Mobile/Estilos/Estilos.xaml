@@ -1,12 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!--
-    Estilos base de la App Operador. Se cargan DESPUÉS de los de la plantilla
-    (Resources\Styles\Styles.xaml) para que estos ganen.
-
-    La maqueta repite cinco piezas en las cinco pantallas: la tarjeta, el título de
-    tarjeta, la etiqueta de campo en mayúsculas, los dos botones y la insignia de estado.
-    Definirlas aquí evita repetir medidas y colores en cada vista.
--->
+<!-- Se cargan después de los de la plantilla para ganarles -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
@@ -21,11 +14,7 @@
 
     <!-- ===== Tarjeta ===== -->
 
-    <!--
-        Se usa Background (brocha) y no BackgroundColor: en Border, la brocha es la que
-        realmente pinta el relleno, y con solo BackgroundColor el fondo salía gris en
-        Android en lugar del blanco de la maqueta.
-    -->
+    <!-- Background (brocha) y no BackgroundColor: con el color solo, el fondo sale gris en Android -->
     <Style x:Key="Tarjeta" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource FondoTarjetaBrocha}" />
         <Setter Property="Stroke" Value="{StaticResource BordeTarjeta}" />
@@ -34,7 +23,6 @@
         <Setter Property="StrokeShape" Value="RoundRectangle 10" />
     </Style>
 
-    <!-- Tarjeta anidada: la maqueta mete tarjetas dentro de tarjetas (Inicio y Cola) -->
     <Style x:Key="TarjetaInterna" TargetType="Border" BasedOn="{StaticResource Tarjeta}">
         <Setter Property="Padding" Value="12" />
         <Setter Property="StrokeShape" Value="RoundRectangle 8" />
@@ -51,7 +39,6 @@
         <Setter Property="TextColor" Value="{StaticResource TextoEtiqueta}" />
     </Style>
 
-    <!-- Línea de datos de las tarjetas de la cola: "Incidencia / Normal / KM 130+200" -->
     <Style x:Key="TextoDato" TargetType="Label">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="TextColor" Value="{StaticResource TextoDato}" />
@@ -59,7 +46,6 @@
 
     <!-- ===== Formularios ===== -->
 
-    <!-- Etiqueta en mayúsculas sobre cada campo, como en la maqueta -->
     <Style x:Key="EtiquetaCampo" TargetType="Label">
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontAttributes" Value="Bold" />
@@ -68,7 +54,7 @@
         <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
 
-    <!-- Marco del campo: MAUI no da borde propio al Entry, así que lo envolvemos -->
+    <!-- MAUI no da borde propio al Entry: se envuelve -->
     <Style x:Key="MarcoCampo" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource BlancoBrocha}" />
         <Setter Property="Stroke" Value="{StaticResource BordeTarjeta}" />
@@ -98,24 +84,13 @@
         <Setter Property="BackgroundColor" Value="Transparent" />
     </Style>
 
-    <!-- Mensaje de error junto al campo (JTT-279 los exige persistentes) -->
     <Style x:Key="MensajeError" TargetType="Label">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="TextColor" Value="{StaticResource RojoError}" />
         <Setter Property="Margin" Value="0,6,0,0" />
     </Style>
 
-    <!-- ===== Botones =====
-
-         El botón dice lo que va a hacer, y por eso sus rótulos son de dos palabras
-         («Guardar incidencia», «Guardar borrador», «Continuar offline»). A media
-         pantalla, con relleno de 14 y una sola línea, no cabían: Android recortaba
-         el rótulo a la primera palabra y los dos botones de Captura acababan
-         diciendo «Guardar», que es justo la confusión que el texto largo evita.
-
-         Por eso el relleno baja a 6, el rótulo puede ocupar dos líneas y la altura
-         pasa a ser mínima y no fija: un botón de una línea se ve igual que antes,
-         y uno de dos crece en vez de perder texto. -->
+    <!-- ===== Botones ===== -->
 
     <Style x:Key="BotonPrimario" TargetType="Button">
         <Setter Property="BackgroundColor" Value="{StaticResource Vino}" />
@@ -180,7 +155,7 @@
         <Setter Property="TextColor" Value="{StaticResource RojoTexto}" />
     </Style>
 
-    <!-- ===== Indicadores del tablero de Inicio ===== -->
+    <!-- ===== Indicadores de Inicio ===== -->
 
     <Style x:Key="ValorIndicador" TargetType="Label">
         <Setter Property="FontSize" Value="24" />
@@ -188,7 +163,7 @@
         <Setter Property="TextColor" Value="{StaticResource VerdeTexto}" />
     </Style>
 
-    <!-- ===== Encabezado común a todas las pantallas ===== -->
+    <!-- ===== Encabezado común ===== -->
 
     <Style x:Key="TituloBanner" TargetType="Label">
         <Setter Property="FontSize" Value="12" />

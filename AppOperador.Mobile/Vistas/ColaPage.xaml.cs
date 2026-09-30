@@ -17,12 +17,10 @@ public partial class ColaPage : ContentPage
 	{
 		base.OnAppearing();
 
-		// Antes de la comprobacion de sesion: si la sincronizacion automatica termina justo
-		// ahora, la lista debe enterarse igual (JTT-1406).
+		// Antes de comprobar la sesión, para enterarse si la sincronización automática termina ahora.
 		_modelo.Escuchar();
 
-		// La ventana offline pudo vencer mientras la app estaba abierta (JTT-1384).
-		// Si vencio, la sesion ya se cerro y no hay nada que cargar.
+		// La ventana offline pudo vencer con la app abierta; entonces no hay nada que cargar.
 		if (!await _modelo.Enlace.ComprobarSesionAsync())
 		{
 			return;
@@ -31,10 +29,7 @@ public partial class ColaPage : ContentPage
 		await _modelo.ActualizarAsync();
 	}
 
-	/// <remarks>
-	/// Sin esto, cada visita a la pantalla dejaria un ViewModel mas colgado del servicio de
-	/// sincronizacion, que vive lo que la aplicacion.
-	/// </remarks>
+	// Si no, cada visita dejaría un ViewModel colgado de un servicio que vive lo que la app.
 	protected override void OnDisappearing()
 	{
 		_modelo.DejarDeEscuchar();
