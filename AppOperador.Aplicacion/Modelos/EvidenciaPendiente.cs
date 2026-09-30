@@ -16,4 +16,14 @@ public sealed record EvidenciaPendiente(
 	string TipoMime,
 	long Bytes,
 	EstadoSincronizacion Estado,
-	string ClaveLocalIncidencia);
+	string ClaveLocalIncidencia,
+	string? UltimoErrorCodigo = null)
+{
+	public string EstadoLegible => Estado switch
+	{
+		EstadoSincronizacion.Fallido when CodigosErrorJacob.EsFuncional(UltimoErrorCodigo) =>
+			"rechazada por el CCO, no se enviará",
+		EstadoSincronizacion.Fallido => "con error, se reintentará",
+		_ => "pendiente de enviar",
+	};
+}

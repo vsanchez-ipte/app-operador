@@ -179,6 +179,22 @@ public sealed class RepositorioEvidenciasSqliteTests
 	}
 
 	[Fact]
+	public async Task PendientesDelOperador_traenElCodigoDelRechazo()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		var mia = await IncidenciaAsync(contexto, contexto.Sesion);
+		await repositorio.AgregarAsync(Evidencia("ev-1", mia.Uuid));
+		await repositorio.ActualizarEnvioAsync(
+			"ev-1", EstadoSincronizacion.Fallido, "appevidencias.formato.nopermitido");
+
+		var pendiente = Assert.Single(await repositorio.ObtenerPendientesDelOperadorAsync("admin"));
+
+		Assert.Equal("appevidencias.formato.nopermitido", pendiente.UltimoErrorCodigo);
+	}
+
+	[Fact]
 	public async Task PendientesDelOperador_sinOperadorNoDevuelveNada()
 	{
 		await using var contexto = new ContextoSqlite();
@@ -191,6 +207,76 @@ public sealed class RepositorioEvidenciasSqliteTests
 		Assert.Empty(await repositorio.ObtenerPendientesDelOperadorAsync(""));
 		Assert.Empty(await repositorio.ObtenerPendientesDelOperadorAsync("nadie"));
 	}
+
+	[Fact]
+	public async Task Rezagadas_soloLasSinConfirmarDeIncidenciasYaSincronizadasDelOperador()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+
+		var sincronizada = await IncidenciaAsync(contexto, contexto.Sesion);
+		var enCola = await IncidenciaAsync(contexto, contexto.Sesion);
+		var ajena = await IncidenciaAsync(contexto, new SesionFija("otro"));
+		await MarcarSincronizadaAsync(contexto, contexto.Sesion, sincronizada.Uuid);
+		await MarcarSincronizadaAsync(contexto, new SesionFija("otro"), ajena.Uuid);
+
+		await repositorio.AgregarAsync(Evidencia("ev-1", sincronizada.Uuid));
+		await repositorio.AgregarAsync(Evidencia("ev-2", sincronizada.Uuid, estado: EstadoSincronizacion.Sincronizado));
+		await repositorio.AgregarAsync(Evidencia("ev-3", enCola.Uuid));
+		await repositorio.AgregarAsync(Evidencia("ev-4", ajena.Uuid));
+		await repositorio.ActualizarEnvioAsync(
+			"ev-1", EstadoSincronizacion.Fallido, "appincidencias.error.tecnico", "Sin red.");
+
+		var rezagadas = await repositorio.ObtenerRezagadasDelOperadorAsync("admin");
+
+		var unica = Assert.Single(rezagadas);
+		Assert.Equal("ev-1", unica.Evidencia.Uuid);
+		Assert.Equal(sincronizada.Uuid, unica.Evidencia.IncidenciaUuid);
+		Assert.Equal("appincidencias.error.tecnico", unica.Evidencia.UltimoErrorCodigo);
+		Assert.Equal(1, unica.Intentos);
+
+		Assert.NotNull(unica.UltimoIntentoUtc);
+		Assert.Equal(DateTimeKind.Utc, unica.UltimoIntentoUtc!.Value.Kind);
+	}
+
+	[Fact]
+	public async Task Rezagadas_unaQueNuncaSeIntentoLlegaSinUltimoIntento()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		var sincronizada = await IncidenciaAsync(contexto, contexto.Sesion);
+		await MarcarSincronizadaAsync(contexto, contexto.Sesion, sincronizada.Uuid);
+		await repositorio.AgregarAsync(Evidencia("ev-1", sincronizada.Uuid));
+
+		var unica = Assert.Single(await repositorio.ObtenerRezagadasDelOperadorAsync("admin"));
+
+		Assert.Equal(0, unica.Intentos);
+		Assert.Null(unica.UltimoIntentoUtc);
+	}
+
+	[Fact]
+	public async Task LaTarjetaDeLaCola_cuentaLaEvidenciaQueNoLlego()
+	{
+		await using var contexto = new ContextoSqlite();
+		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
+		await contexto.BaseDatos.InicializarAsync();
+		var sincronizada = await IncidenciaAsync(contexto, contexto.Sesion);
+		await MarcarSincronizadaAsync(contexto, contexto.Sesion, sincronizada.Uuid);
+		await repositorio.AgregarAsync(Evidencia("ev-1", sincronizada.Uuid));
+		await repositorio.AgregarAsync(Evidencia("ev-2", sincronizada.Uuid));
+
+		var tarjeta = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
+
+		Assert.Equal(2, tarjeta.EvidenciasSinEnviar);
+		Assert.NotNull(tarjeta.ReintentoEvidenciaUtc);
+		Assert.True(tarjeta.HayEvidenciaSinEnviar);
+	}
+
+	private static Task MarcarSincronizadaAsync(ContextoSqlite contexto, ISessionStore sesion, string uuid) =>
+		contexto.CrearColaDe(sesion).ActualizarEnvioAsync(
+			new ActualizacionEnvio(uuid, EstadoSincronizacion.Sincronizado, 1, "INC-APK-2026-0015", null));
 
 	private static async Task<(string Uuid, string ClaveLocal)> IncidenciaAsync(
 		ContextoSqlite contexto, ISessionStore sesion)

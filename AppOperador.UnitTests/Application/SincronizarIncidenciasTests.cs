@@ -27,6 +27,7 @@ public sealed class SincronizarIncidenciasTests
 	private readonly SesionFalsa _sesion = new();
 	private readonly EvidenciasFalsas _evidencias = new();
 	private readonly EvidenciasJacobFalso _jacobEvidencias = new();
+	private readonly BitacoraNula _bitacora = new();
 
 	private SincronizarIncidencias Crear() => new(
 		_cola,
@@ -35,10 +36,11 @@ public sealed class SincronizarIncidenciasTests
 		new TokenFalso(),
 		new CapacidadesDeLaSesion(_sesion),
 		_reloj,
-		new BitacoraNula(),
+		_bitacora,
 		new CatalogoFalso(),
 		_evidencias,
-		_jacobEvidencias);
+		_jacobEvidencias,
+		_sesion);
 
 	// ── El envío que nunca terminó ────────────────────────────────────────────────────
 
@@ -724,8 +726,13 @@ public sealed class SincronizarIncidenciasTests
 
 	private sealed class BitacoraNula : IAuditLog
 	{
-		public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken c = default) =>
-			Task.CompletedTask;
+		public List<(NivelAuditoria Nivel, string Mensaje)> Escrito { get; } = [];
+
+		public Task RegistrarAsync(NivelAuditoria nivel, string mensaje, CancellationToken c = default)
+		{
+			Escrito.Add((nivel, mensaje));
+			return Task.CompletedTask;
+		}
 
 		public Task AtribuirAsync(string alias, string operador, CancellationToken c = default) =>
 			Task.CompletedTask;
@@ -758,7 +765,6 @@ public sealed class SincronizarIncidenciasTests
 		public Task ReemplazarAsync(CatalogosOperacion catalogos, CancellationToken c = default) =>
 			Task.CompletedTask;
 	}
-
 
 	// ── La evidencia va encadenada a su incidencia (JTT-1398 CA 11) ───────────────────
 
@@ -862,6 +868,115 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Empty(_jacobEvidencias.Subidas);
 	}
 
+	private static EvidenciaRezagada Rezagada(
+		int intentos = 1,
+		DateTime? ultimoIntento = null,
+		string? ultimoError = "appincidencias.error.tecnico") =>
+		new(EvidenciaDe(ultimoError: ultimoError) with { Estado = EstadoSincronizacion.Fallido },
+			intentos, ultimoIntento);
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalloConSuIncidenciaYaConfirmada_seReintentaEnLaSiguienteTanda()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Single(_jacobEvidencias.Subidas);
+		Assert.Contains(_evidencias.Actualizadas,
+			a => a.Estado == EstadoSincronizacion.Sincronizado);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagada_esperaComoUnaIncidenciaAntesDeReintentarse()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddSeconds(-30)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagadaQueNuncaSeIntento_saleSinEsperar()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 0, ultimoIntento: null, ultimoError: null));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Single(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaRezagadaRechazadaPorElCco_noSeReintenta()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(
+			intentos: 1,
+			ultimoIntento: Ahora.AddHours(-1),
+			ultimoError: "appevidencias.formato.nopermitido"));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task LasRezagadasSePidenParaElOperadorDeLaSesion()
+	{
+		await Crear().EjecutarAsync();
+
+		Assert.Equal(["admin"], _evidencias.RezagadasPedidasPara);
+	}
+
+	[Fact]
+	public async Task SinEnlace_lasRezagadasTampocoSeIntentan()
+	{
+		_conectividad.HayEnlace = false;
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddHours(-1)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Empty(_jacobEvidencias.Subidas);
+	}
+
+	[Fact]
+	public async Task UnaRezagadaQueVuelveAFallar_quedaFallidaParaElSiguienteIntento()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Equal([("ev-1", EstadoSincronizacion.Fallido)], _evidencias.Actualizadas);
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueFalla_dejaSuMotivoEnLaAuditoria()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
+			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico",
+			"El servidor respondió HTTP 500 InternalServerError sin explicación."));
+
+		await Crear().EjecutarAsync();
+
+		Assert.Contains(_bitacora.Escrito, e =>
+			e.Nivel == NivelAuditoria.Advertencia
+			&& e.Mensaje == "Evidencia ev-1.jpg no llegó al CCO: El servidor respondió HTTP 500 " +
+				"InternalServerError sin explicación. [appincidencias.error.tecnico]");
+	}
+
+	[Fact]
+	public async Task UnaEvidenciaQueLlega_noEnsuciaLaAuditoria()
+	{
+		_evidencias.Rezagadas.Add(Rezagada(intentos: 1, ultimoIntento: Ahora.AddMinutes(-5)));
+
+		await Crear().EjecutarAsync();
+
+		Assert.DoesNotContain(_bitacora.Escrito, e => e.Mensaje.StartsWith("Evidencia ev-1.jpg"));
+	}
+
 	// ── Dobles de evidencia (JTT-1398) ────────────────────────────────────────────────
 
 	private sealed class EvidenciasFalsas : IRepositorioEvidencias
@@ -893,6 +1008,17 @@ public sealed class SincronizarIncidenciasTests
 		public Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
 			string operador, CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
+
+		public List<EvidenciaRezagada> Rezagadas { get; } = [];
+
+		public List<string> RezagadasPedidasPara { get; } = [];
+
+		public Task<IReadOnlyList<EvidenciaRezagada>> ObtenerRezagadasDelOperadorAsync(
+			string operador, CancellationToken c = default)
+		{
+			RezagadasPedidasPara.Add(operador);
+			return Task.FromResult<IReadOnlyList<EvidenciaRezagada>>([.. Rezagadas]);
+		}
 
 		public Task ActualizarEnvioAsync(
 			string uuid, EstadoSincronizacion estado, string? codigoError, string? mensaje = null, CancellationToken c = default)

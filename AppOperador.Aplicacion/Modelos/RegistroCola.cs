@@ -68,7 +68,9 @@ public sealed record RegistroCola(
 	string? UltimoErrorMensaje = null,
 	int Intentos = 0,
 	DateTime? UltimoIntentoUtc = null,
-	DateTime? CapturadaUtc = null)
+	DateTime? CapturadaUtc = null,
+	int EvidenciasSinEnviar = 0,
+	DateTime? ReintentoEvidenciaUtc = null)
 {
 	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
 	/// <remarks>
@@ -210,8 +212,19 @@ public sealed record RegistroCola(
 		EstadoSincronizacion.Pendiente => true,
 		EstadoSincronizacion.Enviando => true,
 		EstadoSincronizacion.Fallido => ReintentoUtc is { } reintento && reintento <= ahoraUtc,
+		EstadoSincronizacion.Sincronizado =>
+			ReintentoEvidenciaUtc is { } evidencia && evidencia <= ahoraUtc,
 		_ => false,
 	};
+
+	public bool HayEvidenciaSinEnviar =>
+		Estado == EstadoSincronizacion.Sincronizado && EvidenciasSinEnviar > 0;
+
+	public string AvisoEvidencia => !HayEvidenciaSinEnviar
+		? string.Empty
+		: EvidenciasSinEnviar == 1
+			? "1 evidencia pendiente de enviar al CCO."
+			: $"{EvidenciasSinEnviar} evidencias pendientes de enviar al CCO.";
 
 	/// <summary>
 	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.

@@ -79,4 +79,8 @@ public interface IRepositorioEvidencias
 	Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
 		string operador,
 		CancellationToken cancelacion = default);
+
+	Task<IReadOnlyList<EvidenciaRezagada>> ObtenerRezagadasDelOperadorAsync(
+		string operador,
+		CancellationToken cancelacion = default);
 }

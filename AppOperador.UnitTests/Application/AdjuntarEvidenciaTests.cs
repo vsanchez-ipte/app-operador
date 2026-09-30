@@ -247,6 +247,10 @@ public sealed class AdjuntarEvidenciaTests
 			string operador, CancellationToken c = default) =>
 			Task.FromResult<IReadOnlyList<EvidenciaPendiente>>([]);
 
+		public Task<IReadOnlyList<EvidenciaRezagada>> ObtenerRezagadasDelOperadorAsync(
+			string operador, CancellationToken c = default) =>
+			Task.FromResult<IReadOnlyList<EvidenciaRezagada>>([]);
+
 		public Task ActualizarEnvioAsync(
 			string uuid, EstadoSincronizacion estado, string? codigoError, string? mensaje = null, CancellationToken c = default)
 		{

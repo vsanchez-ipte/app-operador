@@ -33,6 +33,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	private readonly ICatalogoRepository _catalogo;
 	private readonly IRepositorioEvidencias _evidencias;
 	private readonly IEvidenciasJacobClient _clienteEvidencias;
+	private readonly ISessionStore _sesiones;
 
 	/// <summary>
 	/// Deja pasar una sola sincronización a la vez (JTT-1406 CA 6).
@@ -71,7 +72,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		IAuditLog bitacora,
 		ICatalogoRepository catalogo,
 		IRepositorioEvidencias evidencias,
-		IEvidenciasJacobClient clienteEvidencias)
+		IEvidenciasJacobClient clienteEvidencias,
+		ISessionStore sesiones)
 	{
 		_cola = cola;
 		_jacob = jacob;
@@ -83,6 +85,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		_catalogo = catalogo;
 		_evidencias = evidencias;
 		_clienteEvidencias = clienteEvidencias;
+		_sesiones = sesiones;
 	}
 
 	/// <summary>
@@ -180,6 +183,8 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 				break;
 			}
 		}
+
+		await ReintentarEvidenciasRezagadasAsync(token, cancelacion);
 
 		await _bitacora.RegistrarAsync(
 			OperacionAuditada.Sincronizacion, ResultadoAuditoria.Exito,
@@ -489,27 +494,81 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			// Lo funcional no se reintenta, igual que en las incidencias: reenviar un formato
 			// que el servidor no admite da el mismo rechazo y gasta datos del operador.
-            if (CodigosErrorJacob.EsFuncional(evidencia.UltimoErrorCodigo))
-            {
-                continue;
-            }
+			if (CodigosErrorJacob.EsFuncional(evidencia.UltimoErrorCodigo))
+			{
+				continue;
+			}
 
-			var resultado = await _clienteEvidencias.SubirAsync(
-				incidenciaUuid,
-				evidencia.RutaArchivo,
-				evidencia.NombreOriginal,
-				token,
-				cancelacion);
-
-			// yaExistia es éxito: el servidor ya tenía este contenido para esta incidencia. La
-			// subida es idempotente por contenido, así que un reintento tras una respuesta
-			// perdida devuelve lo mismo sin duplicar ni gastar cupo.
-			var destino = resultado.Exito
-				? EstadoSincronizacion.Sincronizado
-				: EstadoSincronizacion.Fallido;
-
-			await _evidencias.ActualizarEnvioAsync(
-				evidencia.Uuid, destino, resultado.Codigo, resultado.Mensaje, cancelacion);
+			await SubirEvidenciaAsync(evidencia, token, cancelacion);
 		}
+	}
+
+	private async Task ReintentarEvidenciasRezagadasAsync(string token, CancellationToken cancelacion)
+	{
+		var operador = _sesiones.Actual?.Operador;
+		if (string.IsNullOrWhiteSpace(operador))
+		{
+			return;
+		}
+
+		var rezagadas = await _evidencias.ObtenerRezagadasDelOperadorAsync(operador, cancelacion);
+		var ahora = _reloj.UtcAhora;
+		var intentadas = 0;
+		var subidas = 0;
+
+		foreach (var rezagada in rezagadas)
+		{
+			cancelacion.ThrowIfCancellationRequested();
+
+			if (!rezagada.TocaIntentar(ahora))
+			{
+				continue;
+			}
+
+			intentadas++;
+			if (await SubirEvidenciaAsync(rezagada.Evidencia, token, cancelacion))
+			{
+				subidas++;
+			}
+		}
+
+		if (intentadas > 0)
+		{
+			await _bitacora.RegistrarAsync(
+				OperacionAuditada.Sincronizacion, ResultadoAuditoria.Exito,
+				$"Evidencias reintentadas: {subidas}/{intentadas} llegaron al CCO.",
+				cancelacion: cancelacion);
+		}
+	}
+
+	private async Task<bool> SubirEvidenciaAsync(
+		EvidenciaAdjunta evidencia,
+		string token,
+		CancellationToken cancelacion)
+	{
+		var resultado = await _clienteEvidencias.SubirAsync(
+			evidencia.IncidenciaUuid,
+			evidencia.RutaArchivo,
+			evidencia.NombreOriginal,
+			token,
+			cancelacion);
+
+		var destino = resultado.Exito
+			? EstadoSincronizacion.Sincronizado
+			: EstadoSincronizacion.Fallido;
+
+		await _evidencias.ActualizarEnvioAsync(
+			evidencia.Uuid, destino, resultado.Codigo, resultado.Mensaje, cancelacion);
+
+		if (!resultado.Exito)
+		{
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"Evidencia {evidencia.NombreOriginal} no llegó al CCO: " +
+				$"{resultado.Mensaje ?? "sin mensaje"} [{resultado.Codigo ?? "sin código"}]",
+				cancelacion);
+		}
+
+		return resultado.Exito;
 	}
 }
