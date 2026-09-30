@@ -87,7 +87,16 @@ public sealed partial class CapturaViewModel
 			: !ResumenEvidencias.HayEspacioParaVideo
 				// JTT-289 CA 8: se bloquea el video y se dice con qué se puede seguir.
 				? "No hay espacio en el dispositivo para un video. Puede continuar con texto o fotografía."
-				: string.Empty;
+				// Con el botón encendido el rótulo deja de explicar por qué no se puede y pasa a
+				// decir hasta dónde se puede. Es lo que QA levantó: el operador grababa, y hasta
+				// que soltaba el botón no se enteraba de que se había pasado del tope y de que
+				// el video se perdía entero.
+				//
+				// Dice el tope y no promete que la grabación se detendrá: se le pide a la cámara
+				// que corte (ver ISelectorEvidencia.ElegirAsync), pero hay fabricantes que
+				// ignoran esa petición, y prometer lo que no se cumple sería el mismo defecto al
+				// revés.
+				: $"El video no debe pasar de {ResumenEvidencias.Limites.TamanoMaximoMb} MB.";
 
 	public bool HayAvisoVideo => AvisoVideo.Length > 0;
 
@@ -138,7 +147,15 @@ public sealed partial class CapturaViewModel
 			return;
 		}
 
-		var seleccion = await _selectorEvidencia.ElegirAsync(origen);
+		// El tope solo viaja al grabar: es el único origen que crea el archivo en el momento y,
+		// por tanto, el único al que todavía se le puede poner un límite. Los demás entregan algo
+		// que ya existe y se comprueban después, con su tamaño real. Cuánto vale lo decide
+		// Aplicación, que es donde se puede probar.
+		var topeBytes = origen is OrigenEvidencia.Video
+			? ResumenEvidencias.TopeParaGrabarVideo
+			: 0;
+
+		var seleccion = await _selectorEvidencia.ElegirAsync(origen, topeBytes);
 
 		if (seleccion.Archivos.Count == 0)
 		{
@@ -201,6 +218,46 @@ public sealed partial class CapturaViewModel
 		}
 
 		await RecargarEvidenciasAsync();
+	}
+
+	/// <summary>
+	/// Abre una evidencia con el visor del sistema.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Sirve igual para lo que no se ha enviado y para lo que ya se envió</b>, porque el
+	/// archivo local no se borra al sincronizar. Lo que no alcanza es la evidencia capturada en
+	/// otro dispositivo: esa solo existe en el servidor, y el canal móvil todavía no tiene por
+	/// dónde descargarla.
+	/// </para>
+	/// <para>
+	/// No cambia nada de la incidencia: es solo mirar. Por eso no toca <c>MensajeError</c> salvo
+	/// cuando falla, y no marca el campo en rojo.
+	/// </para>
+	/// </remarks>
+	[RelayCommand]
+	private async Task AbrirEvidenciaAsync(EvidenciaVista? evidencia)
+	{
+		if (evidencia is null)
+		{
+			return;
+		}
+
+		var resultado = await _visorEvidencia.AbrirAsync(
+			evidencia.Ruta, evidencia.Nombre, evidencia.TipoMime);
+
+		// Abrir bien no dice nada: el operador ya está viendo su evidencia. Lo demás sí, y cada
+		// caso distinto, porque se corrigen distinto.
+		MensajeError = resultado switch
+		{
+			ResultadoApertura.ArchivoNoEncontrado =>
+				"El archivo de esa evidencia ya no está en el dispositivo.",
+			ResultadoApertura.SinAplicacion =>
+				$"No hay una aplicación en el dispositivo para abrir un archivo {evidencia.Tipo}.",
+			ResultadoApertura.NoSePudo =>
+				"No se pudo abrir la evidencia.",
+			_ => MensajeError,
+		};
 	}
 
 	[RelayCommand]

@@ -190,6 +190,53 @@ public sealed class ResumenEvidenciasTests
 		Assert.True(resumen.PuedeAdjuntarVideo);
 	}
 
+	// ── El tope con el que se graba, para no perder lo grabado ───────────────────────
+
+	[Fact]
+	public void SeGrabaConElTopeDelCatalogo()
+	{
+		// QA lo levantó: sin tope, la cámara graba hasta que el operador suelta el botón y el
+		// video se pierde entero al pasarse. El tope se pide antes, por lo mismo que el espacio.
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+
+		var resumen = new ResumenEvidencias([], conVideo);
+
+		Assert.Equal(conVideo.TamanoMaximoBytes, resumen.TopeParaGrabarVideo);
+	}
+
+	[Fact]
+	public void SinLimitesDescargados_noSePideNingunTope()
+	{
+		// Cero significa «no pidas tope», no «corta en cero»: pedirle cero a la cámara la
+		// dejaría sin grabar nada. Aquí el botón ya está apagado por otra razón.
+		var resumen = new ResumenEvidencias([], LimitesEvidencia.Desconocidos);
+
+		Assert.Equal(0, resumen.TopeParaGrabarVideo);
+	}
+
+	[Fact]
+	public void ConElCupoLleno_noSePideTopePorqueNoSeVaAGrabar()
+	{
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+		var llenas = new[] { Evidencia("e1"), Evidencia("e2"), Evidencia("e3") };
+
+		var resumen = new ResumenEvidencias(llenas, conVideo);
+
+		Assert.False(resumen.PuedeAdjuntarVideo);
+		Assert.Equal(0, resumen.TopeParaGrabarVideo);
+	}
+
+	[Fact]
+	public void SinEspacioParaVideo_noSePideTope()
+	{
+		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
+		var apenas = ReglaEspacioParaEvidencia.MargenSeguridadBytes + conVideo.TamanoMaximoBytes - 1;
+
+		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: apenas);
+
+		Assert.Equal(0, resumen.TopeParaGrabarVideo);
+	}
+
 	[Fact]
 	public void SinEspacio_laFotografiaSigueDisponible()
 	{

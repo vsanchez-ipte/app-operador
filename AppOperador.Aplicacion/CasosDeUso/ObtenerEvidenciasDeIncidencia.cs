@@ -95,6 +95,25 @@ public sealed record ResumenEvidencias(
 		ReglaEspacioParaEvidencia.Cabe(BytesLibres, Limites.TamanoMaximoBytes);
 
 	/// <summary>
+	/// Tamaño máximo que se le pide a la cámara al grabar, o <c>0</c> para no pedir ninguno.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Es el mismo razonamiento de <see cref="HayEspacioParaVideo"/>, aplicado al tamaño.</b>
+	/// Grabar es lo único que crea el archivo mientras el operador mira: cuando la grabación
+	/// termina, pasarse del tope ya no tiene arreglo y lo grabado se pierde entero. QA lo levantó
+	/// como defecto —«sigue grabando normal y el usuario no se entera hasta que termina»— y tiene
+	/// razón por el criterio que esta misma clase ya fijó: lo del video se decide antes.
+	/// </para>
+	/// <para>
+	/// Responde <c>0</c> cuando no se puede grabar, incluido el caso de no tener límites
+	/// descargados: pedirle a la cámara que corte en cero la dejaría sin grabar nada.
+	/// </para>
+	/// </remarks>
+	public long TopeParaGrabarVideo =>
+		PuedeAdjuntarVideo ? Limites.TamanoMaximoBytes : 0;
+
+	/// <summary>
 	/// Por qué no se puede grabar video, cuando no se puede.
 	/// </summary>
 	/// <remarks>

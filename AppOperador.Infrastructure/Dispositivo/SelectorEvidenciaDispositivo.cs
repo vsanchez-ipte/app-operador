@@ -62,6 +62,7 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 	/// <inheritdoc />
 	public async Task<SeleccionEvidencia> ElegirAsync(
 		OrigenEvidencia origen,
+		long topeBytes = 0,
 		CancellationToken cancelacion = default)
 	{
 		cancelacion.ThrowIfCancellationRequested();
@@ -78,6 +79,25 @@ public sealed class SelectorEvidenciaDispositivo : ISelectorEvidencia
 				return permiso;
 			}
 		}
+
+		// Grabar es lo único que CREA el archivo mientras el operador mira: si se pasa del tope,
+		// al terminar ya no hay nada que recortar y se pierde todo lo grabado. Por eso al video
+		// se le pide a la cámara que corte sola, en vez de validarlo al final como a los demás.
+		// MediaPicker no sabe hacerlo —MediaPickerOptions no tiene tamaño ni duración—, así que
+		// ese caso va por el intent de Android. Si no se puede, se sigue por el camino de
+		// siempre: quedarse sin grabar sería peor que grabar sin tope.
+#if ANDROID
+		if (origen is OrigenEvidencia.Video && topeBytes > 0)
+		{
+			// Null aquí significa «esta vía no se pudo usar», no «el operador no grabó»: cancelar
+			// vuelve con su propio desenlace y termina ahí. Ver GrabacionAcotadaAndroid.
+			var acotado = await GrabacionAcotadaAndroid.GrabarAsync(topeBytes, cancelacion);
+			if (acotado is not null)
+			{
+				return acotado;
+			}
+		}
+#endif
 
 		try
 		{

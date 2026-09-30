@@ -202,6 +202,17 @@
                                             <Border WidthRequest="72" HeightRequest="72"
                                                     BackgroundColor="#2B2523" StrokeThickness="0"
                                                     StrokeShape="RoundRectangle 6">
+                                                <!-- Tocar la miniatura la abre con el visor del
+                                                     sistema. Vale también para las ya enviadas:
+                                                     el archivo local no se borra al sincronizar.
+                                                     El comando vive en el ViewModel de la página,
+                                                     no en la evidencia, así que se busca por el
+                                                     ancestro. -->
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer
+                                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CapturaViewModel}}, Path=AbrirEvidenciaCommand}"
+                                                        CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
                                                 <Grid>
                                                     <Image Source="{Binding Ruta}" Aspect="AspectFill"
                                                            IsVisible="{Binding EsImagen}" />

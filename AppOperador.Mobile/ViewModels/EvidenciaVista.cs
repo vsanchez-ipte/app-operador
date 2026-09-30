@@ -24,7 +24,8 @@ public sealed record EvidenciaVista(
 	string Tamano,
 	bool YaEnviada,
 	string Ruta,
-	bool EsImagen)
+	bool EsImagen,
+	string TipoMime = "")
 {
 	public static EvidenciaVista Desde(EvidenciaAdjunta adjunta) => new(
 		adjunta.Uuid,
@@ -33,7 +34,10 @@ public sealed record EvidenciaVista(
 		TamanoLegible(adjunta.Bytes),
 		adjunta.Estado == EstadoSincronizacion.Sincronizado,
 		adjunta.RutaArchivo,
-		EsImagen: adjunta.TipoMime.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
+		EsImagen: adjunta.TipoMime.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
+		// El tipo crudo viaja además del legible: «JPEG» es para que lo lea el operador, pero
+		// para elegir con qué aplicación se abre hace falta el que entienden las máquinas.
+		TipoMime: adjunta.TipoMime);
 
 	/// <summary>
 	/// Qué se pinta cuando el archivo no es una imagen.
