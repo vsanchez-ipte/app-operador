@@ -2,9 +2,6 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.UnitTests.Domain;
 
-/// <summary>
-/// Espera creciente entre reintentos (JTT-1401 CA 7).
-/// </summary>
 public sealed class ReglaEsperaReintentoTests
 {
 	[Theory]
@@ -25,8 +22,6 @@ public sealed class ReglaEsperaReintentoTests
 	[InlineData(400)]
 	public void LaEsperaSeDetieneEnElTope(int intentos)
 	{
-		// Sin tope, un turno entero sin cobertura dejaría la siguiente espera en más de un día
-		// y lo capturado no saldría hasta la jornada siguiente.
 		Assert.Equal(ReglaEsperaReintento.EsperaMaxima, ReglaEsperaReintento.Para(intentos));
 	}
 

@@ -4,33 +4,8 @@ using AppOperador.Infrastructure.Dispositivo;
 
 namespace AppOperador.IntegrationTests.Dispositivo;
 
-/// <summary>
-/// La geometría embebida del corredor, contra el archivo real (JTT-1395).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Esto prueba el dato, no el algoritmo.</b> La aritmética de proyección la cubre
-/// <c>GeometriaCorredorTests</c> con trazas de juguete; aquí lo que se verifica es que el recurso
-/// que viaja dentro del paquete sea el que se generó del KMZ y siga diciendo lo mismo.
-/// </para>
-/// <para>
-/// <b>Por qué las 27 paletas y no una.</b> Una sola comprobación pasa igual si el archivo se
-/// regeneró mal, se truncó a la mitad o se reordenó: basta con que ese punto siga bien. Las
-/// paletas son la única verdad independiente que existe —son los letreros que el operador lee en
-/// la carretera, y vienen del mismo KMZ pero de otra carpeta que la traza—, así que exigirlas
-/// todas es lo único que delata un archivo corrompido.
-/// </para>
-/// </remarks>
 public sealed class RepositorioGeometriaCorredorEmbebidoTests
 {
-	/// <summary>
-	/// Cuánto se admite que se aparte una paleta de su propio kilómetro.
-	/// </summary>
-	/// <remarks>
-	/// Al generar el archivo se midió <b>0.2 m de error medio y 1 m en el peor caso</b>. Se deja
-	/// margen hasta 5 m para no romper la prueba por un redondeo, pero <b>no más</b>: con una
-	/// tolerancia holgada esto dejaría de detectar justo lo que busca.
-	/// </remarks>
 	private const int MargenMetros = 5;
 
 	[Fact]
@@ -82,8 +57,6 @@ public sealed class RepositorioGeometriaCorredorEmbebidoTests
 			(paleta * 1000) - MargenMetros,
 			(paleta * 1000) + MargenMetros);
 
-		// Y la paleta tiene que caer dentro de la tolerancia, o el operador que esté justo al lado
-		// del letrero recibiría «fuera del corredor» estando donde más claro tiene su kilómetro.
 		Assert.True(
 			ReglaToleranciaCorredor.DentroDelCorredor(proyeccion.DesviacionMetros),
 			$"La paleta PK {paleta} queda a {proyeccion.DesviacionMetros:F0} m de la traza, por " +
@@ -100,11 +73,7 @@ public sealed class RepositorioGeometriaCorredorEmbebidoTests
 		double latitud,
 		double longitud)
 	{
-		// Es el límite conocido y se fija aquí a propósito: el KMZ trae 29 paletas pero su traza
-		// termina antes de la primera y de la última —764 m antes del PK 120 y 284 m antes del
-		// PK 148—. Ahí no se inventa geometría: se responde «tramo sin geometría», y esta prueba
-		// avisa si alguna vez el archivo pasa a cubrirlos, que sería una mejora que hay que
-		// reflejar en la documentación en vez de descubrirla en campo.
+		// Límite conocido: la traza empieza 764 m después del PK 120 y termina 284 m antes del PK 148.
 		var geometria = await new RepositorioGeometriaCorredorEmbebido().ObtenerAsync();
 
 		var proyeccion = geometria.Proyectar(latitud, longitud);
@@ -121,8 +90,6 @@ public sealed class RepositorioGeometriaCorredorEmbebidoTests
 	[Fact]
 	public async Task LaGeometriaSeLeeUnaSolaVezYSeReutiliza()
 	{
-		// Son 22 KB y 724 vértices que no cambian mientras la app esté abierta. Releerlos en cada
-		// lectura de GPS —que ocurre al abrir el formulario y en cada recálculo— sería gasto puro.
 		var repositorio = new RepositorioGeometriaCorredorEmbebido();
 
 		var primera = await repositorio.ObtenerAsync();
@@ -134,8 +101,7 @@ public sealed class RepositorioGeometriaCorredorEmbebidoTests
 	[Fact]
 	public async Task UnaLecturaSobreLaTrazaSeSituaConPrecisionDeMetros()
 	{
-		// El vértice 0 de la traza, tal como está en el recurso: si el parseo cambiara la cultura
-		// o desordenara las columnas, esto se iría a otro continente antes que a otro kilómetro.
+		// El vértice 0 del recurso: con otra cultura de parseo caería en otro continente.
 		var geometria = await new RepositorioGeometriaCorredorEmbebido().ObtenerAsync();
 		var posicion = PosicionDispositivo.Crear(
 			32.5547288,

@@ -3,42 +3,7 @@ using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Infrastructure.Dispositivo;
 
-/// <summary>
-/// Estado real del enlace con Jacob CCO (JTT-1391).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Combina dos señales, y las dos hacen falta:
-/// </para>
-/// <list type="number">
-///   <item>
-///     <b>La red del dispositivo</b>, que dice si hay por dónde salir. Es barata y cambia
-///     sola, así que se escucha en vez de preguntarla.
-///   </item>
-///   <item>
-///     <b>Una consulta a Jacob</b>, que dice si esa red llega hasta el servidor. Sin ella,
-///     el indicador mentiría en las dos situaciones que más se dan en campo: cobertura sin
-///     servidor alcanzable y servidor levantado al que no se llega (CA 2).
-///   </item>
-/// </list>
-/// <para>
-/// <b>Antes de que exista sesión no hay con qué preguntar</b>, porque la sonda va
-/// autenticada. En ese caso manda la red a secas: decirle al operador que no hay enlace
-/// cuando ni siquiera ha intentado entrar sería un aviso sin fundamento. Sesión quiere
-/// decir la <b>viva</b>, no que haya un token guardado: el de una sesión vencida sobrevive
-/// en el almacén seguro, y sondear con él en la pantalla de acceso traía un <c>401</c> que
-/// se mostraba como «Sin conexión» con el servidor contestando.
-/// </para>
-/// <para>
-/// <b>El acceso también es una señal.</b> La preautenticación y la apertura de sesión hablan
-/// con Jacob sin sesión, y lo que contesten se anota como si fuera la sonda: si acaba de
-/// validar credenciales, hay enlace; si no contestó, no lo hay.
-/// </para>
-/// <para>
-/// El evento se levanta en el hilo principal: lo consumen enlaces de la interfaz, y
-/// notificarlo desde el hilo del sistema haría fallar la actualización de las vistas.
-/// </para>
-/// </remarks>
+// Red del dispositivo más sonda a Jacob. Sin sesión viva manda la red: un token vencido daría 401.
 public sealed class ServicioConectividadJacob : IConnectivityService, IDisposable
 {
 	private readonly IAccesoJacobClient _jacob;
@@ -54,30 +19,25 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		_tokens = tokens;
 		_sesiones = sesiones;
 
-		// Se parte de lo que diga la red. La primera sonda llega con la primera
-		// comprobación explícita, para no lanzar tráfico desde el constructor.
+		// Sin sondear desde el constructor: la primera sonda llega con la primera comprobación.
 		_hayEnlace = HayRed;
 
 		Connectivity.Current.ConnectivityChanged += AlCambiarLaRed;
 	}
 
-	/// <inheritdoc />
 	public bool HayEnlace => _hayEnlace;
 
-	/// <inheritdoc />
 	public event EventHandler<bool>? EnlaceCambio;
 
-	/// <inheritdoc />
 	public async Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default)
 	{
-		// Sin red no hace falta molestar al servidor: la respuesta ya se conoce.
 		if (!HayRed)
 		{
 			return Publicar(ResultadoSondeo.SinTransporte(
 				"El dispositivo declara no tener acceso a internet."));
 		}
 
-		// Sin sesión viva no hay sonda autenticada posible. Ver las notas del tipo.
+		// Sin sesión viva no hay sonda autenticada; el token guardado puede ser de una sesión vencida.
 		if (_sesiones.Actual is null)
 		{
 			return Publicar(ResultadoSondeo.SegunLaRed());
@@ -92,22 +52,13 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		return Publicar(await _jacob.ComprobarEnlaceAsync(token, cancelacion));
 	}
 
-	/// <inheritdoc />
 	public void AnotarIntercambio(bool jacobRespondio) =>
 		Publicar(ResultadoSondeo.Observado(jacobRespondio));
 
-	/// <summary>Indica si el dispositivo declara tener acceso a internet.</summary>
 	private static bool HayRed =>
 		Connectivity.Current.NetworkAccess == NetworkAccess.Internet;
 
-	/// <summary>
-	/// Reacciona a que la red aparezca o desaparezca.
-	/// </summary>
-	/// <remarks>
-	/// Perder la red se publica de inmediato, sin sondear: es seguro y evita una petición
-	/// que se sabe perdida. Recuperarla <b>no</b> se publica todavía, porque tener red no
-	/// implica alcanzar a Jacob: primero se comprueba.
-	/// </remarks>
+	// Perder la red se publica de inmediato; recuperarla, solo después de sondear.
 	private void AlCambiarLaRed(object? origen, ConnectivityChangedEventArgs argumentos)
 	{
 		if (argumentos.NetworkAccess != NetworkAccess.Internet)
@@ -119,14 +70,6 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		_ = SondearSinPropagarFallosAsync();
 	}
 
-	/// <summary>
-	/// Sondea sin dejar escapar excepciones.
-	/// </summary>
-	/// <remarks>
-	/// Lo llama el sistema al recuperar la red y nadie espera el resultado, así que una
-	/// excepción aquí no tendría quién la recogiera. Si el sondeo falla, el estado se queda
-	/// como estaba y el operador tiene el reintento manual.
-	/// </remarks>
 	private async Task SondearSinPropagarFallosAsync()
 	{
 		try
@@ -139,19 +82,7 @@ public sealed class ServicioConectividadJacob : IConnectivityService, IDisposabl
 		}
 	}
 
-	/// <summary>
-	/// Guarda el estado y avisa solo si cambió.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Avisar en cada comprobación dispararía la revalidación una y otra vez, porque quien
-	/// escucha el evento la lanza al recuperar el enlace.
-	/// </para>
-	/// <para>
-	/// El evento sigue llevando un booleano: para el indicador de la pantalla solo cuenta si
-	/// se puede operar. La causa viaja en el resultado, hacia quien la pidió.
-	/// </para>
-	/// </remarks>
+	// Solo avisa si cambió: cada aviso dispara la revalidación. En el hilo principal, por las vistas.
 	private ResultadoSondeo Publicar(ResultadoSondeo sondeo)
 	{
 		if (_hayEnlace == sondeo.HayEnlace)

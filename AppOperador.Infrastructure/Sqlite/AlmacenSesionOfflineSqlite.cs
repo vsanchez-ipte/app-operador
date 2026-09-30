@@ -6,22 +6,7 @@ using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Sesión persistida en SQLite, para reanudarla tras cerrar la app (JTT-1383).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <c>sesion_local</c> es un historial: cada validación agrega o actualiza su fila y la marca
-/// como vigente, quitándole la marca a la anterior. <b>Solo hay una vigente</b>, que es la que
-/// se reanuda; las demás se quedan porque las incidencias y la bitácora apuntan a ellas.
-/// Conservarlas no da material para reanudar una vencida: reanudar mira la vigente y nada más.
-/// </para>
-/// <para>
-/// Limpiar no borra: quita la marca. Borrar una sesión a la que apunta una incidencia lo
-/// impide la llave foránea, y de todos modos el rastro de con qué sesión se capturó algo es
-/// justo lo que JTT-1383 CA 12 quiere conservar.
-/// </para>
-/// </remarks>
+// Historial con una sola vigente; limpiar quita la marca, no borra, porque otras filas apuntan a ellas.
 public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 {
 	private const char Separador = ',';
@@ -30,15 +15,13 @@ public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 
 	public AlmacenSesionOfflineSqlite(BaseDatosLocal baseDatos) => _baseDatos = baseDatos;
 
-	/// <inheritdoc />
 	public async Task GuardarAsync(SesionOfflinePersistida sesion, CancellationToken cancelacion = default)
 	{
 		ArgumentNullException.ThrowIfNull(sesion);
 
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 
-		// Primero a quién apunta la sesión, después la sesión: con llaves activas es el único
-		// orden que SQLite acepta.
+		// Primero operador y unidad: con llaves activas es el único orden posible.
 		await ReferenciasSesion.AsegurarOperadorAsync(conexion, sesion.Operador, sesion.Rol);
 		await ReferenciasSesion.AsegurarUnidadAsync(conexion, sesion.Unidad.Clave, sesion.Unidad.Id, sesion.Unidad.Descripcion);
 
@@ -46,8 +29,6 @@ public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 		{
 			tx.Execute("UPDATE \"sesion_local\" SET \"vigente\" = 0 WHERE \"vigente\" = 1;");
 
-			// Sobre la misma sesión —una revalidación— se actualiza la fila; una distinta se
-			// agrega. La vigente anterior ya soltó la marca, así que el índice único no protesta.
 			tx.Execute(
 				"""
 				INSERT INTO "sesion_local"
@@ -80,13 +61,10 @@ public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 		});
 	}
 
-	/// <inheritdoc />
 	public async Task<SesionOfflinePersistida?> ObtenerAsync(CancellationToken cancelacion = default)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 
-		// El identificador técnico y la descripción de la unidad viven en unidad_local; se
-		// traen en la misma consulta para reconstruir la sesión tal como se guardó.
 		var filas = await conexion.QueryAsync<FilaSesionVigente>(
 			"""
 			SELECT s.*, u."id" AS "UnidadId", u."descripcion" AS "UnidadDescripcion"
@@ -99,21 +77,13 @@ public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 		return filas.Count == 0 ? null : Convertir(filas[0]);
 	}
 
-	/// <inheritdoc />
 	public async Task LimpiarAsync(CancellationToken cancelacion = default)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		await conexion.ExecuteAsync("UPDATE \"sesion_local\" SET \"vigente\" = 0 WHERE \"vigente\" = 1;");
 	}
 
-	/// <summary>
-	/// Rehidrata la fila, o devuelve <see langword="null"/> si no es aprovechable.
-	/// </summary>
-	/// <remarks>
-	/// Una fila corrupta o con fechas imposibles se trata como «no hay sesión guardada»: la
-	/// consecuencia es pedir autenticación, que es la salida segura. Recuperar a medias una
-	/// sesión ilegible sería peor que no tenerla.
-	/// </remarks>
+	// Una fila ilegible se trata como «no hay sesión»: pedir autenticación es lo seguro.
 	private static SesionOfflinePersistida? Convertir(FilaSesionVigente fila)
 	{
 		if (fila.OfflineHastaUtcTicks < fila.ValidadoUtcTicks)
@@ -150,7 +120,6 @@ public sealed class AlmacenSesionOfflineSqlite : IOfflineSessionStore
 			Instalacion: new DatosDeInstalacion(fila.VersionAplicacion, catalogos));
 	}
 
-	/// <summary>La sesión vigente con lo que la unidad sabe de sí misma. Solo para la consulta de arriba.</summary>
 	private sealed class FilaSesionVigente : SesionLocal
 	{
 		public string? UnidadId { get; set; }

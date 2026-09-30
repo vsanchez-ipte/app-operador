@@ -4,29 +4,11 @@ using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Traducción entre la fila de SQLite y el modelo que consumen las pantallas.
-/// </summary>
-/// <remarks>
-/// Vive aparte porque lo usan el repositorio y la cola, y conviene que las dos pantallas
-/// describan una incidencia exactamente igual.
-/// </remarks>
 internal static class MapeoIncidencia
 {
-	/// <summary>
-	/// Convierte una fila en el elemento que lista la pantalla de Cola.
-	/// </summary>
-	/// <param name="ultimoErrorMensaje">
-	/// Lo que dijo Jacob en el último intento fallido, si se conoce.
-	/// <para>
-	/// <b>Viene de fuera porque no está en esta fila</b>: la incidencia guarda el código del
-	/// rechazo, pero el mensaje vive en <c>intento_sincronizacion</c>, que es una tabla aparte.
-	/// Quien la consulta es la cola, que sabe qué registros va a listar y puede pedirlos de una
-	/// sola vez.
-	/// </para>
-	/// </param>
 	public static RegistroCola ARegistroCola(
 		IncidenciaLocal fila,
+		// El mensaje vive en la tabla de intentos; la cola lo consulta de una vez para toda la lista.
 		string? ultimoErrorMensaje = null) => new(
 		fila.ClaveLocal,
 		ClaseRegistro.Incidencia,
@@ -39,24 +21,12 @@ internal static class MapeoIncidencia
 		fila.UltimoErrorCodigo,
 		ultimoErrorMensaje,
 		fila.Intentos,
-		// El último cambio de estado de un registro fallido ES su último intento: el envío es lo
-		// único que lo mueve. Es la misma columna de la que sale la espera al decidir el reintento,
-		// así que la hora que se muestra y la que se aplica no pueden discrepar.
+		// Último cambio de estado = último intento: la misma columna que decide la espera.
 		new DateTime(fila.ActualizadoUtcTicks, DateTimeKind.Utc),
-		// La hora de la tarjeta es la de captura (JTT-290 CA 3), la misma que viaja a Jacob.
+		// Hora de captura, la misma que viaja a Jacob.
 		new DateTime(fila.CreadoUtcTicks, DateTimeKind.Utc));
 
-	/// <summary>
-	/// Describe el contenido del registro: solo el tipo de incidencia.
-	/// </summary>
-	/// <remarks>
-	/// <b>Solo el tipo, nada más.</b> La clase y la prioridad las antepone la vista al
-	/// componer <c>clase / prioridad / descripción / KM</c>; repetirlas aquí las duplica
-	/// en pantalla.
-	///
-	/// Un borrador puede no tener tipo todavía; en ese caso se dice explícitamente en vez
-	/// de dejar el hueco vacío, que se leería como un error de carga.
-	/// </remarks>
+	// Solo el tipo: la vista antepone clase y prioridad.
 	private static string Describir(IncidenciaLocal fila) =>
 		string.IsNullOrWhiteSpace(fila.TipoNombre) ? "Sin tipo" : fila.TipoNombre;
 }

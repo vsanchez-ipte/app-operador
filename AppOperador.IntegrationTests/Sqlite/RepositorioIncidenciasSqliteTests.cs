@@ -5,15 +5,11 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Guardado de incidencias y borradores contra una base real.
-/// </summary>
 public sealed class RepositorioIncidenciasSqliteTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
 
-	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3
-	// (JTT-1394). Sustituyen al enum Gravedad, que la app se inventaba.
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3.
 	private static readonly SeveridadIncidencia Critica =
 		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
 
@@ -51,8 +47,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 		await using var contexto = new ContextoSqlite();
 		var clave = await GuardarAsync(contexto, Advertencia);
 
-		// Instancia nueva sobre el mismo archivo: es la prueba de que persiste de verdad
-		// y no solo mientras el proceso vive.
+		// Instancia nueva sobre el mismo archivo: persiste de verdad, no solo en memoria.
 		var reabierta = contexto.ReabrirBaseDatos();
 		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, contexto.Sesion);
 
@@ -125,8 +120,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 
 		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
 
-		// La vista antepone "clase / prioridad / ..." al componer la tarjeta. Si el mapeo
-		// los incluye también, salen duplicados en pantalla.
 		Assert.Equal("Objeto en camino", registro.Descripcion);
 		Assert.DoesNotContain("Incidencia", registro.Descripcion);
 		Assert.DoesNotContain("Normal", registro.Descripcion);
@@ -180,7 +173,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.Null(enviable.PosicionGps);
 	}
 
-	// ── Persistencia de la cola local (JTT-1400 CA 4, 5 y 6) ──────────────────────────
+	// ── Persistencia de la cola local ──────────────────────────
 
 	[Fact]
 	public async Task CerrarSesion_noEliminaLoPendienteNiLosBorradores()
@@ -190,12 +183,8 @@ public sealed class RepositorioIncidenciasSqliteTests
 		var claveBorrador = await contexto.CrearRepositorio()
 			.GuardarBorradorAsync(Objeto, "130+", Advertencia, "a medias");
 
-		// Cerrar sesión limpia la sesión, no la base: lo capturado en campo pertenece al
-		// operador y a la unidad, y se sigue enviando cuando alguien vuelva a entrar.
 		contexto.Sesion.Limpiar();
 
-		// Se comprueba con la base reabierta y con otra sesión del mismo operador, que es lo
-		// que ocurre de verdad: la app se reinicia y el operador vuelve a entrar.
 		var reabierta = contexto.ReabrirBaseDatos();
 		var sesionNueva = new SesionFija();
 		var cola = new ColaSincronizacionSqlite(reabierta, contexto.Reloj, sesionNueva);
@@ -215,16 +204,13 @@ public sealed class RepositorioIncidenciasSqliteTests
 
 		contexto.Sesion.Limpiar();
 
-		// Sin sesión no se ve la cola (CA 7): no es que se hayan borrado, es que todavía
-		// nadie tiene derecho a verla. La distinción importa, porque una cola vacía por
-		// falta de permiso es indistinguible de una cola vaciada si no se comprueba.
 		Assert.Empty(await contexto.CrearCola().ObtenerRegistrosAsync());
 
 		var conSesion = contexto.CrearColaDe(new SesionFija());
 		Assert.Contains(await conSesion.ObtenerRegistrosAsync(), r => r.ClaveLocal == clave);
 	}
 
-	// ── Ciclo de vida del borrador (JTT-1399 CA 8 y 9) ────────────────────────────────
+	// ── Ciclo de vida del borrador ────────────────────────────────
 
 	[Fact]
 	public async Task Borrador_seReabreConLoQueSeHabiaCapturado()
@@ -237,8 +223,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 
 		Assert.NotNull(borrador);
 		Assert.Equal(Objeto.Id, borrador.TipoId);
-		// El kilómetro vuelve tal cual se escribió, incompleto incluido: es lo que hace que el
-		// operador pueda seguir donde se quedó en vez de volver a teclearlo.
 		Assert.Equal("130+", borrador.Kilometro);
 		Assert.Equal(Advertencia.Id, borrador.SeveridadId);
 		Assert.Equal("a medias", borrador.Nota);
@@ -285,8 +269,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 
 		Assert.True(convertido);
 
-		// La misma clave que tenía como borrador: convertir es cambiar de estado, no crear otro
-		// registro. Si cambiara, el operador vería desaparecer un LOC- y aparecer otro.
 		var registro = Assert.Single(await contexto.CrearCola().ObtenerRegistrosAsync());
 		Assert.Equal(clave, registro.ClaveLocal);
 		Assert.Equal(EstadoSincronizacion.Pendiente, registro.Estado);
@@ -301,8 +283,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 		await using var contexto = new ContextoSqlite();
 		var repositorio = contexto.CrearRepositorio();
 
-		// Nace con severidad no crítica y se confirma como crítica: la prioridad tiene que
-		// seguir a la severidad con la que se confirmó, no a la que tenía a medio capturar.
 		var clave = await repositorio.GuardarBorradorAsync(Objeto, "130+", Informacion, "nota");
 
 		await repositorio.ConvertirBorradorAsync(
@@ -319,7 +299,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 		var clave = await contexto.CrearRepositorioDe(new SesionFija("otro"))
 			.GuardarBorradorAsync(Objeto, "130+200", Advertencia, "trabajo ajeno");
 
-		// El repositorio del contexto usa un operador distinto (JTT-1388 CA 9).
+		// El repositorio del contexto usa un operador distinto.
 		var mio = contexto.CrearRepositorio();
 
 		Assert.Null(await mio.ObtenerBorradorAsync(clave));
@@ -336,15 +316,13 @@ public sealed class RepositorioIncidenciasSqliteTests
 		var repositorio = contexto.CrearRepositorio();
 		var clave = await GuardarAsync(contexto, Advertencia);
 
-		// Ya es Pendiente, no borrador: convertirla otra vez la regresaría al principio de su
-		// ciclo y podría reabrir para edición algo que quizá ya viajó a Jacob.
 		var convertido = await repositorio.ConvertirBorradorAsync(
 			clave, Objeto, Kilometer.Crear("131+000"), KilometerSource.Manual, Critica, "otra");
 
 		Assert.False(convertido);
 	}
 
-	// ---------- Corregir un rechazo (JTT-291 CA 8) ----------
+	// ---------- Corregir un rechazo ----------
 
 	[Fact]
 	public async Task Rechazada_seAbreConSusDatosYConElMotivoQueDioJacob()
@@ -391,8 +369,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 		Assert.Equal(0, registro.Intentos);
 		Assert.False(registro.SePuedeCorregir);
 
-		// Y la siguiente tanda la reenvía CON EL MISMO UUID, que es lo que evita duplicarla si
-		// el rechazo hubiera sido en realidad un alta que Jacob sí registró.
 		await contexto.CrearSincronizador(jacob).EjecutarAsync();
 		Assert.Equal(2, jacob.Recibidos.Count);
 		Assert.Equal(uuidOriginal, jacob.Recibidos[1].Uuid);
@@ -421,8 +397,6 @@ public sealed class RepositorioIncidenciasSqliteTests
 		var clave = await GuardarAsync(contexto, Advertencia);
 		await contexto.CrearSincronizador(new JacobControlado().RechazaFuncional()).EjecutarAsync();
 
-		// Un rechazo del turno anterior no lo corrige —ni lo reenvía a su nombre— quien entre
-		// después (JTT-1388 CA 9).
 		var otro = contexto.CrearRepositorioDe(new SesionFija("otro"));
 
 		Assert.Null(await otro.ObtenerRechazadaAsync(clave));
@@ -433,7 +407,7 @@ public sealed class RepositorioIncidenciasSqliteTests
 	[Fact]
 	public async Task ElRegistroDeLaCola_traeLaHoraDeCaptura()
 	{
-		// JTT-290 CA 3: la hora que se muestra es la de captura, no la del último cambio.
+		// La hora que se muestra es la de captura, no la del último cambio.
 		await using var contexto = new ContextoSqlite();
 		var capturada = contexto.Reloj.UtcAhora;
 		await GuardarAsync(contexto, Advertencia);

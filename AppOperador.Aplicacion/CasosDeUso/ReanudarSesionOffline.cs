@@ -5,24 +5,7 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
-/// <summary>
-/// Reanuda una sesión ya validada en línea, sin volver a contactar a Jacob (JTT-1383).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>No es un acceso.</b> Solo prospera si hubo una validación en línea exitosa y su
-/// ventana sigue abierta; el primer ingreso siempre exige enlace (CA 1 y CA 2).
-/// </para>
-/// <para>
-/// La ventana no se mide con el reloj del dispositivo, que el operador puede mover, sino
-/// con <see cref="TranscursoOffline"/>, que combina el reloj con el contador monotónico del
-/// sistema. Ni atrasar la hora ni reiniciar el equipo alargan la sesión (CA 5, 13 y 14).
-/// </para>
-/// <para>
-/// <b>Nada se renueva aquí.</b> Reanudar no extiende la vigencia: eso solo lo hace una
-/// validación del servidor (CA 15).
-/// </para>
-/// </remarks>
+// No es un acceso ni renueva la vigencia: solo reabre una sesión validada en línea cuya ventana sigue abierta.
 public sealed class ReanudarSesionOffline
 {
 	private readonly CustodiaSesionLocal _custodia;
@@ -48,19 +31,7 @@ public sealed class ReanudarSesionOffline
 		_bitacora = bitacora;
 	}
 
-	/// <summary>
-	/// Dice si hay una sesión guardada que se podría reanudar ahora, sin reanudarla.
-	/// </summary>
-	/// <returns>
-	/// La sesión reanudable, o <see langword="null"/> si no hay ninguna guardada, no tiene
-	/// token, sus permisos no cuadran con él o su ventana ya venció.
-	/// </returns>
-	/// <remarks>
-	/// Aplica <b>exactamente las mismas condiciones</b> que <see cref="ReanudarAsync"/>, para que
-	/// la pantalla nunca anuncie una sesión que después no se pueda reanudar. Pero no tiene
-	/// efectos: no publica la sesión, no revoca nada ni escribe en la bitácora. Es lo que la
-	/// pantalla de acceso consulta al abrirse para avisar que la sesión sigue ahí (JTT-1681).
-	/// </remarks>
+	// Mismas condiciones que ReanudarAsync, pero sin efectos: la pantalla nunca anuncia lo que no se puede reanudar.
 	public async Task<SesionReanudable?> ConsultarGuardadaAsync(CancellationToken cancelacion = default)
 	{
 		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
@@ -86,7 +57,6 @@ public sealed class ReanudarSesionOffline
 			: null;
 	}
 
-	/// <summary>Intenta abrir la app con la sesión guardada.</summary>
 	public async Task<ResultadoAcceso> ReanudarAsync(CancellationToken cancelacion = default)
 	{
 		var guardada = await _custodia.ObtenerPersistidaAsync(cancelacion);
@@ -95,16 +65,13 @@ public sealed class ReanudarSesionOffline
 			return await RechazarAsync("Reanudación negada: no hay validación en línea previa.", null, cancelacion);
 		}
 
-		// Sin token no se podría hablar con Jacob al recuperar el enlace, y los permisos
-		// quedarían sin nada que los respalde.
 		var token = await _custodia.ObtenerTokenAsync(cancelacion);
 		if (string.IsNullOrWhiteSpace(token))
 		{
 			return await RechazarAsync("Reanudación negada: no hay token de la sesión.", guardada.Operador, cancelacion);
 		}
 
-		// Los permisos guardados se vuelven a cotejar contra el token (JTT-1379 CA 8): el
-		// archivo local es editable, el token va firmado.
+		// El archivo local es editable; el token va firmado.
 		if (!_claims.Respaldan(guardada.Permisos, token))
 		{
 			await _custodia.RevocarAsync(cancelacion);
@@ -143,14 +110,7 @@ public sealed class ReanudarSesionOffline
 		return ResultadoAcceso.Autorizar(sesion);
 	}
 
-	/// <summary>
-	/// Distingue una ventana agotada de una que no se pudo medir.
-	/// </summary>
-	/// <remarks>
-	/// Para el operador el desenlace es el mismo —autenticarse de nuevo— pero en la bitácora
-	/// no lo es: «no se pudo medir» apunta a que el reloj se movió y el equipo se reinició,
-	/// y eso conviene poder distinguirlo al dar soporte.
-	/// </remarks>
+	// Para el operador es lo mismo, pero en soporte importa distinguir una ventana vencida de una que no se pudo medir.
 	private static string MotivoDelVencimiento(TranscursoOffline transcurso) =>
 		transcurso.EsDeterminable
 			? "Reanudación negada: la ventana offline ya venció."
@@ -161,8 +121,7 @@ public sealed class ReanudarSesionOffline
 		string? operador,
 		CancellationToken cancelacion)
 	{
-		// Todavía no hay sesión abierta: la línea se atribuye al operador de la guardada, si
-		// la hay, para que la vea su dueño y no quien entre después.
+		// Aún no hay sesión abierta: la línea se atribuye al dueño de la sesión guardada.
 		await _bitacora.RegistrarAsync(
 			OperacionAuditada.CreacionSesion, ResultadoAuditoria.Rechazo, motivo,
 			operador: operador, cancelacion: cancelacion);

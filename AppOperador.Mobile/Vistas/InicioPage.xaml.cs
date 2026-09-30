@@ -17,8 +17,7 @@ public partial class InicioPage : ContentPage
 	{
 		base.OnAppearing();
 
-		// La ventana offline pudo vencer mientras la app estaba abierta (JTT-1384).
-		// Si vencio, la sesion ya se cerro y no hay nada que cargar.
+		// La ventana offline pudo vencer con la app abierta; entonces no hay nada que cargar.
 		if (!await _modelo.Enlace.ComprobarSesionAsync())
 		{
 			return;

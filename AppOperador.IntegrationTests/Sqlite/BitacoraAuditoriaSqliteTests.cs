@@ -4,9 +4,6 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Bitácora local: persistencia, orden, recorte y manejo de UTC.
-/// </summary>
 public sealed class BitacoraAuditoriaSqliteTests
 {
 	[Fact]
@@ -20,8 +17,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 		Assert.Equal("Enlace CCO activo.", evento.Mensaje);
 		Assert.Equal(NivelAuditoria.Info, evento.Nivel);
 
-		// El Kind es lo que más fácil se pierde al pasar por SQLite: sin Utc, la vista
-		// convertiría a hora local partiendo de una hora que ya era local.
 		Assert.Equal(DateTimeKind.Utc, evento.InstanteUtc.Kind);
 		Assert.Equal(contexto.Reloj.UtcAhora, evento.InstanteUtc);
 	}
@@ -61,8 +56,7 @@ public sealed class BitacoraAuditoriaSqliteTests
 	{
 		await using var contexto = new ContextoSqlite();
 
-		// Diez por encima del tope: la tabla no puede crecer sin límite en un dispositivo
-		// que pasa semanas sin mantenimiento.
+		// Diez por encima del tope.
 		for (var i = 0; i < BitacoraAuditoriaSqlite.EventosConservados + 10; i++)
 		{
 			contexto.Reloj.Avanzar(TimeSpan.FromSeconds(1));
@@ -97,7 +91,7 @@ public sealed class BitacoraAuditoriaSqliteTests
 		Assert.Empty(vacia);
 	}
 
-	// ---------- JTT-1392: quién y desde dónde, en cada línea ----------
+	// ---------- Quién y desde dónde, en cada línea ----------
 
 	[Fact]
 	public async Task Registrar_copiaEnLaLineaAlOperadorSuUnidadSuSesionYElOrigen()
@@ -117,8 +111,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 		Assert.Equal(contexto.Sesion.Actual!.Operador, evento.Operador);
 		Assert.Equal(contexto.Sesion.Actual.Rol, evento.Rol);
 		Assert.Equal(contexto.Sesion.Actual.UnidadVehicular, evento.UnidadClave);
-		// La sesión fija de las pruebas no tiene identificador, como un recorrido simulado: la
-		// línea queda sin sesión a la que apuntar, no con una cadena vacía.
 		Assert.Null(evento.SesionId);
 		Assert.Equal(OrigenAuditoria.Offline, evento.Origen);
 		Assert.Equal(contexto.Monotonico.Transcurrido.Ticks, evento.MonotonicoTicks);
@@ -136,8 +128,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 		var evento = Assert.Single(await bitacora.ObtenerEventosAsync());
 		Assert.Equal("s-777", evento.SesionId);
 
-		// La llave se sostiene aunque nadie haya persistido la sesión: la bitácora la deja
-		// creada, sin marcarla como vigente.
 		var vigente = await new AlmacenSesionOfflineSqlite(contexto.BaseDatos).ObtenerAsync();
 		Assert.Null(vigente);
 	}
@@ -145,10 +135,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 	[Fact]
 	public async Task ObtenerEventos_devuelveSoloLoDelOperadorConSesion_yLoAnteriorAlEsquema10()
 	{
-		// El Perfil es del operador (D3). Lo del turno anterior sigue guardado, pero no se le
-		// muestra. Lo escrito antes del esquema 10 —sin operador y sin origen— se muestra a
-		// todos como historial previo; una línea nueva que llegue sin operador, a nadie: se
-		// distingue de las viejas porque sí tiene origen.
 		await using var contexto = new ContextoSqlite();
 		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "de admin");
 
@@ -171,8 +157,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 	[Fact]
 	public async Task Atribuir_poneANombreDelOperadorLoQueSeEscribioANombreDelCorreo()
 	{
-		// El acceso escribe a nombre del correo porque es lo único que sabe; al abrir la sesión,
-		// Jacob contesta con el nombre, que es por el que se filtra el perfil.
 		await using var contexto = new ContextoSqlite();
 		var sinSesion = contexto.CrearBitacoraDe(new SesionSinNadie());
 		await sinSesion.RegistrarAsync(
@@ -200,8 +184,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 	[Fact]
 	public async Task ElOrden_noLoMueveElRelojDelDispositivo()
 	{
-		// Hallazgo del 12-ago: atrasar la hora del teléfono desordenaba el historial. El orden
-		// es el de escritura, que ni el reloj ni un reinicio pueden mover.
 		await using var contexto = new ContextoSqlite();
 		await contexto.Bitacora.RegistrarAsync(NivelAuditoria.Info, "primero");
 		contexto.Reloj.Avanzar(TimeSpan.FromHours(-3));
@@ -229,7 +211,6 @@ public sealed class BitacoraAuditoriaSqliteTests
 	}
 }
 
-/// <summary>Sesión que no existe: antes del acceso, o después de cerrarla.</summary>
 public sealed class SesionSinNadie : ISessionStore
 {
 	public SesionOperador? Actual => null;

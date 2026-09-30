@@ -2,9 +2,6 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.UnitTests.Domain;
 
-/// <summary>
-/// Medir el tiempo sin fiarse del reloj del dispositivo (JTT-1383 CA 5, 13, 14 y 15).
-/// </summary>
 public class TranscursoOfflineTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 11, 8, 0, 0, DateTimeKind.Utc);
@@ -50,13 +47,12 @@ public class TranscursoOfflineTests
 		Assert.False(Medir(Ventana, Ventana).CabeEn(Ventana));
 	}
 
-	// ---------- CA 5 y 13: mover el reloj no alarga la ventana ----------
+	// ---------- Mover el reloj no alarga la ventana ----------
 
 	[Fact]
 	public void Atrasar_el_reloj_no_devuelve_tiempo()
 	{
-		// El operador atrasa el telefono seis horas para seguir trabajando. El contador
-		// monotonico no le hace caso: han pasado siete horas y son las que cuentan.
+		// El operador atrasa el teléfono seis horas; el monotónico dice que pasaron siete.
 		var transcurso = Medir(TimeSpan.FromHours(-6), TimeSpan.FromHours(7));
 
 		Assert.True(transcurso.EsDeterminable);
@@ -81,13 +77,12 @@ public class TranscursoOfflineTests
 		Assert.Equal(TimeSpan.FromHours(5), transcurso.Transcurrido);
 	}
 
-	// ---------- CA 14: reiniciar el dispositivo no reinicia la ventana ----------
+	// ---------- Reiniciar el dispositivo no reinicia la ventana ----------
 
 	[Fact]
 	public void Reiniciar_el_equipo_no_devuelve_la_ventana()
 	{
-		// Tras el reinicio el contador arranca de cero, asi que su transcurso sale
-		// negativo. El reloj sigue sirviendo y es el que manda.
+		// Tras reiniciar, el monotónico sale negativo y manda el reloj.
 		var transcurso = TranscursoOffline.Medir(
 			Validacion,
 			Validacion + TimeSpan.FromHours(6),
@@ -110,7 +105,7 @@ public class TranscursoOfflineTests
 		Assert.False(transcurso.CabeEn(Ventana));
 	}
 
-	// ---------- CA 15: sin poder medir, no se da la ventana por buena ----------
+	// ---------- Sin poder medir, no se da la ventana por buena ----------
 
 	[Fact]
 	public void Si_fallan_las_dos_señales_el_transcurso_no_es_determinable()

@@ -6,9 +6,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Cierre de la sesión móvil sin perder lo pendiente (JTT-1390).
-/// </summary>
 public class CerrarSesionMovilTests
 {
 	private const string Token = "jwt-de-la-sesion";
@@ -28,16 +25,14 @@ public class CerrarSesionMovilTests
 
 	private CustodiaSesionLocal Custodia() => new(_sesiones, _tokens, _persistida);
 
-	/// <summary>Caso de uso con el canal real de Jacob conectado.</summary>
 	private CerrarSesionMovil ConJacob() => new(Custodia(), _bitacora, _cola, _jacob);
 
-	/// <summary>Caso de uso contra los simuladores: no hay a quién avisar.</summary>
 	private CerrarSesionMovil SinJacob() => new(Custodia(), _bitacora, _cola);
 
 	private void JacobResponde(bool exito) =>
 		_jacob.CerrarSesionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(exito);
 
-	// ---------- CA 2: se invalida el contexto y se eliminan los tokens ----------
+	// ---------- Se invalida el contexto y se eliminan los tokens ----------
 
 	[Fact]
 	public async Task Borra_la_sesion_y_el_token()
@@ -50,7 +45,7 @@ public class CerrarSesionMovilTests
 		await _tokens.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
 	}
 
-	// ---------- CA 3: se avisa al backend ----------
+	// ---------- Se avisa al backend ----------
 
 	[Fact]
 	public async Task Avisa_a_Jacob_con_el_token_de_la_sesion()
@@ -79,13 +74,11 @@ public class CerrarSesionMovilTests
 		await _tokens.Received(1).LimpiarAsync(Arg.Any<CancellationToken>());
 	}
 
-	// ---------- CA 4: sin conectividad se cierra igual ----------
+	// ---------- Sin conectividad se cierra igual ----------
 
 	[Fact]
 	public async Task Si_Jacob_no_contesta_la_sesion_se_cierra_de_todas_formas()
 	{
-		// En campo, quedarse sin señal es lo normal. Dejar la sesion abierta porque el
-		// servidor no contesta seria lo contrario de lo que pide la historia.
 		JacobResponde(false);
 
 		var resultado = await ConJacob().CerrarAsync();
@@ -117,7 +110,7 @@ public class CerrarSesionMovilTests
 		_sesiones.Received(1).Limpiar();
 	}
 
-	// ---------- CA 5 y CA 10: no se borra lo pendiente ----------
+	// ---------- No se borra lo pendiente ----------
 
 	[Fact]
 	public async Task No_sincroniza_ni_vacia_la_cola()
@@ -127,8 +120,6 @@ public class CerrarSesionMovilTests
 
 		await ConJacob().CerrarAsync();
 
-		// Cerrar sesión no sincroniza: la sincronización es una acción del operador o de la
-		// revalidación, no un efecto del cierre. Y sobre todo, no vacía la cola.
 		await _cola.DidNotReceiveWithAnyArgs().ActualizarEnvioAsync(default!, default);
 		await _cola.Received(1).ContarPendientesAsync(Arg.Any<CancellationToken>());
 	}
@@ -147,8 +138,6 @@ public class CerrarSesionMovilTests
 	[Fact]
 	public async Task Cuenta_los_pendientes_antes_de_limpiar_la_sesion()
 	{
-		// La cola esta filtrada por el operador de la sesion: contarlos despues daria cero
-		// siempre, y la bitacora mentiria sobre lo que quedo guardado.
 		JacobResponde(true);
 		var sesionSeguiaAbierta = false;
 		_cola.ContarPendientesAsync(Arg.Any<CancellationToken>())
@@ -177,7 +166,7 @@ public class CerrarSesionMovilTests
 		_sesiones.Received(1).Limpiar();
 	}
 
-	// ---------- CA 9: queda auditado localmente ----------
+	// ---------- Queda auditado localmente ----------
 
 	[Fact]
 	public async Task Deja_constancia_en_la_bitacora_local()
@@ -186,7 +175,7 @@ public class CerrarSesionMovilTests
 
 		await ConJacob().CerrarAsync();
 
-		// Con su operación, para que se pueda casar con la auditoría del CCO (JTT-1392 CA 2).
+		// Con su operación, para que se pueda casar con la auditoría del CCO.
 		await _bitacora.Received(1).RegistrarAsync(
 			OperacionAuditada.CierreSesion, ResultadoAuditoria.Exito, Arg.Any<string>(),
 			Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());

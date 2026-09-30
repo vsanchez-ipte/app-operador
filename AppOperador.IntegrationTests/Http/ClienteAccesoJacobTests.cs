@@ -6,10 +6,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Comprueba el flujo <c>GetPublicKey → cifrado → Preauth</c> y la traducción de cada
-/// desenlace posible, contra un servidor simulado.
-/// </summary>
 public sealed class ClienteAccesoJacobTests
 {
 	private const string PreauthCorrecto = """
@@ -77,13 +73,11 @@ public sealed class ClienteAccesoJacobTests
 		Assert.Equal("VEH-01", resultado.Unidades[0].Clave);
 	}
 
-	// ---------- Identificador de la unidad (JTT-1381) ----------
+	// ---------- Identificador de la unidad ----------
 
 	[Fact]
 	public async Task Conserva_el_identificador_tecnico_de_cada_unidad()
 	{
-		// JTT-1381 CA 6: el segundo paso del acceso envía este id, y Jacob revalida la unidad
-		// contra él. Si se perdiera al convertir, la selección sería imposible de completar.
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, PreauthCorrecto));
 
 		var resultado = await PreautenticarAsync(cliente);
@@ -106,8 +100,6 @@ public sealed class ClienteAccesoJacobTests
 	[Fact]
 	public async Task Descarta_las_unidades_que_llegan_sin_identificador()
 	{
-		// Sin id no se puede seleccionar: el API la rechazaría. Mostrarla sería ofrecer una
-		// opción que no funciona.
 		const string ConUnidadIncompleta = """
 			{
 			  "resultado": {
@@ -252,8 +244,6 @@ public sealed class ClienteAccesoJacobTests
 
 		var resultado = await PreautenticarAsync(cliente);
 
-		// Decirle al operador que su contraseña está mal cuando el API reportó otra cosa
-		// lo mandaría a corregir algo que no falla.
 		Assert.Equal(MotivoRechazoAcceso.ErrorDelServicio, resultado.Motivo);
 	}
 
@@ -328,8 +318,6 @@ public sealed class ClienteAccesoJacobTests
 	{
 		var resultado = await PreautenticarAsync(Nuevo(ManejadorHttpFalso.ConexionRechazada()));
 
-		// Es lo que distingue "no hay servidor" de "tu contraseña está mal": con lo primero
-		// el operador puede seguir sin conexión, con lo segundo no.
 		Assert.Equal(MotivoRechazoAcceso.SinComunicacion, resultado.Motivo);
 		Assert.Equal("conexion.fallida", resultado.CodigoError);
 	}
@@ -337,8 +325,6 @@ public sealed class ClienteAccesoJacobTests
 	[Fact]
 	public async Task Un_socket_cerrado_en_Android_se_reporta_como_falta_de_comunicacion()
 	{
-		// AndroidMessageHandler no lanza HttpRequestException sino WebException. Con el API
-		// apagado, esto cerraba la app al tocar «Ingresar».
 		var resultado = await PreautenticarAsync(Nuevo(ManejadorHttpFalso.SocketCerradoEnAndroid()));
 
 		Assert.Equal(MotivoRechazoAcceso.SinComunicacion, resultado.Motivo);
@@ -364,8 +350,6 @@ public sealed class ClienteAccesoJacobTests
 
 		var resultado = await PreautenticarAsync(cliente);
 
-		// Solo viaja el código de catálogo. El mensaje del API es texto para desarrollador y
-		// no debe llegar a la interfaz: el literal lo fija JTT-279.
 		Assert.Equal("appoperador.credenciales.invalidas", resultado.CodigoError);
 		Assert.Null(resultado.ChallengeId);
 		Assert.Empty(resultado.Unidades);

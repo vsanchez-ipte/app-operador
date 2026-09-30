@@ -3,13 +3,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.Modelos;
 
-/// <summary>
-/// Datos de la sesión que la app necesita mostrar y evaluar mientras el operador trabaja.
-/// </summary>
-/// <remarks>
-/// La vigencia se delega en <see cref="VigenciaOffline"/>, que es la regla de dominio:
-/// aquí no se recalculan las ocho horas.
-/// </remarks>
 public sealed class SesionOperador
 {
 	public SesionOperador(
@@ -32,39 +25,19 @@ public sealed class SesionOperador
 		VersionCatalogos = versionCatalogos;
 	}
 
-	/// <summary>
-	/// Identificador de la sesión en Jacob CCO.
-	/// </summary>
-	/// <remarks>
-	/// Sella las incidencias capturadas para saber de qué sesión salieron (JTT-1383 CA 12).
-	/// Vacío en los recorridos simulados, que no crean sesión en el servidor.
-	/// </remarks>
 	public string SessionId { get; }
 
-	/// <summary>Nombre de la cuenta del operador en Jacob CCO.</summary>
 	public string Operador { get; }
 
-	/// <summary>Rol funcional con el que ingresó.</summary>
 	public string Rol { get; }
 
-	/// <summary>Unidad seleccionada al acceder, por ejemplo <c>VEH-01</c>.</summary>
 	public string UnidadVehicular { get; }
 
-	/// <summary>Ventana de trabajo sin conexión derivada de la última validación en línea.</summary>
 	public VigenciaOffline Vigencia { get; }
 
-	/// <summary>
-	/// Permisos efectivos, tal como se muestran en el perfil.
-	/// </summary>
-	/// <remarks>
-	/// Llegan de Jacob y no se pueden alterar desde la app: ver
-	/// <see cref="PermisosOperador"/> (JTT-1379 CA 7).
-	/// </remarks>
 	public PermisosOperador Permisos { get; }
 
-	/// <summary>Versión de la aplicación instalada.</summary>
 	public string VersionAplicacion { get; }
 
-	/// <summary>Fecha del último catálogo descargado.</summary>
 	public DateOnly VersionCatalogos { get; }
 }

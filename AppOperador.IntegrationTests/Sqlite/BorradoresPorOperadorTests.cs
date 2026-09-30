@@ -3,19 +3,9 @@ using AppOperador.Domain.Enums;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Los borradores son de quien los escribió (JTT-1388 CA 9).
-/// </summary>
-/// <remarks>
-/// Lo mismo que <see cref="ColaPorOperadorTests"/> protege para la cola, pero en la otra
-/// superficie donde quedan datos pendientes: la lista de borradores de la pantalla de captura.
-/// Un borrador no se sincroniza, así que la cola no lo cubre; y sigue siendo trabajo a medio
-/// hacer de un operador concreto, que no debe pasar al siguiente por haber entrado después.
-/// </remarks>
 public sealed class BorradoresPorOperadorTests
 {
-
-	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3 (JTT-1394).
+	// Niveles del catálogo real de Jacob: Crítico 1, Advertencia 2, Información 3.
 	private static readonly SeveridadIncidencia Critica =
 		new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "Crítico", 1, "#EB1409");
 

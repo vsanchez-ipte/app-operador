@@ -4,24 +4,8 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Lectura de <c>limitesEvidencia</c> en la respuesta del catálogo (JTT-1398).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Lo que se fija aquí es una regla, no un mapeo.</b> La app valida los adjuntos con los
-/// números que declara el servidor y no con unos propios: codificarlos convertiría cada
-/// corrección en una versión nueva en las tiendas, y —peor— dejaría que la app aceptara un
-/// archivo que el servidor rechaza, gastando datos móviles del operador para nada.
-/// </para>
-/// <para>
-/// De ahí que los límites incompletos se traten como ausentes. La alternativa sería rellenar el
-/// hueco con un valor inventado, que es exactamente lo que este diseño evita.
-/// </para>
-/// </remarks>
 public sealed class ClienteCatalogosJacobLimitesTests
 {
-	/// <summary>Catálogo mínimo utilizable, al que se le injerta el bloque de límites.</summary>
 	private static string RespuestaCon(string? bloqueLimites) =>
 		$$"""
 		{
@@ -73,8 +57,6 @@ public sealed class ClienteCatalogosJacobLimitesTests
 	[Fact]
 	public async Task SinBloqueDeLimites_elCatalogoSigueSirviendoParaCapturar()
 	{
-		// Un servidor anterior a la tercera tanda no publica el bloque. Eso no puede impedir
-		// capturar: la evidencia es opcional y lo demás del catálogo está completo.
 		var cliente = Crear(RespuestaCon(bloqueLimites: null));
 
 		var catalogo = await cliente.ObtenerVigentesAsync(TokenDePrueba.Con("APP_OPERADOR_MOVIL"));
@@ -109,8 +91,6 @@ public sealed class ClienteCatalogosJacobLimitesTests
 	[Fact]
 	public async Task ElFormatoSeCompara_sinDistinguirMayusculas()
 	{
-		// El tipo lo determina el servidor por contenido; no hay garantía de con qué caja lo
-		// escriba, y una comparación estricta rechazaría un archivo válido.
 		var cliente = Crear(RespuestaCon("""
 			"limitesEvidencia": {
 			  "formatosPermitidos": ["IMAGE/JPEG"],

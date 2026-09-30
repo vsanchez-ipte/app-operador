@@ -4,29 +4,13 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Segundo paso del acceso: <c>POST ITS/AppLogin</c>, que consume el desafío y crea la
-/// sesión móvil (JTT-1382).
-/// </summary>
-/// <remarks>
-/// A diferencia del paso 1, este endpoint es anónimo y no cifra nada: el desafío es la
-/// credencial. Por eso aquí se responde a una sola petición y no a dos.
-/// </remarks>
 public class ClienteAccesoJacobLoginTests
 {
-	/// <summary>Token con el permiso funcional firmado, como el que emite Jacob.</summary>
 	private static readonly string TokenConPermiso = TokenDePrueba.Con("APP_OPERADOR_MOVIL");
 
 	private static readonly string LoginCorrecto =
 		CuerpoLogin(TokenConPermiso, """["APP_OPERADOR_MOVIL"]""");
 
-	/// <summary>
-	/// Respuesta correcta de <c>AppLogin</c>, con el token y los permisos que se le indiquen.
-	/// </summary>
-	/// <remarks>
-	/// Los dos son parámetros porque el cotejo de JTT-1379 CA 8 se prueba desalineándolos: un
-	/// cuerpo que conceda algo que el token no respalda no debe abrir sesión.
-	/// </remarks>
 	private static string CuerpoLogin(string token, string permisosJson) => $$"""
 		{
 		  "resultado": {
@@ -111,8 +95,7 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Adopta_la_ventana_offline_del_servidor_sin_recalcularla()
 	{
-		// CA 3 y CA 4. Las fechas del ejemplo son las del contrato: 19:00 → 03:00 del día
-		// siguiente. La app no vuelve a sumar ocho horas sobre su propio reloj.
+		// Fechas del contrato: 19:00 → 03:00 del día siguiente. La app no suma ocho horas por su cuenta.
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, LoginCorrecto));
 
 		var resultado = await AbrirAsync(cliente);
@@ -125,8 +108,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Las_fechas_quedan_en_UTC_aunque_el_equipo_este_en_otro_huso()
 	{
-		// System.Text.Json convierte a hora local un instante con zona. Si eso llegara sin
-		// normalizar, la regla de vigencia lanzaría por exigir Kind.Utc.
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, LoginCorrecto));
 
 		var resultado = await AbrirAsync(cliente);
@@ -159,7 +140,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Un_codigo_desconocido_no_se_presenta_como_credencial_invalida()
 	{
-		// Mismo criterio que JTT-1378 CA 11.
 		var (cliente, _) = Construir(ErrorFuncional("appoperador.algo.nuevo"));
 
 		var resultado = await AbrirAsync(cliente);
@@ -195,8 +175,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Una_respuesta_sin_las_fechas_de_vigencia_no_produce_sesion()
 	{
-		// Sin ellas no se sabe hasta cuándo vale sin conexión, y calcularlas por cuenta
-		// propia es justo lo que prohíbe el CA 4.
 		const string SinFechas = """
 			{
 			  "resultado": {
@@ -218,7 +196,7 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Una_respuesta_sin_unidad_no_produce_sesion()
 	{
-		// La unidad es lo que la pantalla de inicio tiene que mostrar (JTT-1381 CA 13).
+		// La unidad es lo que la pantalla de inicio tiene que mostrar.
 		const string SinUnidad = """
 			{
 			  "resultado": {
@@ -284,7 +262,7 @@ public class ClienteAccesoJacobLoginTests
 		Assert.Equal("http.401", resultado.CodigoError);
 	}
 
-	// ---------- Cotejo de permisos contra el token (JTT-1379 CA 8) ----------
+	// ---------- Cotejo de permisos contra el token ----------
 
 	[Fact]
 	public async Task Acepta_los_permisos_que_el_token_respalda()
@@ -300,9 +278,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Un_cuerpo_que_concede_mas_que_el_token_no_produce_sesion()
 	{
-		// El caso que el criterio persigue: alguien altera la lista de permisos de la
-		// respuesta. El token sigue firmado con lo que Jacob concedió de verdad, así que la
-		// diferencia se nota y el acceso no se completa.
 		var cuerpo = CuerpoLogin(TokenConPermiso, """["APP_OPERADOR_MOVIL", "ADMINISTRAR"]""");
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
 
@@ -327,8 +302,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Un_token_ilegible_no_respalda_ningun_permiso()
 	{
-		// Ilegible no es lo mismo que ausente: bloquear es la salida correcta ante algo que
-		// no se puede interpretar.
 		var cuerpo = CuerpoLogin("no.es-un.jwt", """["APP_OPERADOR_MOVIL"]""");
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
 
@@ -340,8 +313,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Un_token_con_varios_modulos_respalda_el_permiso()
 	{
-		// El claim admite arreglo además de cadena. Hoy Jacob manda uno, pero el formato
-		// permite varios y no debe romper el acceso el día que los mande.
 		var token = TokenDePrueba.Con("APP_OPERADOR_MOVIL", "OTRO_MODULO");
 		var cuerpo = CuerpoLogin(token, """["APP_OPERADOR_MOVIL"]""");
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
@@ -354,8 +325,6 @@ public class ClienteAccesoJacobLoginTests
 	[Fact]
 	public async Task Una_sesion_sin_permisos_se_acepta_porque_no_concede_nada()
 	{
-		// No hay nada que respaldar. El acceso queda abierto pero sin capacidades, y qué se
-		// habilita con ellas es de JTT-1385.
 		var cuerpo = CuerpoLogin(TokenDePrueba.SinModulo(), "[]");
 		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, cuerpo));
 

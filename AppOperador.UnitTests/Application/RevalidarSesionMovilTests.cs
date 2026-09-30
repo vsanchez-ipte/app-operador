@@ -8,9 +8,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Revalidar la sesión al recuperar el enlace (JTT-1383 CA 9, 10 y 11).
-/// </summary>
 public class RevalidarSesionMovilTests
 {
 	private const string Modulo = "APP_OPERADOR_MOVIL";
@@ -66,7 +63,7 @@ public class RevalidarSesionMovilTests
 				VigenciaOffline.DelServidor(validado, validado.AddHours(8))));
 	}
 
-	// ---------- CA 10: al confirmar, se adopta lo que devuelve Jacob ----------
+	// ---------- Al confirmar, se adopta lo que devuelve Jacob ----------
 
 	[Fact]
 	public async Task Al_confirmar_renueva_la_ventana_offline()
@@ -85,8 +82,6 @@ public class RevalidarSesionMovilTests
 	[Fact]
 	public async Task Al_confirmar_actualiza_la_referencia_monotonica()
 	{
-		// Sin esto, el transcurso se seguiría contando desde el acceso original y la
-		// ventana nueva nacería medio consumida.
 		JacobConfirma();
 		SesionOfflinePersistida? guardada = null;
 		await _persistida.GuardarAsync(
@@ -134,7 +129,7 @@ public class RevalidarSesionMovilTests
 		_sesiones.Received(1).Guardar(Arg.Any<SesionOperador>());
 	}
 
-	// ---------- CA 11: si Jacob niega la sesión ----------
+	// ---------- Si Jacob niega la sesión ----------
 
 	[Fact]
 	public async Task Si_Jacob_niega_la_sesion_bloquea_y_pide_autenticacion()
@@ -154,7 +149,7 @@ public class RevalidarSesionMovilTests
 	[Fact]
 	public async Task Si_Jacob_niega_la_sesion_deja_el_motivo_para_la_pantalla_de_acceso()
 	{
-		// Sin esto el operador aparece en el formulario sin explicacion (CA 11).
+		// Sin esto el operador aparece en el formulario sin explicacion.
 		_jacob.RevalidarAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
 			.Returns(ResultadoRevalidacion.Negada(MotivoRechazoAcceso.SesionRevocada));
 

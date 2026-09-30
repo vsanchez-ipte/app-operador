@@ -7,14 +7,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Conversión de un borrador en incidencia (JTT-1399 CA 8 y 9).
-/// </summary>
-/// <remarks>
-/// Lo que se prueba aquí es la <b>compuerta</b>: que ningún borrador incompleto llegue al
-/// repositorio. Que la fila cambie de estado se prueba contra SQLite, en
-/// <c>RepositorioIncidenciasSqliteTests</c>.
-/// </remarks>
 public sealed class ConvertirBorradorEnIncidenciaTests
 {
 	private static readonly TipoIncidencia Objeto = new(11, "Objeto en camino");
@@ -50,8 +42,6 @@ public sealed class ConvertirBorradorEnIncidenciaTests
 	[Fact]
 	public async Task ConKilometroAMedioEscribir_noConvierte()
 	{
-		// "130+" es un borrador válido y una incidencia inválida: es justo la diferencia que
-		// el CA 9 obliga a comprobar al convertir.
 		var resultado = await EjecutarAsync(Objeto, kilometro: "130+", nota: "nota");
 
 		Assert.Equal(ResultadoConversionBorrador.KilometroInvalido, resultado);

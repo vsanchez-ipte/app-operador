@@ -4,14 +4,6 @@ using AppOperador.Infrastructure.Http;
 
 namespace AppOperador.IntegrationTests.Http;
 
-/// <summary>
-/// Revalidación de la sesión: <c>POST ITS/AppLogin/Revalidar</c> (JTT-1383).
-/// </summary>
-/// <remarks>
-/// Lo que estas pruebas protegen es la distinción entre «Jacob dijo que no» y «no se pudo
-/// preguntar». Confundirlas sacaría al operador de una sesión offline vigente cada vez que
-/// el enlace parpadee.
-/// </remarks>
 public class ClienteAccesoJacobRevalidarTests
 {
 	private const string Token = "jwt-de-la-sesion";

@@ -19,23 +19,16 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!--
-    Bases de versiones anteriores, en SQL, para probar la migración contra lo que la app dejaba
-    de verdad en el dispositivo. Van embebidas para que la prueba no dependa de rutas.
-  -->
+  <!-- Bases de versiones anteriores, para probar la migración con lo que la app dejaba de verdad -->
   <ItemGroup>
     <EmbeddedResource Include="Fixtures\*.sql" />
   </ItemGroup>
 
-  <!--
-    A diferencia de AppOperador.UnitTests, este proyecto SÍ referencia Infrastructure:
-    su razón de existir es probar los adaptadores contra una base SQLite real. La regla
-    de arquitectura que aísla UnitTests se mantiene intacta.
-  -->
+  <!-- A diferencia de UnitTests, este proyecto sí referencia Infrastructure: prueba contra SQLite real -->
   <ItemGroup>
     <ProjectReference Include="..\AppOperador.Domain\AppOperador.Domain.csproj" />
     <ProjectReference Include="..\AppOperador.Aplicacion\AppOperador.Aplicacion.csproj" />
     <ProjectReference Include="..\AppOperador.Infrastructure\AppOperador.Infrastructure.csproj" />
   </ItemGroup>
 
-</Project>
+</Project>

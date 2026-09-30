@@ -1,19 +1,5 @@
 namespace AppOperador.Aplicacion.Modelos;
 
-/// <summary>
-/// Veredicto de la comprobación de ubicación: en qué estado está, si deja continuar y qué
-/// puede hacer el operador si no.
-/// </summary>
-/// <remarks>
-/// <para>
-/// La correspondencia estado → acción está aquí, en un solo punto y sin dependencias, para
-/// que se pueda probar sin dispositivo y para que ninguna pantalla la reinvente.
-/// </para>
-/// <para>
-/// Como en <see cref="ResultadoAcceso"/>, negar el paso es un desenlace esperado y no una
-/// excepción.
-/// </para>
-/// </remarks>
 public sealed class ResultadoUbicacion
 {
 	private ResultadoUbicacion(EstadoUbicacion estado, bool permiteAcceder, AccionUbicacion accion)
@@ -23,27 +9,14 @@ public sealed class ResultadoUbicacion
 		Accion = accion;
 	}
 
-	/// <summary>Situación de la ubicación en el dispositivo.</summary>
 	public EstadoUbicacion Estado { get; }
 
-	/// <summary>
-	/// Indica si el acceso puede continuar. Solo es verdadero con
-	/// <see cref="EstadoUbicacion.Concedido"/>: JTT-279 lo declara prerrequisito (PR3).
-	/// </summary>
 	public bool PermiteAcceder { get; }
 
-	/// <summary>Acción que la pantalla debe ofrecer para salir del bloqueo.</summary>
 	public AccionUbicacion Accion { get; }
 
-	/// <summary>Indica si hay algo que el operador pueda hacer desde la app.</summary>
 	public bool HayAccion => Accion != AccionUbicacion.Ninguna;
 
-	/// <summary>Construye el veredicto que corresponde a un estado.</summary>
-	/// <remarks>
-	/// El caso por defecto no es un descuido: un valor que esta versión no conoce se trata
-	/// como fallo técnico y <b>nunca</b> concede el paso. Ante la duda, el prerrequisito
-	/// obligatorio no se da por cumplido.
-	/// </remarks>
 	public static ResultadoUbicacion Para(EstadoUbicacion estado) => estado switch
 	{
 		EstadoUbicacion.Concedido =>
@@ -69,6 +42,7 @@ public sealed class ResultadoUbicacion
 		EstadoUbicacion.NoDisponibleEnElDispositivo =>
 			new(estado, false, AccionUbicacion.Ninguna),
 
+		// Un estado desconocido nunca concede el paso.
 		_ => new(EstadoUbicacion.ErrorAlConsultar, false, AccionUbicacion.Ninguna),
 	};
 }

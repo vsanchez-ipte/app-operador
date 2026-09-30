@@ -4,15 +4,6 @@ using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// El esquema 11 descrito en DDL y las entidades de sqlite-net tienen que decir lo mismo.
-/// </summary>
-/// <remarks>
-/// Desde el esquema 11 las tablas las crea el DDL de <c>EsquemaLocal</c>, no
-/// <c>CreateTableAsync</c>: sqlite-net no sabe declarar llaves foráneas. El precio es que hay
-/// dos descripciones de cada tabla, y esta prueba es lo que impide que se separen: cada
-/// columna que una entidad mapea existe en la tabla, y cada tabla del archivo tiene entidad.
-/// </remarks>
 public sealed class EsquemaLocalTests
 {
 	[Fact]
@@ -94,7 +85,6 @@ public sealed class EsquemaLocalTests
 		Assert.All(acciones, l => Assert.Equal("RESTRICT", l.on_delete));
 	}
 
-	/// <summary>Las clases de <c>Sqlite/Entidades</c> con <c>[Table]</c>, que son internas al ensamblado.</summary>
 	private static IEnumerable<Type> Entidades() =>
 		typeof(BaseDatosLocal).Assembly.GetTypes()
 			.Where(t => t.Namespace == "AppOperador.Infrastructure.Sqlite.Entidades"

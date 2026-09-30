@@ -8,13 +8,6 @@ using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Persistencia de incidencias sobre SQLite.
-/// </summary>
-/// <remarks>
-/// Sustituye al simulador en memoria: lo guardado aquí sobrevive al cierre de la app.
-/// Guardar nunca consulta la red, conforme al principio "offline primero".
-/// </remarks>
 public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 {
 	private readonly BaseDatosLocal _baseDatos;
@@ -22,10 +15,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 	private readonly ISessionStore _sesion;
 	private readonly IMonotonicClock? _monotonico;
 
-	/// <param name="monotonico">
-	/// Contador con el que se sella cada captura (JTT-1383 CA 12). Opcional para no obligar
-	/// a las pruebas que solo miran la persistencia a proporcionarlo.
-	/// </param>
 	public RepositorioIncidenciasSqlite(
 		BaseDatosLocal baseDatos,
 		IClock reloj,
@@ -38,7 +27,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		_monotonico = monotonico;
 	}
 
-	/// <inheritdoc />
 	public async Task<string> GuardarAsync(
 		TipoIncidencia tipo,
 		Kilometer kilometro,
@@ -71,16 +59,13 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			GpsPrecisionMetros = lecturaGps?.PrecisionMetros,
 			GpsInstanteUtcTicks = lecturaGps?.InstanteUtc.Ticks,
 
-			// Del nivel se guardan las tres cosas: el identificador para enviarlo, y el nombre
-			// y el orden del momento para que el histórico no cambie si el catálogo se edita.
+			// Nombre y orden del momento, para que el histórico no cambie si se edita el catálogo.
 			SeveridadId = severidad.Id.ToString(),
 			SeveridadNombre = severidad.Nivel,
 			SeveridadOrden = severidad.Orden,
 
-			// La prioridad no se decide aquí: la fija la regla de dominio, a partir del orden.
 			Prioridad = (int)ReglaPrioridadSincronizacion.Para(severidad.Orden),
 
-			// Versión del catálogo con la que se capturó (JTT-1394 CA 5).
 			VersionCatalogo = versionCatalogo,
 			Nota = nota,
 			Estado = (int)EstadoSincronizacion.Pendiente,
@@ -89,14 +74,11 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			CreadoUtcTicks = ahora,
 			ActualizadoUtcTicks = ahora,
 
-			// Sello de origen (JTT-1383 CA 12): la fecha del dispositivo va arriba, la
-			// monotónica aquí y la sesión de la que salió el registro. Con el reloj solo no
-			// se podría ordenar lo capturado si alguien lo movió a media jornada.
+			// Sello que no se mueve con el reloj, para ordenar lo capturado.
 			MonotonicoTicks = _monotonico?.Transcurrido.Ticks ?? 0,
 			SesionOrigen = sesionId,
 
-			// Con qué permiso se autorizó (JTT-1385 CA 7). Se sella al crear porque una
-			// incidencia offline puede enviarse horas después, cuando el permiso ya cambió.
+			// Al crear: una incidencia offline puede enviarse cuando el permiso ya cambió.
 			PermisoOrigen = PermisoDeLaSesion(),
 		};
 
@@ -104,15 +86,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return fila.ClaveLocal;
 	}
 
-	/// <summary>
-	/// Versión del catálogo guardado, para sellarla en la incidencia (JTT-1394 CA 5).
-	/// </summary>
-	/// <remarks>
-	/// Se lee de la tabla de catálogo y no de la sesión a propósito. La sesión trae la versión
-	/// de <b>su</b> descarga, y una incidencia capturada sin conexión puede enviarse días
-	/// después, cuando ya se bajó otra: sellarla desde la sesión declararía una versión que el
-	/// operador no usó. Vacío si nunca se ha descargado el catálogo.
-	/// </remarks>
+	// De la tabla y no de la sesión: la sesión trae la versión de su propia descarga.
 	private async Task<string> LeerVersionCatalogoAsync(CancellationToken cancelacion)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
@@ -121,13 +95,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return meta?.Version ?? string.Empty;
 	}
 
-	/// <summary>
-	/// Permiso con el que la sesión autoriza capturar, para sellarlo en el registro.
-	/// </summary>
-	/// <remarks>
-	/// Se toma el permiso funcional de la App Operador, que es el único que Jacob emite hoy. Si
-	/// mañana concede capacidades finas, aquí es donde hay que decidir cuál se sella.
-	/// </remarks>
+	// Hoy Jacob solo emite el permiso general; si llegan permisos finos, aquí se decide cuál sellar.
 	private string PermisoDeLaSesion()
 	{
 		var permisos = _sesion.Actual?.Permisos;
@@ -137,7 +105,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			: string.Empty;
 	}
 
-	/// <inheritdoc />
 	public async Task<string> GuardarBorradorAsync(
 		TipoIncidencia? tipo,
 		string? kilometro,
@@ -157,12 +124,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			ClaveLocal = await SiguienteClaveLocalAsync(cancelacion),
 			TipoClave = tipo?.Id.ToString(CultureInfo.InvariantCulture),
 			TipoNombre = tipo?.Nombre,
-			// Un borrador admite un kilómetro a medio escribir: por eso se guarda el
-			// texto crudo y no un Kilometer, que rechazaría cualquier valor incompleto.
+			// Texto crudo: un borrador admite un kilómetro a medio escribir.
 			Kilometro = kilometro,
 			FuenteKilometro = (int)KilometerSource.Manual,
 
-			// Un borrador puede no tener severidad elegida todavía; se sella lo que haya.
 			SeveridadId = severidad?.Id.ToString() ?? string.Empty,
 			SeveridadNombre = severidad?.Nivel ?? string.Empty,
 			SeveridadOrden = severidad?.Orden ?? 0,
@@ -182,18 +147,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return fila.ClaveLocal;
 	}
 
-	/// <inheritdoc />
-	/// <remarks>
-	/// <para>
-	/// <b>Solo los del operador de la sesión</b> (JTT-1388 CA 9). Un borrador es trabajo a medio
-	/// capturar y sigue siendo de quien lo escribió: al entrar otro operador no debe encontrarse
-	/// con lo que dejó el anterior, ni verlo ni poder retomarlo como suyo.
-	/// </para>
-	/// <para>
-	/// Sin sesión abierta no se devuelve nada, igual que en la cola: no es que se hayan borrado,
-	/// es que todavía nadie tiene derecho a verlos.
-	/// </para>
-	/// </remarks>
+	// Solo los del operador de la sesión: un borrador sigue siendo de quien lo escribió.
 	public async Task<IReadOnlyList<RegistroCola>> ObtenerBorradoresAsync(CancellationToken cancelacion = default)
 	{
 		var operador = _sesion.Actual?.Operador;
@@ -210,13 +164,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			.OrderByDescending(i => i.CreadoUtcTicks)
 			.ToListAsync();
 
-		// Lambda y no grupo de métodos: desde que ARegistroCola admite el motivo del fallo, el
-		// grupo encaja también con la sobrecarga indexada de Select y deja de compilar. Los
-		// borradores nunca han fallado —no se envían—, así que no hay motivo que pasarle.
+		// Lambda y no grupo de métodos: con la sobrecarga indexada de Select deja de compilar.
 		return filas.Select(fila => MapeoIncidencia.ARegistroCola(fila)).ToList();
 	}
 
-	/// <inheritdoc />
 	public async Task<BorradorIncidencia?> ObtenerBorradorAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
@@ -227,12 +178,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			return null;
 		}
 
+		// Una fila vieja puede traer una clave de maqueta que no es entero: se reabre sin tipo.
 		return new BorradorIncidencia(
 			fila.Uuid,
 			fila.ClaveLocal,
-			// El tipo se guardó como texto invariante; si la fila es anterior a JTT-1394 trae
-			// una clave de maqueta —OBJETO, VEHICULO…— que no es un entero. En ese caso se
-			// devuelve sin tipo: es más honesto que reabrir el formulario con uno inventado.
 			int.TryParse(fila.TipoClave, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tipoId)
 				? tipoId
 				: null,
@@ -241,7 +190,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			fila.Nota);
 	}
 
-	/// <inheritdoc />
 	public async Task<bool> ActualizarBorradorAsync(
 		string claveLocal,
 		TipoIncidencia? tipo,
@@ -271,7 +219,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return true;
 	}
 
-	/// <inheritdoc />
 	public async Task<bool> EliminarBorradorAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
@@ -287,7 +234,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return true;
 	}
 
-	/// <inheritdoc />
 	public async Task<bool> ConvertirBorradorAsync(
 		string claveLocal,
 		TipoIncidencia tipo,
@@ -307,15 +253,10 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			return false;
 		}
 
-		// La versión del catálogo y el permiso se vuelven a sellar, y no se conservan los del
-		// borrador: los que cuentan (JTT-1394 CA 5, JTT-1385 CA 7) son los vigentes cuando se
-		// eligieron el tipo y la severidad definitivos, que es ahora. Un borrador puede llevar
-		// días guardado y todavía no es una incidencia.
 		await PasarAPendienteAsync(fila, tipo, kilometro, fuenteKilometro, severidad, nota, posicionGps, cancelacion);
 		return true;
 	}
 
-	/// <inheritdoc />
 	public async Task<IncidenciaRechazada?> ObtenerRechazadaAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
@@ -339,7 +280,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			await UltimoMensajeDeFalloAsync(fila.Uuid, cancelacion));
 	}
 
-	/// <inheritdoc />
 	public async Task<bool> CorregirRechazadaAsync(
 		string claveLocal,
 		TipoIncidencia tipo,
@@ -359,10 +299,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			return false;
 		}
 
-		// Fallido → Pendiente es la única salida que admite el grafo de estados. El contador y
-		// el último código se reinician: para el operador esto es un envío nuevo, y arrastrar
-		// el rechazo anterior a un Pendiente lo haría parecer todavía rechazado. La bitácora de
-		// intentos se conserva tal cual: lo que pasó, pasó.
+		// Para el operador es un envío nuevo: se reinician intentos y último código.
 		fila.Intentos = 0;
 		fila.UltimoErrorCodigo = null;
 
@@ -370,14 +307,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return true;
 	}
 
-	/// <summary>
-	/// Escribe en la fila los datos definitivos y la deja como <c>Pendiente</c>.
-	/// </summary>
-	/// <remarks>
-	/// Es la misma operación para un borrador que se convierte y para un rechazado que se
-	/// corrige: algo guardado pasa a la cola con los datos que el operador acaba de confirmar.
-	/// El catálogo y el permiso se sellan con los vigentes ahora, que son los que cuentan.
-	/// </remarks>
+	// Catálogo, permiso y sesión se sellan con los vigentes ahora, que son los que cuentan.
 	private async Task PasarAPendienteAsync(
 		IncidenciaLocal fila,
 		TipoIncidencia tipo,
@@ -408,20 +338,12 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		fila.VersionCatalogo = await LeerVersionCatalogoAsync(cancelacion);
 		fila.PermisoOrigen = PermisoDeLaSesion();
 
-		// La sesión de origen se sella con la misma regla que el catálogo y el permiso: la
-		// vigente ahora, que es cuando el registro pasa a ser una incidencia.
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		fila.SesionOrigen = await ReferenciasSesion.AsegurarAsync(conexion, _sesion.Actual) ?? fila.SesionOrigen;
 		await conexion.UpdateAsync(fila);
 	}
 
-	/// <summary>
-	/// Busca un registro fallido por su clave, exigiendo que sea del operador de la sesión.
-	/// </summary>
-	/// <remarks>
-	/// Misma regla que <see cref="BuscarBorradorPropioAsync"/> (JTT-1388 CA 9): un rechazo del
-	/// turno anterior no lo corrige —ni lo reenvía a su nombre— quien entre después.
-	/// </remarks>
+	// Un rechazo del turno anterior no lo corrige quien entre después.
 	private async Task<IncidenciaLocal?> BuscarFallidaPropiaAsync(
 		string claveLocal,
 		CancellationToken cancelacion)
@@ -442,13 +364,6 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			.FirstOrDefaultAsync();
 	}
 
-	/// <summary>
-	/// Lo que dijo Jacob en el último intento fallido del registro, si quedó registrado.
-	/// </summary>
-	/// <remarks>
-	/// Es la misma consulta que hace la Cola para pintar el motivo por tarjeta, acotada a un
-	/// registro: el mensaje no vive en la incidencia sino en la bitácora de intentos.
-	/// </remarks>
 	private async Task<string?> UltimoMensajeDeFalloAsync(string uuid, CancellationToken cancelacion)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
@@ -460,15 +375,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 		return ultimo?.Mensaje;
 	}
 
-	/// <summary>
-	/// Busca un borrador por su clave, exigiendo que sea del operador de la sesión.
-	/// </summary>
-	/// <remarks>
-	/// <b>El filtro por operador no es una comodidad, es la regla</b> (JTT-1388 CA 9). Sin él,
-	/// quien entre después podría abrir, editar, convertir o borrar el trabajo a medio capturar
-	/// del turno anterior — y al convertirlo quedaría a nombre de quien no lo escribió.
-	/// Sin sesión no se devuelve nada.
-	/// </remarks>
+	// El filtro por operador es la regla: si no, otro turno podría convertirlo a su nombre.
 	private async Task<IncidenciaLocal?> BuscarBorradorPropioAsync(
 		string claveLocal,
 		CancellationToken cancelacion)
@@ -489,13 +396,7 @@ public sealed class RepositorioIncidenciasSqlite : IIncidentRepository
 			.FirstOrDefaultAsync();
 	}
 
-	/// <summary>
-	/// Calcula la siguiente clave <c>LOC-######</c> a partir de la última guardada.
-	/// </summary>
-	/// <remarks>
-	/// El consecutivo se deriva de la base y no de un contador en memoria: si se reiniciara
-	/// en cada arranque, dos incidencias de sesiones distintas compartirían clave.
-	/// </remarks>
+	// Desde la base y no en memoria: si se reiniciara, dos incidencias compartirían clave.
 	private async Task<string> SiguienteClaveLocalAsync(CancellationToken cancelacion)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);

@@ -5,9 +5,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// JTT-1394 CA 4: el catálogo se refresca en la validación en línea, y su fallo no rompe nada.
-/// </summary>
 public class ActualizarCatalogoLocalTests
 {
 	private static CatalogosOperacion Catalogo() =>
@@ -59,9 +56,6 @@ public class ActualizarCatalogoLocalTests
 		Assert.Equal(new DateOnly(2026, 8, 20), repositorio.Guardado!.Version);
 	}
 
-	/// <summary>
-	/// Sin red se conserva la copia local: es el CA 2, no una condición de error.
-	/// </summary>
 	[Fact]
 	public async Task SinRespuestaDelServidor_noPisaLaCopiaLocal()
 	{
@@ -76,9 +70,6 @@ public class ActualizarCatalogoLocalTests
 		Assert.NotNull(repositorio.Guardado);
 	}
 
-	/// <summary>
-	/// Sin token no se llama al servidor: es el recorrido simulado y el arranque sin sesión.
-	/// </summary>
 	[Theory]
 	[InlineData(null)]
 	[InlineData("")]

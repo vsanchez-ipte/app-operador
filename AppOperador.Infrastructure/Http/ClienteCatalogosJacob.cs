@@ -7,21 +7,7 @@ using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
 
-/// <summary>
-/// Descarga los catálogos vigentes del canal móvil de Jacob CCO (JTT-1394).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Va aparte de <see cref="ClienteAccesoJacob"/> aunque comparta el canal: aquel no registra
-/// nada a propósito porque por él pasan contraseñas y desafíos, y mezclar aquí una consulta de
-/// catálogo obligaría a mantener esa disciplina en un sitio donde no hace falta.
-/// </para>
-/// <para>
-/// <b>Exige el permiso general de la app, no el de captura.</b> Consultar el catálogo no es
-/// capturar: un operador sin permiso de captura tiene que poder abrir el formulario aunque no
-/// pueda enviarlo, o el aviso que le explica por qué no puede sería lo único que vería.
-/// </para>
-/// </remarks>
+// Exige el permiso general, no el de captura: sin captura también se debe poder abrir el formulario.
 public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 {
 	private static readonly JsonSerializerOptions OpcionesJson = new()
@@ -38,7 +24,6 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 		_configuracion = configuracion;
 	}
 
-	/// <inheritdoc />
 	public async Task<CatalogosOperacion?> ObtenerVigentesAsync(
 		string accessToken,
 		CancellationToken cancelacion = default)
@@ -71,8 +56,7 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 		catch (Exception excepcion) when (
 			FalloDeComunicacion.Es(excepcion) || excepcion is JsonException or UriFormatException)
 		{
-			// Sin red o con una respuesta ilegible se sigue con la copia local: es exactamente
-			// el caso que el CA 2 contempla, no una condición de error.
+			// Sin red o con respuesta ilegible se sigue con la copia local.
 			return null;
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
@@ -81,21 +65,7 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 		}
 	}
 
-	/// <summary>
-	/// Convierte la respuesta en el catálogo de la aplicación, o <see langword="null"/> si no
-	/// sirve para capturar.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Descarta las entradas incompletas en vez de aceptarlas con valores por omisión: un tipo
-	/// sin id no se puede enviar a Jacob, y ofrecerlo en el desplegable solo produciría una
-	/// captura que se rechaza al sincronizar.
-	/// </para>
-	/// <para>
-	/// Si tras el filtrado no quedan tipos o no quedan severidades, devuelve
-	/// <see langword="null"/> para que <b>no se pise la copia local</b> con una inservible.
-	/// </para>
-	/// </remarks>
+	// Descarta entradas incompletas; sin tipos o severidades devuelve null para no pisar la copia local.
 	private static CatalogosOperacion? Convertir(RespuestaCatalogos respuesta)
 	{
 		var tipos = (respuesta.Tipos ?? [])
@@ -134,16 +104,7 @@ public sealed class ClienteCatalogosJacob : ICatalogosJacobClient
 		return catalogo.EsUtilizable ? catalogo : null;
 	}
 
-	/// <summary>
-	/// Convierte los límites de evidencia, o los deja desconocidos si el servidor no los declara
-	/// completos.
-	/// </summary>
-	/// <remarks>
-	/// <b>Es todo o nada, y a propósito.</b> Unos límites a medias —formatos sin tope de tamaño,
-	/// por ejemplo— llevarían a la app a completar el hueco con un número propio, que es justo
-	/// lo que este diseño evita: la app validaría con un número que el servidor no conoce. Sin
-	/// los tres, no se admite adjuntar y se dice por qué.
-	/// </remarks>
+	// Todo o nada: la app nunca completa un límite con un número propio.
 	private static LimitesEvidencia ConvertirLimites(LimitesEvidenciaCatalogo? limites)
 	{
 		if (limites is null)

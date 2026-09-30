@@ -2,14 +2,6 @@ using System.Xml.Linq;
 
 namespace AppOperador.UnitTests.Architecture;
 
-/// <summary>
-/// Prueba B: verifica el grafo de referencias leyendo los <c>.csproj</c> como XML.
-/// </summary>
-/// <remarks>
-/// Hace falta además de la prueba A porque <c>AppOperador.Mobile</c> es multi-target y
-/// el proyecto de pruebas no puede cargar su ensamblado. Leer el XML permite comprobar
-/// la dirección de las referencias sin resolver ningún binario.
-/// </remarks>
 public class GrafoDeReferenciasTests
 {
 	private const string Domain = "AppOperador.Domain";
@@ -106,9 +98,6 @@ public class GrafoDeReferenciasTests
 			""");
 	}
 
-	/// <summary>
-	/// Devuelve los nombres de los proyectos referenciados por un <c>.csproj</c>.
-	/// </summary>
 	private static IReadOnlyList<string> LeerReferencias(string proyecto)
 	{
 		var ruta = RutaAbsolutaDelProyecto(proyecto);
@@ -121,8 +110,7 @@ public class GrafoDeReferenciasTests
 
 		return XDocument.Load(ruta)
 			.Descendants()
-			// Por nombre local: así funciona tanto con los .csproj estilo SDK (sin
-			// espacio de nombres) como con los antiguos, que sí lo llevan.
+			// Por nombre local: sirve con .csproj estilo SDK y con los antiguos.
 			.Where(elemento => elemento.Name.LocalName == "ProjectReference")
 			.Select(elemento => (string?)elemento.Attribute("Include"))
 			.Where(include => !string.IsNullOrWhiteSpace(include))
@@ -132,10 +120,6 @@ public class GrafoDeReferenciasTests
 			.ToArray();
 	}
 
-	/// <summary>
-	/// Extrae el nombre del proyecto de una ruta de <c>Include</c>, que en los
-	/// <c>.csproj</c> siempre usa separadores de Windows.
-	/// </summary>
 	private static string NombreDeProyectoDesdeRuta(string include)
 	{
 		var normalizada = include.Replace('\\', '/');
@@ -150,10 +134,6 @@ public class GrafoDeReferenciasTests
 	private static string RutaRelativaDelProyecto(string proyecto) =>
 		Path.Combine(proyecto, $"{proyecto}.csproj");
 
-	/// <summary>
-	/// Sube desde el directorio de ejecución hasta encontrar el directorio que contiene
-	/// el archivo de solución <c>.slnx</c>.
-	/// </summary>
 	private static DirectoryInfo LocalizarRaizDelRepositorio()
 	{
 		var directorio = new DirectoryInfo(AppContext.BaseDirectory);

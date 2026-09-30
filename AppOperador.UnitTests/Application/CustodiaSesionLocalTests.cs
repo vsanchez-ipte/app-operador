@@ -7,14 +7,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// El rastro local de una sesión se abre y se cierra entero.
-/// </summary>
-/// <remarks>
-/// Una sesión deja huella en tres sitios y antes cada caso de uso los recorría por su
-/// cuenta. Uno se dejaba la sesión persistida sin borrar. Estas pruebas fijan que los tres
-/// se tocan siempre juntos.
-/// </remarks>
 public class CustodiaSesionLocalTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 11, 8, 0, 0, DateTimeKind.Utc);
@@ -50,8 +42,6 @@ public class CustodiaSesionLocalTests
 	[Fact]
 	public async Task Abrir_guarda_el_token_antes_de_anunciar_la_sesion()
 	{
-		// Si el token fallara al guardarse, es preferible no haber anunciado una sesion que
-		// despues no podria autenticar ninguna peticion.
 		await Crear().AbrirAsync(Sesion(), "jwt-nuevo");
 
 		Received.InOrder(() =>
@@ -67,8 +57,6 @@ public class CustodiaSesionLocalTests
 	[InlineData("   ")]
 	public async Task Abrir_sin_token_nuevo_conserva_el_que_ya_estaba(string? token)
 	{
-		// Es el caso de la revalidacion: no emite token nuevo, y sobrescribirlo con vacio
-		// dejaria la sesion sin credencial.
 		await Crear().AbrirAsync(Sesion(), token);
 
 		await _tokens.DidNotReceive().GuardarAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());

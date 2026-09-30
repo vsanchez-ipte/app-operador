@@ -11,12 +11,10 @@
                 <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
 
-                <!-- Paleta y estilos de la App Operador, tomados de la maqueta -->
                 <ResourceDictionary Source="Estilos/Colores.xaml" />
                 <ResourceDictionary Source="Estilos/Estilos.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Para deshabilitar botones mientras hay una operación en curso -->
             <toolkit:InvertedBoolConverter x:Key="InvertirBooleano" />
         </ResourceDictionary>
     </Application.Resources>

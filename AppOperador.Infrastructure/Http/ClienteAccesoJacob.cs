@@ -11,23 +11,7 @@ using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
 
-/// <summary>
-/// Acceso real contra el canal móvil de Jacob CCO, en sus dos pasos.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Paso 1: <c>GetPublicKey → cifrado RSA → POST Preauth</c>, que devuelve un desafío y las
-/// unidades del operador. Paso 2: <c>POST AppLogin</c>, que consume el desafío junto con la
-/// unidad elegida y abre la sesión. Cualquier desenlace se traduce a un resultado; nunca se
-/// deja escapar una excepción de red o de formato: para la pantalla de acceso, "no hubo red"
-/// y "la credencial es incorrecta" son dos resultados normales, no fallos del programa.
-/// </para>
-/// <para>
-/// <b>Seguridad.</b> Esta clase no registra nada. No hay bitácora ni <c>ILogger</c> a
-/// propósito: por aquí pasan la contraseña en claro, su versión cifrada, el desafío y el
-/// token de sesión, y ninguno puede acabar en un log (JTT-1378 §7).
-/// </para>
-/// </remarks>
+// No registra nada: por aquí pasan contraseña, desafío y token. Nunca deja escapar una excepción de red o de formato.
 public sealed class ClienteAccesoJacob : IAccesoJacobClient
 {
 	private static readonly JsonSerializerOptions OpcionesJson = new()
@@ -39,11 +23,6 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	private readonly ConfiguracionApi _configuracion;
 	private readonly ITokenClaims _claims;
 
-	/// <param name="claims">
-	/// Lectura de lo que el token trae firmado. Se recibe por el contrato y no se llama al
-	/// lector concreto: es el mismo cotejo que hacen la reanudación y la revalidación, y
-	/// tenerlo por dos caminos distintos permitiría que divergieran.
-	/// </param>
 	public ClienteAccesoJacob(HttpClient http, ConfiguracionApi configuracion, ITokenClaims claims)
 	{
 		_http = http;
@@ -60,7 +39,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		{
 			using var cifrador = await ObtenerCifradorAsync(cancelacion);
 
-			// Email y contraseña se cifran por separado, cada uno en su propio bloque.
+			// Cada valor en su propio bloque RSA.
 			var solicitud = new SolicitudPreauth
 			{
 				Email = cifrador.Cifrar(email),
@@ -75,18 +54,16 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 		catch (ErrorDeCifradoException)
 		{
-			// La llave pública no sirve. No es culpa de la credencial del operador.
+			// La llave no sirve: no es culpa de la credencial.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "llave.invalida");
 		}
 		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
-			// Servidor inalcanzable, DNS, certificado, conexión rechazada, socket cerrado.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinComunicacion, "conexion.fallida");
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
 		{
-			// HttpClient señala el vencimiento del tiempo de espera con esta excepción; solo
-			// es un timeout si quien llamó no fue el que canceló.
+			// Timeout de HttpClient: solo si quien llamó no canceló.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.SinComunicacion, "tiempo.agotado");
 		}
 	}
@@ -98,8 +75,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	{
 		try
 		{
-			// Endpoint anónimo: el desafío es la credencial. No se vuelve a cifrar nada,
-			// porque no viaja ningún dato del operador.
+			// Anónimo: el desafío es la credencial y no viaja ningún dato del operador.
 			var solicitud = new SolicitudLogin { ChallengeId = challengeId, UnidadId = unidadId };
 
 			using var respuesta = await _http.PostAsJsonAsync(
@@ -117,7 +93,6 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 	}
 
-	/// <inheritdoc />
 	public async Task<bool> CerrarSesionAsync(string accessToken, CancellationToken cancelacion = default)
 	{
 		if (string.IsNullOrWhiteSpace(accessToken))
@@ -130,8 +105,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			using var respuesta = await EnviarConTokenAsync(
 				ConfiguracionApi.RutaLogout, accessToken, cancelacion);
 
-			// El endpoint es idempotente: un 200 basta como confirmación y no hay cuerpo que
-			// interpretar. Cualquier otro código significa que la revocación no consta.
+			// Idempotente: un 200 basta como confirmación.
 			return respuesta.IsSuccessStatusCode;
 		}
 		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
@@ -144,7 +118,6 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 	}
 
-	/// <inheritdoc />
 	public async Task<ResultadoRevalidacion> RevalidarAsync(
 		string accessToken,
 		CancellationToken cancelacion = default)
@@ -163,7 +136,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
 		{
-			// Sin red no se sabe nada de la sesión: sigue valiendo la ventana offline.
+			// Sin red no se sabe nada: sigue valiendo la ventana offline.
 			return ResultadoRevalidacion.SinRespuesta("conexion.fallida");
 		}
 		catch (TaskCanceledException) when (!cancelacion.IsCancellationRequested)
@@ -172,22 +145,13 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 	}
 
-	/// <summary>
-	/// Traduce la respuesta de la revalidación.
-	/// </summary>
-	/// <remarks>
-	/// La distinción que importa: un código funcional de Jacob es una negativa firme —la
-	/// sesión dejó de ser válida— mientras que un cuerpo ilegible o un error del servidor
-	/// solo significan que no se pudo preguntar. Tratar lo segundo como negativa sacaría al
-	/// operador de una sesión offline perfectamente vigente.
-	/// </remarks>
+	// Un código funcional es negativa firme; un cuerpo ilegible o error del servidor solo es «no se pudo preguntar».
 	private static async Task<ResultadoRevalidacion> InterpretarRevalidacionAsync(
 		HttpResponseMessage respuesta,
 		CancellationToken cancelacion)
 	{
 		if (respuesta.StatusCode == HttpStatusCode.Unauthorized)
 		{
-			// El token ya no autentica: la sesión se acabó para Jacob.
 			return ResultadoRevalidacion.Negada(MotivoRechazoAcceso.SesionRevocada, "http.401");
 		}
 
@@ -222,13 +186,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		return ConvertirRevalidacion(resultado);
 	}
 
-	/// <summary>
-	/// Arma el resultado de una revalidación confirmada.
-	/// </summary>
-	/// <remarks>
-	/// Sin las fechas o sin unidad la respuesta no sirve, pero tampoco es una negativa: se
-	/// informa como «no se pudo preguntar» y la sesión offline continúa.
-	/// </remarks>
+	// Sin fechas o sin unidad no sirve, pero tampoco es negativa.
 	private static ResultadoRevalidacion ConvertirRevalidacion(RespuestaRevalidacion respuesta)
 	{
 		if (respuesta.LastValidatedAtUtc is null
@@ -257,14 +215,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			vigencia: VigenciaOffline.DelServidor(validado, hastaOffline));
 	}
 
-	/// <summary>
-	/// Traduce la respuesta del segundo paso a un resultado de dominio.
-	/// </summary>
-	/// <remarks>
-	/// Mismo criterio que el paso 1: el código HTTP no alcanza, porque el API responde
-	/// <c>400</c> tanto para un rechazo funcional como para un cuerpo mal formado o una
-	/// excepción no controlada.
-	/// </remarks>
+	// El API responde 400 a casi todo: el código HTTP no alcanza.
 	private async Task<ResultadoLogin> InterpretarLoginAsync(
 		HttpResponseMessage respuesta,
 		CancellationToken cancelacion)
@@ -304,32 +255,13 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 
 		var sesion = ConvertirSesion(resultado);
 
-		// Sin token no hay sesión utilizable, y sin las fechas del servidor no se puede
-		// saber hasta cuándo vale sin conexión. Cualquiera de las dos ausencias es un fallo
-		// de integración, no un rechazo del operador.
+		// Sin token o sin fechas es un fallo de integración, no un rechazo del operador.
 		return sesion is null
 			? ResultadoLogin.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.incompleta")
 			: ResultadoLogin.Creada(sesion);
 	}
 
-	/// <summary>
-	/// Convierte la respuesta del API en la sesión de la app, o <see langword="null"/> si le
-	/// falta algo imprescindible.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Las fechas se adoptan tal como llegan y se normalizan a UTC. <b>No se recalcula la
-	/// ventana offline</b>: la calcula el servidor, y rehacerla contra el reloj del teléfono
-	/// daría una vigencia distinta en cuanto ese reloj esté desfasado (JTT-1382 CA 3 y CA 4).
-	/// </para>
-	/// <para>
-	/// Los permisos del cuerpo se cotejan contra el claim <c>module</c> del token antes de
-	/// aceptarlos (JTT-1379 CA 8). Si el cuerpo concede algo que el token no respalda, la
-	/// sesión no se construye: el acceso termina en
-	/// <see cref="MotivoRechazoAcceso.ErrorDelServicio"/>, que es lo que corresponde a una
-	/// respuesta incoherente, no a un rechazo del operador.
-	/// </para>
-	/// </remarks>
+	// Adopta la ventana del servidor sin recalcularla; si los permisos no cuadran con el token, no hay sesión.
 	private SesionValidada? ConvertirSesion(RespuestaLogin respuesta)
 	{
 		if (string.IsNullOrWhiteSpace(respuesta.AccessToken)
@@ -370,28 +302,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			horaServidorUtc: ComoUtc(respuesta.ServerTimeUtc ?? validado));
 	}
 
-	/// <summary>
-	/// Envía un POST autenticado con el token de la sesión.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Las tres operaciones que lo necesitan —cierre, revalidación y sonda de enlace— arman
-	/// la petición igual: sin cuerpo y con el token en la cabecera <c>Authorization</c>.
-	/// <b>El token no viaja en el cuerpo</b>, para que no acabe en trazas intermedias.
-	/// </para>
-	/// <para>
-	/// <b>El envío se espera aquí dentro, y no es un detalle de estilo.</b> Devolver la tarea
-	/// sin esperarla dejaba que el <c>using</c> desechara la petición con el envío todavía en
-	/// vuelo: cuando la capa HTTP volvía a tocarla, ya estaba liberada y salía «Cannot access
-	/// a disposed object». Con la red estable el envío alcanzaba a consumir la petición antes
-	/// y no se notaba; al reconectar, el camino lento —socket nuevo, DNS— llegaba tarde y
-	/// perdía la carrera. De ahí que solo apareciera al reintentar tras recuperar la red.
-	/// </para>
-	/// <para>
-	/// Desechar la petición no afecta a la respuesta, así que quien llama la sigue usando
-	/// igual.
-	/// </para>
-	/// </remarks>
+	// Se espera aquí dentro: si no, el using desecha la petición en vuelo (falla al reconectar).
 	private async Task<HttpResponseMessage> EnviarConTokenAsync(
 		string ruta,
 		string accessToken,
@@ -404,7 +315,6 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		return await _http.SendAsync(peticion, cancelacion).ConfigureAwait(false);
 	}
 
-	/// <inheritdoc />
 	public async Task<ResultadoSondeo> ComprobarEnlaceAsync(
 		string accessToken,
 		CancellationToken cancelacion = default)
@@ -419,8 +329,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			using var respuesta = await EnviarConTokenAsync(
 				ConfiguracionApi.RutaEstado, accessToken, cancelacion, HttpMethod.Get);
 
-			// Basta el código: el cuerpo no aporta nada al indicador. Lo que importa es que
-			// haber contestado ya distingue un problema del servidor de uno de comunicación.
+			// Basta el código: haber contestado ya separa servidor de comunicación.
 			return ResultadoSondeo.Desde((int)respuesta.StatusCode);
 		}
 		catch (Exception excepcion) when (FalloDeComunicacion.Es(excepcion))
@@ -433,15 +342,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 	}
 
-	/// <summary>
-	/// Normaliza a UTC lo que devuelve el deserializador.
-	/// </summary>
-	/// <remarks>
-	/// <c>System.Text.Json</c> convierte a hora local un instante con zona, y deja
-	/// <c>Unspecified</c> uno sin ella. La regla de vigencia exige <c>Kind.Utc</c> explícito
-	/// y lanza si no lo recibe, así que aquí se fija: lo que trae zona se convierte, lo que
-	/// no la trae se toma como UTC, que es lo que declara el contrato.
-	/// </remarks>
+	// System.Text.Json deja Local o Unspecified; el dominio exige Utc. Sin zona se toma como UTC.
 	private static DateTime ComoUtc(DateTime instante) => instante.Kind switch
 	{
 		DateTimeKind.Utc => instante,
@@ -449,14 +350,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		_ => DateTime.SpecifyKind(instante, DateTimeKind.Utc),
 	};
 
-	/// <summary>
-	/// Trae la llave pública y arma el cifrador.
-	/// </summary>
-	/// <remarks>
-	/// La llave se pide en cada preautenticación y vive solo durante la operación. No se
-	/// guarda en disco ni se cachea entre intentos: es pública, pero cachearla obligaría a
-	/// invalidarla cuando el servidor la rote, y el ahorro no compensa ese riesgo.
-	/// </remarks>
+	// En cada intento y sin caché: así no hay que invalidarla cuando el servidor la rote.
 	private async Task<CifradorRsa> ObtenerCifradorAsync(CancellationToken cancelacion)
 	{
 		using var respuesta = await _http.GetAsync(Url(ConfiguracionApi.RutaLlavePublica), cancelacion);
@@ -474,26 +368,18 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			throw new ErrorDeCifradoException("La respuesta de la llave pública no es JSON válido.", excepcion);
 		}
 
-		// La llave viene DENTRO de 'resultado'. Decodificar el cuerpo entero falla.
+		// La llave viene dentro de 'resultado'.
 		return CifradorRsa.DesdeBase64(sobre?.Resultado);
 	}
 
-	/// <summary>
-	/// Traduce la respuesta del API a un resultado de dominio.
-	/// </summary>
-	/// <remarks>
-	/// No basta con mirar el código HTTP. El API responde <c>400</c> tanto para un rechazo
-	/// funcional con <c>Envelope</c> como para un cuerpo mal formado, que llega con otra
-	/// forma distinta (<c>{ "codigo": "422", "mensaje": … }</c>) y ni siquiera es un sobre.
-	/// Y las excepciones no controladas también llegan como <c>400</c>, nunca como 500.
-	/// </remarks>
+	// 400 sirve para rechazo, cuerpo mal formado y excepciones no controladas: se lee el sobre.
 	private static async Task<ResultadoPreauth> InterpretarAsync(
 		HttpResponseMessage respuesta,
 		CancellationToken cancelacion)
 	{
-		// 401 llega sin cuerpo útil: no hay Envelope que leer.
 		if (respuesta.StatusCode == HttpStatusCode.Unauthorized)
 		{
+			// 401 llega sin cuerpo: no hay sobre que leer.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "http.401");
 		}
 
@@ -506,7 +392,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		}
 		catch (JsonException)
 		{
-			// Cuerpo que no es un Envelope: validación de modelo, HTML de un proxy, etc.
+			// No es un sobre: validación de modelo, HTML de un proxy, etc.
 			return ResultadoPreauth.Rechazado(MotivoRechazoAcceso.ErrorDelServicio, "respuesta.desconocida");
 		}
 
@@ -520,8 +406,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			return ResultadoPreauth.Rechazado(MotivoDe(sobre.CodigoError!), sobre.CodigoError);
 		}
 
-		// Sin código de error pero tampoco resultado utilizable: el contrato no contempla
-		// este caso, así que se trata como fallo del servicio y no como credencial inválida.
+		// Sin error y sin resultado útil: se trata como fallo del servicio, no como credencial inválida.
 		var resultado = sobre.Resultado;
 		if (!respuesta.IsSuccessStatusCode || resultado is null || string.IsNullOrWhiteSpace(resultado.ChallengeId))
 		{
@@ -534,11 +419,7 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 			ConvertirUnidades(resultado.Unidades));
 	}
 
-	/// <summary>Mapea el catálogo <c>appoperador.*</c> a la causa que entiende la app.</summary>
-	/// <remarks>
-	/// Un código desconocido no se asume como credencial inválida: si el API incorpora un
-	/// caso nuevo, es preferible un fallo genérico honesto a un mensaje equivocado.
-	/// </remarks>
+	// Un código desconocido no se asume como credencial inválida.
 	private static MotivoRechazoAcceso MotivoDe(string codigoError) => codigoError switch
 	{
 		"appoperador.credenciales.invalidas" => MotivoRechazoAcceso.CredencialInvalida,
@@ -547,37 +428,20 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 		"appoperador.cuenta.bloqueada" => MotivoRechazoAcceso.CuentaBloqueada,
 		"appoperador.sin.vehiculos" => MotivoRechazoAcceso.SinUnidades,
 
-		// Del segundo paso. Los tres del desafío se unifican: la salida del operador es la
-		// misma —repetir el acceso— y distinguirlos solo le diría a un atacante en qué falló.
+		// Los tres del desafío se unifican: distinguirlos solo le serviría a un atacante.
 		"appoperador.desafio.noexiste" => MotivoRechazoAcceso.DesafioNoValido,
 		"appoperador.desafio.expirado" => MotivoRechazoAcceso.DesafioNoValido,
 		"appoperador.desafio.consumido" => MotivoRechazoAcceso.DesafioNoValido,
 		"appoperador.vehiculo.noautorizado" => MotivoRechazoAcceso.UnidadNoAutorizada,
 
-		// De la revalidación (JTT-1383). Las dos llevan a lo mismo: la sesión ya no existe
-		// para Jacob y hay que autenticarse de nuevo.
+		// De la revalidación: la sesión ya no existe para Jacob.
 		"appoperador.sesion.revocada" => MotivoRechazoAcceso.SesionRevocada,
 		"appoperador.sesion.invalida" => MotivoRechazoAcceso.SesionRevocada,
 
 		_ => MotivoRechazoAcceso.ErrorDelServicio,
 	};
 
-	/// <summary>
-	/// Convierte las unidades del contrato al modelo de la aplicación.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Se conserva el <c>id</c> además de la clave: es lo que el segundo paso del acceso le
-	/// envía a Jacob, que revalida la unidad contra él y no contra el número económico
-	/// (JTT-1381 CA 6).
-	/// </para>
-	/// <para>
-	/// Una unidad sin <c>id</c> o sin <c>clave</c> se descarta en vez de completarse con un
-	/// valor vacío: sin identificador no se puede seleccionar —el API la rechazaría— y sin
-	/// clave el operador no sabría cuál está eligiendo. Es preferible una lista más corta
-	/// que una entrada que no funciona.
-	/// </para>
-	/// </remarks>
+	// Se conserva el id, que es contra lo que Jacob revalida. Sin id o sin clave, la unidad se descarta.
 	private static IReadOnlyList<UnidadVehicular> ConvertirUnidades(IReadOnlyList<UnidadPreauth> unidades) =>
 		[.. unidades
 			.Where(unidad => !string.IsNullOrWhiteSpace(unidad.Id) && !string.IsNullOrWhiteSpace(unidad.Clave))

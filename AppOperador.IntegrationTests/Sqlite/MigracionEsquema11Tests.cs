@@ -6,15 +6,6 @@ using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// La migración del esquema 10 al 11: llaves foráneas, sesión como historial e intentos por
-/// tabla, sin perder una sola fila de lo que había en el dispositivo.
-/// </summary>
-/// <remarks>
-/// La base de partida es <c>Fixtures/esquema-10.sql</c>, con el DDL exacto que generaba
-/// sqlite-net y datos de todos los tipos. Lo que aquí se afirma es lo que un teléfono de QA
-/// con cola de campo tiene que conservar al actualizar la app.
-/// </remarks>
 public sealed class MigracionEsquema11Tests : IAsyncDisposable
 {
 	private readonly string _ruta = Path.Combine(Path.GetTempPath(), $"appoperador-migracion-{Guid.NewGuid():N}.db3");
@@ -101,8 +92,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		Assert.Equal(("u-7", "Camioneta 07"), (unidades[2].id, unidades[2].descripcion));
 		Assert.Equal(("", ""), (unidades[0].id, unidades[0].descripcion));
 
-		// Sesiones: la guardada queda vigente; s-010 y s-020 se reconstruyen desde la bitácora;
-		// s-099 no tiene operador y no se puede sostener.
+		// La guardada queda vigente; s-010 y s-020 salen de la bitácora; s-099 no tiene operador.
 		var sesiones = BaseDeVersionAnterior.Consultar<Sesion>(_ruta,
 			"SELECT session_id, operador, unidad_clave, rol, vigente FROM sesion_local ORDER BY session_id");
 		Assert.Equal(["s-010", "s-020", "s-030"], sesiones.Select(s => s.session_id));
@@ -159,8 +149,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		Assert.Equal(2, BaseDeVersionAnterior.Escalar<int>(_ruta, "SELECT COUNT(*) FROM catalogo_cuerpo"));
 		Assert.Equal(25, BaseDeVersionAnterior.Escalar<int>(_ruta, "SELECT evidencia_tamano_maximo_mb FROM catalogo_meta"));
 
-		// La línea anterior al esquema 10 sigue sin operador ni origen, y el monotónico nulo
-		// pasó a cero porque la columna ya no admite nulos.
+		// Sigue sin operador ni origen; el monotónico nulo pasó a cero.
 		var previa = Fila("SELECT * FROM evento_auditoria WHERE id = 1");
 		Assert.Null(previa["operador"]);
 		Assert.Null(previa["origen"]);
@@ -256,8 +245,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 	{
 		BaseDeVersionAnterior.Crear(10, _ruta);
 
-		// Dos incidencias con la misma clave local: el índice único de la versión 11 no lo
-		// admite, y así se provoca un fallo a media reconstrucción.
+		// Clave local repetida: el índice único de la versión 11 provoca el fallo a media reconstrucción.
 		using (var directa = new SQLiteConnection(_ruta))
 		{
 			directa.Execute("DROP INDEX ix_incidencia_clave;");
@@ -290,7 +278,6 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		Assert.Equal(0, BaseDeVersionAnterior.Escalar<int>(_ruta, "SELECT COUNT(*) FROM evento_auditoria"));
 	}
 
-	/// <summary>Una fila, columna por columna y con su tipo real, sin pasar por ninguna entidad.</summary>
 	private Dictionary<string, object?> Fila(string sql)
 	{
 		using var conexion = new SQLiteConnection(new SQLiteConnectionString(_ruta, storeDateTimeAsTicks: true));

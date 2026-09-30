@@ -4,12 +4,8 @@ using SQLite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// JTT-1388 CA 2 y 4: la base local está cifrada, y una base en claro se migra sin perder nada.
-/// </summary>
 public sealed class CifradoBaseDatosTests
 {
-	/// <summary>Clave fija para las pruebas. En el dispositivo sale del almacén seguro.</summary>
 	private sealed class ClaveFija : IDatabaseKeyProvider
 	{
 		public Task<string> ObtenerAsync(CancellationToken cancelacion = default) =>
@@ -19,15 +15,6 @@ public sealed class CifradoBaseDatosTests
 	private static string RutaTemporal() =>
 		Path.Combine(Path.GetTempPath(), $"appoperador-cifrado-{Guid.NewGuid():N}.db3");
 
-	/// <summary>Cuenta el catálogo sembrado, con clave o sin ella, sin pasar por la app.</summary>
-	/// <summary>
-	/// Deja tipos en el catálogo de una base ya inicializada.
-	/// </summary>
-	/// <remarks>
-	/// Hasta JTT-1394 la base se sembraba sola y estas pruebas contaban esos seis tipos para
-	/// demostrar que la migración a cifrado no pierde datos. Al dejar de sembrar hay que poner
-	/// los datos a mano: contar cero no demostraría nada.
-	/// </remarks>
 	private static void SembrarTiposDePrueba(string ruta, string? clave)
 	{
 		using var conexion = new SQLiteConnection(
@@ -90,10 +77,6 @@ public sealed class CifradoBaseDatosTests
 		}
 	}
 
-	/// <summary>
-	/// El escenario de la actualización: quien ya tenía la app tiene una base en claro con sus
-	/// incidencias dentro. Al cifrarla no puede perderlas (CA 8 y 11).
-	/// </summary>
 	[Fact]
 	public async Task Una_base_en_claro_se_cifra_conservando_los_datos()
 	{
@@ -136,10 +119,6 @@ public sealed class CifradoBaseDatosTests
 		}
 	}
 
-	/// <summary>
-	/// La migración se corta entre borrar el original y poner el cifrado en su sitio: el arranque
-	/// siguiente tiene que recuperar los datos, no empezar de cero.
-	/// </summary>
 	[Fact]
 	public async Task Una_migracion_interrumpida_se_repara_al_arrancar()
 	{
@@ -174,23 +153,6 @@ public sealed class CifradoBaseDatosTests
 		}
 	}
 
-	/// <summary>
-	/// Al cifrar, la versión de esquema del archivo tiene que viajar con los datos.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <c>sqlcipher_export</c> traslada esquema y filas, pero no los pragmas del archivo. Si
-	/// <c>user_version</c> se perdiera, la base cifrada nacería en 0.
-	/// </para>
-	/// <para>
-	/// <b>Por qué la versión de la prueba es 99 y no la actual.</b> Con la actual el defecto no
-	/// se ve: <c>MigrarAsync</c> corre justo después, encuentra un 0, lo trata como base
-	/// anterior a la primera versión y vuelve a sellar el número correcto. El resultado final
-	/// es el mismo y la prueba pasaría igual con el defecto dentro. Con una versión por encima
-	/// de la actual —una base escrita por un APK más nuevo— la migración se detiene sin tocar
-	/// nada, así que lo que quede en el archivo es exactamente lo que dejó la exportación.
-	/// </para>
-	/// </remarks>
 	[Fact]
 	public async Task Al_cifrar_una_base_en_claro_se_conserva_su_version_de_esquema()
 	{

@@ -8,9 +8,6 @@ using NSubstitute;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Los dos pasos del acceso y la apertura de la sesión móvil (JTT-1382).
-/// </summary>
 public class AbrirSesionMovilTests
 {
 	private static readonly DateTime Validacion = new(2026, 8, 10, 12, 0, 0, DateTimeKind.Utc);
@@ -76,8 +73,6 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Identificar_ConRechazo_DejaElAccesoSinDesafioUtilizable()
 	{
-		// Si el operador se equivocó de cuenta, el desafío de la anterior no puede seguir
-		// sirviendo para abrir sesión.
 		var casoDeUso = CrearCasoDeUso();
 		ConDesafioEmitido();
 		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
@@ -98,7 +93,7 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Abrir_EnviaElDesafioYElIdentificadorTecnicoDeLaUnidad()
 	{
-		// JTT-1381 CA 6: viaja el id, no la clave visible.
+		// Viaja el id, no la clave visible.
 		ConDesafioEmitido("d-42");
 		_jacob.CompletarAccesoAsync("d-42", "u-1", Arg.Any<CancellationToken>())
 			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
@@ -160,8 +155,6 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Abrir_ConExito_ConservaLaVentanaOfflineDelServidorSinRecalcularla()
 	{
-		// CA 3 y CA 4: la ventana la calcula Jacob. Si el caso de uso la rehiciera contra el
-		// reloj del dispositivo, un telefono desfasado daria una vigencia distinta.
 		var delServidor = VigenciaOffline.DelServidor(Validacion, Validacion.AddHours(6));
 		ConDesafioEmitido();
 		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -213,7 +206,7 @@ public class AbrirSesionMovilTests
 			Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 	}
 
-	// ---------- JTT-1392 CA 2: el acceso real deja rastro en la bitácora ----------
+	// ---------- El acceso real deja rastro en la bitácora ----------
 
 	[Fact]
 	public async Task Identificar_ConExito_LoAnotaANombreDelCorreo()
@@ -244,8 +237,6 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Abrir_ConExito_AnotaLaUnidadYLaSesion_DespuesDeGuardarla()
 	{
-		// Las dos líneas se escriben ya con la sesión publicada, para que salgan a nombre del
-		// operador que Jacob confirmó y no del correo tecleado.
 		ConDesafioEmitido();
 		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
 			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
@@ -273,8 +264,6 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Abrir_ConExito_PoneANombreDelOperadorLoQueSeAnotoConElCorreo()
 	{
-		// Las líneas del acceso se escribieron a nombre del correo; el perfil se filtra por el
-		// nombre que Jacob devuelve. Sin esto quedarían guardadas pero invisibles para su dueño.
 		ConDesafioEmitido();
 		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
 			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
@@ -334,8 +323,6 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Identificar_ConExito_AnotaQueHayEnlace()
 	{
-		// Sin sesión la sonda no puede autenticarse; que Jacob acabe de validar credenciales
-		// es la prueba de enlace que la pantalla de acceso necesita.
 		ConDesafioEmitido();
 
 		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "secreta");

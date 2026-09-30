@@ -2,74 +2,42 @@ using SQLite;
 
 namespace AppOperador.Infrastructure.Sqlite.Entidades;
 
-/// <summary>
-/// Fila de <c>evidencia_local</c>: una fotografía o video asociado a una incidencia.
-/// </summary>
-/// <remarks>
-/// <b>Aquí no se guarda el binario</b>, solo la ruta al archivo privado. El documento de
-/// arquitectura lo prohíbe expresamente: SQLite guarda "sin tokens ni binarios".
-///
-/// La evidencia se sincroniza <b>por separado</b> de su incidencia y se reintenta por
-/// separado: una evidencia fallida no revierte una incidencia ya confirmada. Por eso
-/// tiene su propio UUID, su propio estado y su propio contador de intentos.
-/// </remarks>
+// Solo la ruta, nunca el binario. Estado e intentos propios: se sincroniza aparte de su incidencia.
 [Table("evidencia_local")]
 internal sealed class EvidenciaLocal
 {
-	/// <summary>Identificador de idempotencia propio de la evidencia.</summary>
 	[PrimaryKey]
 	[Column("uuid")]
 	public string Uuid { get; set; } = string.Empty;
 
-	/// <summary>UUID de la incidencia a la que pertenece.</summary>
 	[Indexed(Name = "ix_evidencia_incidencia")]
 	[Column("incidencia_uuid")]
 	public string IncidenciaUuid { get; set; } = string.Empty;
 
-	/// <summary>Ruta al archivo privado del dispositivo. Nunca el contenido.</summary>
 	[Column("ruta_archivo")]
 	public string RutaArchivo { get; set; } = string.Empty;
 
-	/// <summary>
-	/// Cómo se llamaba el archivo cuando el operador lo eligió.
-	/// </summary>
-	/// <remarks>
-	/// <b>No sirve para encontrarlo</b> —para eso está <see cref="RutaArchivo"/>, que usa el
-	/// UUID— sino para que el operador lo reconozca en la lista de adjuntos. El PO lo pidió
-	/// explícitamente en JTT-289: nombre, tipo y tamaño visibles antes de enviar.
-	/// </remarks>
+	// Para que el operador la reconozca; el archivo se encuentra por RutaArchivo.
 	[Column("nombre_original")]
 	public string NombreOriginal { get; set; } = string.Empty;
 
-	/// <summary>Tipo de medio, por ejemplo <c>image/jpeg</c>.</summary>
 	[Column("tipo_medio")]
 	public string TipoMedio { get; set; } = string.Empty;
 
-	/// <summary>Tamaño en bytes, para estimar el costo del envío.</summary>
 	[Column("bytes")]
 	public long Bytes { get; set; }
 
-	/// <summary>Estado dentro de la cola. Ver <c>EstadoSincronizacion</c>.</summary>
 	[Indexed(Name = "ix_evidencia_estado")]
 	[Column("estado")]
 	public int Estado { get; set; }
 
-	/// <summary>Instante de captura, en ticks UTC.</summary>
 	[Column("creado_utc_ticks")]
 	public long CreadoUtcTicks { get; set; }
 
-	/// <summary>Número de envíos intentados.</summary>
 	[Column("intentos")]
 	public int Intentos { get; set; }
 
-	/// <summary>
-	/// Último código de error de Jacob, o vacío si nunca falló.
-	/// </summary>
-	/// <remarks>
-	/// Se persiste por la misma razón que en <c>incidencia_local</c> (JTT-1401): en memoria,
-	/// cerrar la app —algo habitual en campo— convertiría cada rechazo funcional en un reintento
-	/// indefinido a la mañana siguiente.
-	/// </remarks>
+	// Persistido para que un rechazo funcional no se reintente al reabrir la app.
 	[Column("ultimo_error_codigo")]
 	public string? UltimoErrorCodigo { get; set; }
 }

@@ -5,14 +5,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Relleno de los campos que Jacob exige y el formulario no captura (JTT-1401).
-/// </summary>
-/// <remarks>
-/// <b>Estas pruebas nacen de un defecto visto en el CCO el 21-ago:</b> las incidencias de la app
-/// llegaban declarando la vía «Total» —completamente cerrada— sin que nadie lo hubiera observado,
-/// porque el relleno tomaba la primera afectación del catálogo y la primera es la más grave.
-/// </remarks>
 public sealed class RellenoCamposNoCapturadosTests
 {
 	private static IncidenciaEnviable Incidencia() => new(
@@ -47,8 +39,6 @@ public sealed class RellenoCamposNoCapturadosTests
 	[Fact]
 	public void EncuentraSinAfectacionAunqueVengaSinTilde()
 	{
-		// Comparar el literal acentuado haría que el relleno cayera al peor valor por un
-		// detalle ortográfico del catálogo.
 		var catalogo = Catalogo(
 			[new(1, "Total"), new(7, "SIN AFECTACION")],
 			[new("A", "Cuerpo A")]);
@@ -74,8 +64,6 @@ public sealed class RellenoCamposNoCapturadosTests
     [Fact]
 	public void PrefiereAmbosCuerposParaNoDirigirAUnLadoEquivocado()
 	{
-		// Declarar "Cuerpo A" manda a quien atienda a un lado concreto de una vía de dos
-		// cuerpos, y equivocarse cuesta un recorrido completo.
 		var catalogo = Catalogo(
 			[new(3, "Sin afectación")],
 			[new("A", "Cuerpo A"), new("B", "Cuerpo B"), new("C", "Ambos cuerpos")]);
