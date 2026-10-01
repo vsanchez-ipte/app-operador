@@ -1,7 +1,4 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<!--
-    Captura de incidencia de campo (JTT-280) y su evidencia (JTT-289).
--->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
@@ -14,11 +11,7 @@
     <ScrollView x:Name="Desplazable">
         <VerticalStackLayout Padding="14" Spacing="12">
 
-            <!--
-                Aviso permanente de modo offline (JTT-1383 CA 7 y 8). El literal es el que
-                fija JTT-279 y no se reformula. El boton fuerza la revalidacion sin esperar
-                a que el sistema note el cambio de enlace.
-            -->
+            <!-- Literal fijado por Producto; el botón fuerza la revalidación -->
             <Border IsVisible="{Binding Enlace.EnModoOffline}" Style="{StaticResource Tarjeta}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
@@ -55,7 +48,7 @@
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
 
                         <VerticalStackLayout Grid.Column="0" x:Name="CampoKilometro">
-                            <!-- La etiqueta dice de dónde salió el kilómetro, no las opciones (JTT-1393 CA 6) -->
+                            <!-- La etiqueta dice de dónde salió el kilómetro, no las opciones -->
                             <Label Text="{Binding EtiquetaKilometro}" Style="{StaticResource EtiquetaCampo}" />
                             <Border Style="{StaticResource MarcoCampo}">
                                 <Entry x:Name="EntradaKilometro"
@@ -82,15 +75,7 @@
 
                     </Grid>
 
-                    <!-- JTT-1395 CA 11: se puede pedir una lectura nueva antes de guardar.
-
-                         El aviso NO usa el estilo de error, por la misma razon que el aviso de
-                         sincronizacion de JTT-1401: ninguno de los cinco motivos es un fallo del
-                         operador ni le impide capturar, porque el campo del KM siempre se puede
-                         teclear. Estar fuera del corredor es lo normal en el acceso a la caseta,
-                         y que a un tramo le falte geometria es una carencia del sistema. Pintarlo
-                         en rojo enseña a ignorar los mensajes rojos, y el dia que uno importe no
-                         se leeria. -->
+                    <!-- Sin estilo de error: ningún motivo impide capturar, y abusar del rojo enseña a ignorarlo -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Grid.Column="0"
                                Text="{Binding AvisoGps}"
@@ -98,9 +83,7 @@
                                IsVisible="{Binding HayAvisoGps}"
                                VerticalOptions="Center" />
 
-                        <!-- La lectura del GPS tarda hasta diez segundos y no detiene la
-                             pantalla: se avisa aqui, junto al KM, que es el unico campo que
-                             espera. -->
+                        <!-- La lectura del GPS tarda y no detiene la pantalla: se avisa junto al KM -->
                         <HorizontalStackLayout Grid.Column="0" Spacing="8"
                                                IsVisible="{Binding BuscandoUbicacion}"
                                                VerticalOptions="Center">
@@ -123,7 +106,7 @@
                     <VerticalStackLayout x:Name="CampoNota">
                         <Label Text="NOTA DEL OPERADOR" Style="{StaticResource EtiquetaCampo}" />
                         <Border Style="{StaticResource MarcoCampo}">
-                            <!-- El tope lo pone el ViewModel, que es de donde sale el contador (JTT-1393 CA 7) -->
+                            <!-- El tope sale del ViewModel, igual que el contador -->
                             <Editor Style="{StaticResource CampoNota}"
                                     Placeholder="Descripcion de la incidencia..."
                                     MaxLength="{Binding LongitudMaximaNota}"
@@ -143,31 +126,15 @@
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayError}" />
 
-                    <!-- Falta descargar el catálogo (JTT-1394 CA 2). Sin él no hay tipos ni
-                         severidades que ofrecer, y en blanco pareceria que la app fallo. -->
+                    <!-- Sin catálogo no hay tipos ni severidades: en blanco parecería que la app falló -->
                     <Label Text="{Binding AvisoSinCatalogo}"
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayAvisoSinCatalogo}" />
 
-                    <!-- ===== Evidencia (JTT-1398 CA 1) =====
-
-                         Va ANTES de los botones de guardar porque el criterio dice «adjuntar
-                         evidencia opcional ANTES de guardar»: si estuviera después, el
-                         operador leería el orden al revés.
-
-                         La lista muestra nombre, tipo y tamaño de cada archivo, que son los
-                         tres datos que el PO pidió visibles, y deja quitarlos.
-                    -->
+                    <!-- Evidencia: antes de los botones de guardar, porque se adjunta antes de guardar -->
                     <Label x:Name="CampoEvidencia" Text="EVIDENCIA (OPCIONAL)" Style="{StaticResource EtiquetaCampo}" />
 
-                    <!-- El visor de la maqueta, ahora con contenido. Antes era decorativo
-                         —una elipse sobre un fondo oscuro— y los botones que lo acompañaban
-                         estaban muertos, mientras otro juego de botones vivos hacía lo mismo
-                         más arriba. Es un solo bloque: se mira aquí y se actúa aquí.
-
-                         Muestra lo adjuntado, no la cámara en vivo: capturar se delega a la
-                         app de cámara del sistema, que ya trae enfoque, flash y HDR, y es lo
-                         que hace que el permiso se pida al usar la función (CA 3). -->
+                    <!-- Muestra lo adjuntado, no la cámara en vivo: capturar se delega a la cámara del sistema -->
                     <Border BackgroundColor="#1E1A1A" StrokeThickness="0" Padding="12"
                             HeightRequest="170" StrokeShape="RoundRectangle 8">
                         <Grid RowDefinitions="Auto,*,Auto">
@@ -179,8 +146,7 @@
                                        TextColor="{StaticResource RosaFondo}" />
                             </Grid>
 
-                            <!-- Sin nada adjunto se conserva la elipse de la maqueta: el
-                                 recuadro vacío y negro se lee como que algo falló. -->
+                            <!-- Sin adjuntos se conserva la elipse: un recuadro negro vacío se lee como falla -->
                             <VerticalStackLayout Grid.Row="1" Spacing="6"
                                                  HorizontalOptions="Center" VerticalOptions="Center"
                                                  IsVisible="{Binding HayEvidencias, Converter={StaticResource InvertirBooleano}}">
@@ -202,12 +168,7 @@
                                             <Border WidthRequest="72" HeightRequest="72"
                                                     BackgroundColor="#2B2523" StrokeThickness="0"
                                                     StrokeShape="RoundRectangle 6">
-                                                <!-- Tocar la miniatura la abre con el visor del
-                                                     sistema. Vale también para las ya enviadas:
-                                                     el archivo local no se borra al sincronizar.
-                                                     El comando vive en el ViewModel de la página,
-                                                     no en la evidencia, así que se busca por el
-                                                     ancestro. -->
+                                                <!-- El comando vive en el ViewModel de la página, así que se busca por el ancestro -->
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer
                                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CapturaViewModel}}, Path=AbrirEvidenciaCommand}"
@@ -216,10 +177,7 @@
                                                 <Grid>
                                                     <Image Source="{Binding Ruta}" Aspect="AspectFill"
                                                            IsVisible="{Binding EsImagen}" />
-                                                    <!-- Un PDF o un video no tienen miniatura sin
-                                                         decodificarlos, y decodificar quince
-                                                         megabytes para un cuadro de 72 píxeles no
-                                                         compra nada. Se muestra el tipo. -->
+                                                    <!-- Sin miniatura para PDF o video: se muestra el tipo -->
                                                     <Label Text="{Binding Etiqueta}"
                                                            FontSize="11" FontAttributes="Bold"
                                                            TextColor="#C9BFB6"
@@ -239,18 +197,14 @@
                     </Border>
 
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <!-- La cámara solo si el dispositivo la tiene: ofrecer un botón que no
-                             puede funcionar es peor que no ofrecerlo. -->
+                        <!-- Solo si el dispositivo tiene cámara -->
                         <Button Grid.Column="0"
                                 Text="Capturar foto"
                                 Style="{StaticResource BotonPrimario}"
                                 IsVisible="{Binding HayCamara}"
                                 IsEnabled="{Binding PuedeAdjuntar}"
                                 Command="{Binding AdjuntarDeCamaraCommand}" />
-                        <!-- Queda visible y apagado mientras el catálogo no publique un
-                             video/*, y se enciende solo el día que lo haga: es el mismo trato
-                             que a los otros tres límites. Ocultarlo dejaría JTT-289 con trabajo
-                             de app que hoy no hace falta. -->
+                        <!-- Visible y apagado hasta que el catálogo publique un video/* -->
                         <Button Grid.Column="1"
                                 Text="Capturar video corto"
                                 Style="{StaticResource BotonSecundario}"
@@ -259,27 +213,19 @@
                                 Command="{Binding AdjuntarDeVideoCommand}" />
                     </Grid>
 
-                    <!-- El selector de archivos es la otra mitad del CA 2, «selector de archivos
-                         o fotografías». Sin él, el PDF que el servidor admite no tenía por dónde
-                         entrar: la galería solo ofrece el carrete. -->
+                    <!-- Por aquí entra el PDF: la galería solo ofrece el carrete -->
                     <Button Text="Elegir archivo"
                             Style="{StaticResource BotonSecundario}"
                             IsEnabled="{Binding PuedeAdjuntar}"
                             Command="{Binding AdjuntarDeArchivoCommand}" />
 
-                    <!-- La unica salida cuando el permiso de camara quedo bloqueado: desde la
-                         aplicacion ya no se puede volver a pedir, asi que sin este boton el
-                         operador se queda pulsando foto y video sin que ocurra nada. Solo
-                         aparece en ese caso; una negativa normal se resuelve volviendo a
-                         tocar el boton. -->
+                    <!-- Solo con el permiso bloqueado: desde la app ya no se puede volver a pedir -->
                     <Button Text="Abrir configuración de la aplicación"
                             Style="{StaticResource BotonSecundario}"
                             IsVisible="{Binding OfreceAjustesDeCamara}"
                             Command="{Binding AbrirAjustesDeCamaraCommand}" />
 
-                    <!-- Por qué el botón de video está apagado. Va junto a él por lo mismo que
-                         el aviso de permiso: un botón visible y muerto sin explicación se lee
-                         como que la app está rota. -->
+                    <!-- Junto al botón: un botón visible y muerto sin explicación se lee como falla -->
                     <Label Text="{Binding AvisoVideo}"
                            Style="{StaticResource TextoSecundario}"
                            IsVisible="{Binding HayAvisoVideo}" />
@@ -304,8 +250,7 @@
                                             </Label>
                                         </VerticalStackLayout>
 
-                                        <!-- No se puede quitar lo que el CCO ya confirmó: el
-                                             archivo existe del otro lado. -->
+                                        <!-- No se puede quitar lo que el CCO ya confirmó -->
                                         <Button Grid.Column="1"
                                                 Text="Quitar"
                                                 Style="{StaticResource BotonSecundario}"
@@ -318,16 +263,12 @@
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
 
-                    <!-- Por qué los botones están apagados (JTT-1404 CA 5). Va JUNTO a
-                         ellos y no arriba del formulario: el operador mira el botón que no
-                         responde, y ahí es donde tiene que encontrar la explicación. -->
+                    <!-- Junto a los botones apagados, que es donde el operador busca la explicación -->
                     <Label Text="{Binding AvisoSinPermiso}"
                            Style="{StaticResource MensajeError}"
                            IsVisible="{Binding HayAvisoSinPermiso}" />
 
-                    <!-- Qué borrador se está editando (JTT-1399 CA 8). Sin esto, el
-                         formulario relleno es indistinguible de una captura nueva y el
-                         operador no entiende por qué los botones dicen otra cosa. -->
+                    <!-- Sin esto el formulario relleno es indistinguible de una captura nueva -->
                     <Border Style="{StaticResource TarjetaInterna}"
                             IsVisible="{Binding EstaEditandoBorrador}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -342,9 +283,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- Qué registro rechazado se está corrigiendo y por qué lo rechazó el
-                         CCO (JTT-291 CA 8). Se lee mientras se corrige: sin esto el operador
-                         tendría que volver a la Cola a ver qué tiene que arreglar. -->
+                    <!-- Se lee mientras se corrige, sin volver a la Cola -->
                     <Border Style="{StaticResource TarjetaInterna}"
                             IsVisible="{Binding EstaCorrigiendo}">
                         <VerticalStackLayout Spacing="6">
@@ -359,11 +298,7 @@
                     </Border>
 
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                        <!-- Los textos cambian al editar: con un borrador abierto no se crea
-                             nada, se actúa sobre él. Un botón que dice "Guardar incidencia"
-                             haría creer que quedan dos registros del mismo hecho. Con un
-                             rechazado abierto reenvía, y el de borrador se esconde: un
-                             registro que ya fue incidencia no vuelve a ser borrador. -->
+                        <!-- Con un borrador abierto no se crea nada; un rechazado no vuelve a ser borrador -->
                         <Button Grid.Column="0"
                                 Text="{Binding TextoBotonPrimario}"
                                 Style="{StaticResource BotonPrimario}"
@@ -375,10 +310,7 @@
                                 Command="{Binding GuardarBorradorCommand}" />
                     </Grid>
 
-                    <!-- Qué pasó al enviar la incidencia recién guardada (JTT-1401). NO usa
-                         el estilo de error: quedarse en la cola por falta de señal es el
-                         funcionamiento normal en campo, y pintarlo en rojo enseñaría al
-                         operador a ignorar los mensajes rojos. -->
+                    <!-- Sin estilo de error: quedarse en la cola por falta de señal es lo normal en campo -->
                     <Label Text="{Binding MensajeEnvio}"
                            Style="{StaticResource TextoSecundario}"
                            IsVisible="{Binding HayMensajeEnvio}" />
@@ -403,11 +335,7 @@
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Borradores}" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:RegistroColaVista">
-                                <!-- Tocar un borrador lo abre en el formulario de arriba
-                                     (JTT-1399 CA 8). Se reutiliza esa pantalla en vez de
-                                     abrir otra: editar un borrador es exactamente capturar,
-                                     y duplicarla obligaría a mantener dos veces las mismas
-                                     validaciones. -->
+                                <!-- Editar un borrador es capturar: se reutiliza el formulario de arriba -->
                                 <Border Style="{StaticResource TarjetaInterna}">
                                     <Border.GestureRecognizers>
                                         <TapGestureRecognizer
@@ -420,8 +348,7 @@
                                                    TextColor="{StaticResource TextoTitulo}" />
                                             <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
                                         </VerticalStackLayout>
-                                        <!-- Que se puede tocar tiene que verse: sin esta pista,
-                                             la lista parece de solo lectura. -->
+                                        <!-- Sin esta pista la lista parece de solo lectura -->
                                         <Label Grid.Column="1"
                                                Text="Abrir"
                                                Style="{StaticResource TextoSecundario}"
@@ -439,9 +366,7 @@
         </VerticalStackLayout>
     </ScrollView>
 
-        <!-- Capa de carga, centrada y encima de todo. Al entrar a la pestana la pantalla
-             tarda unos segundos en estar lista y sin esto parece que no responde. Va como
-             capa y no dentro del scroll: arriba del todo quedaba escondida. -->
+        <!-- Capa encima de todo: dentro del scroll quedaba escondida -->
         <Grid IsVisible="{Binding Cargando}"
               BackgroundColor="#B3E8DED0"
               InputTransparent="False">

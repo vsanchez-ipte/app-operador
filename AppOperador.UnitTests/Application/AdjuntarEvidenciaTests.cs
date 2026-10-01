@@ -8,14 +8,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Adjuntar y quitar evidencia (JTT-1398 CA 1, 5 y 9).
-/// </summary>
-/// <remarks>
-/// Lo que se prueba aquí es <b>el orden y sus consecuencias</b>: que no se copie lo que va a
-/// rechazarse, y que no quede registrado lo que no se pudo copiar. Que la fila acabe escrita en
-/// la base se prueba contra SQLite, en <c>RepositorioEvidenciasSqliteTests</c>.
-/// </remarks>
 public sealed class AdjuntarEvidenciaTests
 {
 	private const string Incidencia = "11111111-1111-1111-1111-111111111111";
@@ -56,8 +48,7 @@ public sealed class AdjuntarEvidenciaTests
 	[Fact]
 	public async Task LaEvidenciaNaceComoPendiente_yNoComoSincronizada()
 	{
-		// Su camino de envío es propio y empieza en cero: el CA 9 de JTT-280 se cumple cuando
-		// el CCO la tiene, no cuando el operador la eligió.
+		// Su envío es propio y empieza en cero: cuenta cuando el CCO la tiene.
 		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo());
 
 		Assert.Equal(EstadoSincronizacion.Pendiente, resultado.Adjuntada!.Estado);
@@ -66,8 +57,7 @@ public sealed class AdjuntarEvidenciaTests
 	[Fact]
 	public async Task UnFormatoQueNoSeAdmite_niSiquieraSeCopia()
 	{
-		// Copiar quince megabytes de video para después rechazarlos es gasto puro en un
-		// teléfono de campo. La validación va antes que el disco, y esto lo fija.
+		// La validación va antes que el disco: copiar un video para rechazarlo es gasto puro.
 		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(mime: "video/mp4"));
 
 		Assert.False(resultado.Exito);
@@ -100,8 +90,7 @@ public sealed class AdjuntarEvidenciaTests
 	[Fact]
 	public async Task SiLaCopiaFalla_noQuedaFilaApuntandoANada()
 	{
-		// Es la parte que rompe la cola si se hace al revés: una fila registrada cuyo archivo
-		// no llegó se intentaría subir para siempre sin que nada dijera que está rota.
+		// Una fila cuyo archivo no llegó se intentaría subir para siempre.
 		_almacen.Falla = true;
 
 		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo());
@@ -119,7 +108,7 @@ public sealed class AdjuntarEvidenciaTests
 		Assert.NotEqual(primera.Adjuntada!.Uuid, segunda.Adjuntada!.Uuid);
 	}
 
-	// ── Quitar (CA 1: «y poder quitarlo») ─────────────────────────────────────────────
+	// ── Quitar ────────────────────────────────────────────────────────────────────────
 
 	[Fact]
 	public async Task Quitar_borraElArchivoYLaFila()
@@ -160,13 +149,12 @@ public sealed class AdjuntarEvidenciaTests
 
 	// ── Dobles ────────────────────────────────────────────────────────────────────────
 
-	// ---------- Espacio en el dispositivo (JTT-289 CA 8) ----------
+	// ---------- Espacio en el dispositivo ----------
 
 	[Fact]
 	public async Task SinEspacioParaElArchivo_rechazaAntesDeCopiar()
 	{
-		// Queda menos que el archivo más el margen: copiar dejaría un archivo truncado o la
-		// base local sin sitio para escribir.
+		// Menos que el archivo más el margen: copiar dejaría un archivo truncado o la base sin sitio.
 		_espacio.BytesLibres = ReglaEspacioParaEvidencia.MargenSeguridadBytes + 1024;
 
 		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(bytes: 2048));
@@ -189,8 +177,7 @@ public sealed class AdjuntarEvidenciaTests
 	[Fact]
 	public async Task ConEspacioDesconocido_noBloquea()
 	{
-		// El sistema puede negarse a medir; castigar al operador por eso sería tratar una
-		// incertidumbre como un disco lleno. La copia sigue teniendo su propia comprobación.
+		// Si el sistema no mide, no se trata como disco lleno; la copia tiene su propia comprobación.
 		_espacio.BytesLibres = null;
 
 		var resultado = await Crear().EjecutarAsync(Incidencia, Archivo(bytes: 2048));
@@ -202,7 +189,6 @@ public sealed class AdjuntarEvidenciaTests
 	{
 		public List<EvidenciaAdjunta> Registradas { get; } = [];
 
-		/// <summary>Cuántas dice tener ya la incidencia, para ejercitar el cupo.</summary>
 		public int YaAdjuntas { get; set; }
 
 		public void MarcarSincronizada(string uuid)
@@ -271,7 +257,6 @@ public sealed class AdjuntarEvidenciaTests
 
 		public List<string> Borrados { get; } = [];
 
-		/// <summary>Simula que el archivo no se pudo copiar.</summary>
 		public bool Falla { get; set; }
 
 		public Task<string?> GuardarAsync(
@@ -294,12 +279,12 @@ public sealed class AdjuntarEvidenciaTests
 		}
 	}
 
-	// ── Con que nombre queda la evidencia (31-ago) ───────────────────────────────────
+	// ── Con qué nombre queda la evidencia ────────────────────────────────────────────
 
 	[Fact]
 	public async Task LoCapturadoConLaCamara_seNombraConLaClaveLocal()
 	{
-		// El sistema entrega un GUID para la foto recien tomada. Era lo que se veia en el CCO.
+		// El sistema entrega un GUID para la foto recién tomada, y era lo que se veía en el CCO.
 		var resultado = await Crear().EjecutarAsync(
 			Incidencia,
 			Archivo(nombre: "6441d2f9fb6f4cea9b48fc0bae7dbad6.jpg", origen: OrigenEvidencia.Camara),
@@ -311,9 +296,7 @@ public sealed class AdjuntarEvidenciaTests
 	[Fact]
 	public async Task ElVideoGrabadoSeNombraIgual()
 	{
-		// El catalogo de estas pruebas no admite video -lo fija
-		// UnFormatoQueNoSeAdmite_niSiquieraSeCopia-, asi que aqui hay que declararlo o la
-		// regla lo rechaza antes de llegar a nombrarlo.
+		// Estas pruebas no admiten video por omisión: hay que declararlo o la regla lo rechaza antes.
 		_catalogo.Limites = Limites with { FormatosPermitidos = ["video/mp4"] };
 
 		var resultado = await Crear().EjecutarAsync(
@@ -329,7 +312,7 @@ public sealed class AdjuntarEvidenciaTests
 	[InlineData(OrigenEvidencia.Archivo)]
 	public async Task LoQueElOperadorEligio_conservaSuNombre(OrigenEvidencia origen)
 	{
-		// Un "acta-1234.pdf" dice mucho mas que cualquier cosa que compusieramos nosotros.
+		// Un «acta-1234.pdf» dice más que cualquier nombre compuesto.
 		var resultado = await Crear().EjecutarAsync(
 			Incidencia,
 			Archivo(nombre: "acta-1234.pdf", mime: "application/pdf", origen: origen),
@@ -348,7 +331,6 @@ public sealed class AdjuntarEvidenciaTests
 		Assert.Equal("6441d2f9.jpg", resultado.Adjuntada!.NombreOriginal);
 	}
 
-	/// <summary>Espacio del dispositivo controlado desde la prueba; por omisión, de sobra.</summary>
 	private sealed class EspacioFalso : IEspacioDispositivo
 	{
 		public long? BytesLibres { get; set; } = 10L * 1024 * 1024 * 1024;

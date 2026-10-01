@@ -2,9 +2,6 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.Modelos;
 
-/// <summary>
-/// Evidencia sin confirmar cuya incidencia ya está sincronizada.
-/// </summary>
 public sealed record EvidenciaRezagada(
 	EvidenciaAdjunta Evidencia,
 	int Intentos,

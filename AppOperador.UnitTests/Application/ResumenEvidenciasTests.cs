@@ -6,14 +6,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Lo que la pantalla puede hacer con las evidencias de una incidencia (JTT-1398 CA 1).
-/// </summary>
-/// <remarks>
-/// Este archivo existe por lo que pasó el 26 de agosto: la pantalla de la Cola se contradijo dos
-/// veces en un día porque sus decisiones vivían en el ViewModel, donde no llega ninguna prueba.
-/// Aquí las decisiones están en Aplicación y por eso se pueden fijar.
-/// </remarks>
 public sealed class ResumenEvidenciasTests
 {
 	private static readonly LimitesEvidencia Limites =
@@ -36,8 +28,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void ConElCupoLleno_seApagaElBoton()
 	{
-		// Lo que evita mandar al operador a la galería, esperar la copia y leerle un rechazo
-		// que se sabía desde antes de abrirla.
+		// Evita mandar al operador a la galería por un rechazo ya sabido.
 		var resumen = new ResumenEvidencias(
 			[Evidencia("a"), Evidencia("b"), Evidencia("c")], Limites);
 
@@ -49,8 +40,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void SinLimitesDescargados_noSeAdjuntaYSeDiceQueEsOtraCosa()
 	{
-		// Distinguirlo del cupo lleno importa: decirle «ya no caben más» a quien nunca ha
-		// conectado la app lo manda a borrar archivos que no existen.
+		// Distinto del cupo lleno: a quien nunca ha conectado no se le manda a borrar archivos.
 		var resumen = new ResumenEvidencias([], LimitesEvidencia.Desconocidos);
 
 		Assert.False(resumen.PuedeAdjuntar);
@@ -67,8 +57,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void SiElServidorBajaElCupo_faltantesNoSeVaANegativo()
 	{
-		// Pasa de verdad: el operador adjuntó tres, el servidor baja el máximo a dos y la
-		// siguiente descarga del catálogo lo trae. Un número negativo en pantalla es un defecto.
+		// El servidor puede bajar el máximo por debajo de lo ya adjunto; un negativo en pantalla es un defecto.
 		var masEstrictos = Limites with { MaximoArchivosPorIncidencia = 2 };
 
 		var resumen = new ResumenEvidencias(
@@ -103,9 +92,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void HoyNoSePuedeGrabarVideo_porqueElServidorNoLoAdmite()
 	{
-		// El catálogo publica imagen y PDF, ningún video/*. El botón sale apagado aunque
-		// quepan más archivos: grabar quince megabytes para que los rechace el formato es
-		// justo lo que se evita.
+		// Sin video/* en el catálogo el botón sale apagado aunque quepan más archivos.
 		var resumen = new ResumenEvidencias([], Limites);
 
 		Assert.True(resumen.PuedeAdjuntar);
@@ -116,8 +103,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void ElDiaQueElCatalogoPubliqueVideo_seEnciendeSolo()
 	{
-		// Es la comprobación de que JTT-289 no deja trabajo de app: el servidor declara un
-		// video/* y el botón se enciende sin recompilar ni publicar en las tiendas.
+		// El servidor declara un video/* y el botón se enciende sin publicar otra versión.
 		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
 
 		var resumen = new ResumenEvidencias([], conVideo);
@@ -129,8 +115,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void ConElCupoLleno_elVideoDiceQueElCupoEstaLleno_noQueFaltaElFormato()
 	{
-		// Con las dos causas presentes manda la del cupo: mandar a habilitar el video cuando
-		// lo que hay que hacer es quitar un archivo deja al operador sin salida.
+		// Con las dos causas manda la del cupo: es la que el operador puede resolver.
 		var conVideo = Limites with { FormatosPermitidos = ["video/mp4"] };
 
 		var resumen = new ResumenEvidencias(
@@ -150,13 +135,12 @@ public sealed class ResumenEvidenciasTests
 		Assert.Equal(MotivoEvidenciaRechazada.LimitesDesconocidos, resumen.MotivoParaNoAdjuntarVideo);
 	}
 
-	// ── El video se bloquea sin espacio (JTT-289 CA 8) ───────────────────────────────
+	// ── El video se bloquea sin espacio ──────────────────────────────────────────────
 
 	[Fact]
 	public void SinEspacioParaUnVideoDelTamanoMaximo_seApagaElBotonYSeDicePorQue()
 	{
-		// Se decide antes de grabar, con el máximo que admite el servidor: el tamaño real no
-		// existe hasta que termina la grabación, y para entonces el operador ya grabó para nada.
+		// Antes de grabar y con el máximo: el tamaño real no existe hasta que termina.
 		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
 		var apenas = ReglaEspacioParaEvidencia.MargenSeguridadBytes + conVideo.TamanoMaximoBytes - 1;
 
@@ -195,8 +179,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void SeGrabaConElTopeDelCatalogo()
 	{
-		// QA lo levantó: sin tope, la cámara graba hasta que el operador suelta el botón y el
-		// video se pierde entero al pasarse. El tope se pide antes, por lo mismo que el espacio.
+		// Sin tope, el video se pierde entero al pasarse; se pide antes, como el espacio.
 		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
 
 		var resumen = new ResumenEvidencias([], conVideo);
@@ -207,8 +190,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void SinLimitesDescargados_noSePideNingunTope()
 	{
-		// Cero significa «no pidas tope», no «corta en cero»: pedirle cero a la cámara la
-		// dejaría sin grabar nada. Aquí el botón ya está apagado por otra razón.
+		// Cero es «no pidas tope», no «corta en cero».
 		var resumen = new ResumenEvidencias([], LimitesEvidencia.Desconocidos);
 
 		Assert.Equal(0, resumen.TopeParaGrabarVideo);
@@ -240,8 +222,7 @@ public sealed class ResumenEvidenciasTests
 	[Fact]
 	public void SinEspacio_laFotografiaSigueDisponible()
 	{
-		// El CA 8 bloquea el video y deja seguir con texto o fotografía: la foto se comprueba
-		// con su tamaño real al adjuntarla, no antes.
+		// Sin espacio para video se sigue con texto o foto; la foto se comprueba con su tamaño real.
 		var conVideo = Limites with { FormatosPermitidos = ["image/jpeg", "video/mp4"] };
 
 		var resumen = new ResumenEvidencias([], conVideo, BytesLibres: 0);

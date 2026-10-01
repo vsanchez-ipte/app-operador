@@ -8,29 +8,7 @@ using AppOperador.Infrastructure.Http.Dtos;
 
 namespace AppOperador.Infrastructure.Http;
 
-/// <summary>
-/// Sube evidencias a <c>POST /ITS/AppIncidencias/{uuid}/Evidencias</c> (JTT-1398 CA 11).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>El archivo se transmite en flujo, no cargado en memoria.</b> Con el tope actual de 5 MB
-/// daría igual, pero JTT-289 ya fijó 15 MB con video: leer el archivo entero a un arreglo de
-/// bytes en un teléfono de campo con varias incidencias en cola es cómo se provoca un cierre
-/// por memoria.
-/// </para>
-/// <para>
-/// <b>No todo lo que contesta viene de Jacob.</b> Delante del API hay un nginx, y lo que él
-/// rechaza —413 por tamaño, 502/503/504 cuando el API no responde— llega como HTML. Por eso se
-/// mira el código de estado <b>antes</b> de intentar leer un <c>Envelope</c>: deserializar
-/// primero hacía que un 413 se reportara como un fallo genérico reintentable, y la evidencia se
-/// quedaba reintentando contra un servidor que nunca la iba a aceptar.
-/// </para>
-/// <para>
-/// <b>La respuesta viaja en <c>Envelope</c> también en éxito.</b> El §3 del contrato afirmaba lo
-/// contrario y era falso; ya costó un defecto en JTT-1401, donde la incidencia llegaba al CCO y
-/// la app la marcaba fallida. Aquí se lee del sobre desde el principio.
-/// </para>
-/// </remarks>
+// En flujo y no en memoria; el estado HTTP se mira antes del Envelope porque el proxy contesta HTML.
 public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 {
 	private static readonly JsonSerializerOptions OpcionesJson = new()
@@ -38,7 +16,7 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 		PropertyNameCaseInsensitive = true,
 	};
 
-	/// <summary>Nombre del campo del formulario. Lo fija el contrato.</summary>
+	// Lo fija el contrato.
 	private const string CampoArchivo = "archivo";
 
 	private readonly HttpClient _http;
@@ -50,7 +28,6 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 		_configuracion = configuracion;
 	}
 
-	/// <inheritdoc />
 	public async Task<ResultadoEnvioEvidencia> SubirAsync(
 		string incidenciaUuid,
 		string rutaArchivo,
@@ -65,8 +42,7 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 
 		if (!File.Exists(rutaArchivo))
 		{
-			// La fila apunta a un archivo que ya no está. Es funcional: reintentar no lo va a
-			// devolver, y quien tiene que actuar es el operador volviendo a adjuntarlo.
+			// El archivo ya no está: es funcional, reintentar no lo devuelve.
 			return ResultadoEnvioEvidencia.Rechazada(
 				FamiliaErrorSincronizacion.Funcional,
 				CodigosErrorJacob.EvidenciaSinArchivo,
@@ -107,27 +83,13 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 		}
 	}
 
-	/// <summary>Ruta del endpoint para esa incidencia.</summary>
 	private static string RutaDe(string incidenciaUuid) =>
 		$"{ConfiguracionApi.RutaIncidencias}/{Uri.EscapeDataString(incidenciaUuid)}/Evidencias";
 
-	/// <summary>
-	/// Traduce la respuesta del servidor.
-	/// </summary>
-	/// <remarks>
-	/// <b><c>yaExistia</c> es éxito.</b> Significa que el servidor ya tenía ese contenido para
-	/// esa incidencia: la subida es idempotente por contenido, no por nombre, así que un
-	/// reintento tras una respuesta perdida devuelve el mismo identificador sin duplicar ni
-	/// gastar cupo. Tratarlo como error dejaría la evidencia reintentándose para siempre contra
-	/// un servidor que ya la tiene.
-	/// </remarks>
+	// yaExistia es éxito: la subida es idempotente por contenido y el servidor ya la tenía.
 	private static ResultadoEnvioEvidencia Interpretar(HttpStatusCode estado, string cuerpo)
 	{
-		// Lo que responde el PROXY, no Jacob, se atiende antes de intentar leer un Envelope: su
-		// cuerpo es HTML y deserializarlo revienta. Antes reventaba y caía en el catch de
-		// JsonException, así que un 413 se reportaba como "no se pudo subir, se reintentará
-		// solo" y la evidencia se quedaba reintentando contra un servidor que nunca la iba a
-		// aceptar. El operador no tenía forma de saber qué pasaba.
+		// Lo que responde el proxy es HTML: se atiende antes de leer un Envelope, o un 413 se reintentaría para siempre.
 		if (estado == HttpStatusCode.RequestEntityTooLarge)
 		{
 			return ResultadoEnvioEvidencia.Rechazada(
@@ -136,16 +98,13 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 				"El servidor no acepta archivos de este tamaño todavía (HTTP 413).");
 		}
 
-		// Un 502, un 503 o un 504 tampoco son Envelope: los produce el proxy cuando el API no
-		// contesta. Son transitorios de verdad y se reintentan, pero conviene no confundirlos
-		// con un rechazo del CCO.
+		// 502, 503 y 504 los produce el proxy: se reintentan, sin confundirlos con un rechazo del CCO.
 		if (EsDelProxy(estado))
 		{
 			return FalloTecnico($"El servidor no está disponible ({Http(estado)}).");
 		}
 
-		// Un cuerpo vacío -un 401 del middleware de JWT, por ejemplo- tampoco se puede
-		// deserializar, y hasta ahora también acababa en el catch de más arriba.
+		// Un cuerpo vacío, como un 401 del middleware de JWT, tampoco se puede deserializar.
 		if (string.IsNullOrWhiteSpace(cuerpo))
 		{
 			return FalloTecnico($"El servidor respondió {Http(estado)} sin explicación.");
@@ -196,7 +155,6 @@ public sealed class ClienteEvidenciasJacob : IEvidenciasJacobClient
 			resultado.YaExistia ?? false));
 	}
 
-	/// <summary>Estados que produce el proxy cuando el API no llegó a contestar.</summary>
 	private static bool EsDelProxy(HttpStatusCode estado) =>
 		estado is HttpStatusCode.BadGateway
 			or HttpStatusCode.ServiceUnavailable

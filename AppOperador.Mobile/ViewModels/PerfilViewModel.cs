@@ -16,9 +16,6 @@ using Microsoft.Maui.ApplicationModel.DataTransfer;
 
 namespace AppOperador.Mobile.ViewModels;
 
-/// <summary>
-/// Perfil del operador: sesión, permisos y bitácora local (JTT-292).
-/// </summary>
 public sealed partial class PerfilViewModel : ObservableObject
 {
 	private readonly ISessionStore _sesiones;
@@ -74,45 +71,26 @@ public sealed partial class PerfilViewModel : ObservableObject
 	private readonly CapacidadesDeLaSesion _capacidades;
 	private readonly ConsultarAlmacenamientoLocal _almacenamiento;
 
-	// Literal de JTT-292 CA 5. Se muestra en lugar de VIGENTE cuando la ventana venció o cuando
-	// la sesión no respalda ninguna capacidad: en los dos casos la app ya bloquea las acciones
-	// nuevas (JTT-1384, JTT-1385), y esta insignia es donde el operador viene a ver por qué.
+	// En lugar de VIGENTE cuando la ventana venció o la sesión no respalda ninguna capacidad.
 	private const string TextoPermisosVencidos = "Permisos vencidos o no validados";
 
-	/// <summary>
-	/// Indica si la pantalla está cargando lo que muestra. Enciende el indicador de arriba.
-	/// </summary>
-	/// <remarks>
-	/// Va aparte de <c>Ocupado</c> —que apaga botones mientras el operador espera una acción
-	/// suya— porque esto ocurre solo, al entrar, y lo que hay que decir es que la pantalla
-	/// todavía no está lista, no que un botón está trabajando.
-	/// </remarks>
+	// Aparte de Ocupado: es la carga al entrar, no un botón trabajando.
 	[ObservableProperty]
 	public partial bool Cargando { get; set; }
 
-	/// <summary>Aviso de modo offline, común a todas las pantallas (JTT-1383 CA 8).</summary>
 	public EstadoEnlaceViewModel Enlace { get; }
 
-	/// <summary>Lo que hay en el dispositivo: espacio y evidencia sin confirmar (JTT-292 CA 4 y 6).</summary>
 	public AlmacenamientoLocal Almacenamiento { get; private set; } = AlmacenamientoLocal.Vacio;
 
-	/// <summary>Evidencias pendientes, una línea por archivo, para la lista del perfil.</summary>
 	public ObservableCollection<EvidenciaPendienteVista> EvidenciasPendientes { get; } = [];
 
-	/// <summary>Las cuatro capacidades que nombra JTT-292 CA 2, con su estado.</summary>
 	public ObservableCollection<CapacidadVista> Capacidades { get; } = [];
 
-	/// <summary>
-	/// Cuántas líneas de la bitácora se muestran de una vez. Decisión de Víctor (21-sep-2026):
-	/// en el teléfono nadie lee doscientas, y pintarlas todas al entrar era lo que hacía lenta
-	/// la pantalla. El resto sale con «Ver más», de quince en quince.
-	/// </summary>
+	// En el teléfono nadie lee doscientas líneas, y pintarlas todas hacía lenta la pantalla.
 	public const int EventosPorPagina = 15;
 
-	/// <summary>Eventos de la bitácora local, del más reciente al más antiguo.</summary>
 	public ObservableCollection<EventoAuditoriaVista> Eventos { get; } = [];
 
-	/// <summary>Quedan líneas conservadas que todavía no se muestran.</summary>
 	[ObservableProperty]
 	public partial bool HayMasEventos { get; set; }
 
@@ -124,24 +102,13 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 	public string VersionCatalogos => _sesiones.Actual?.VersionCatalogos.ToString("yyyy-MM-dd") ?? "-";
 
-	/// <summary>
-	/// Estado de la ventana offline.
-	/// </summary>
-	/// <remarks>
-	/// Con sesión abierta siempre es VIGENTE, y no es un atajo: la pantalla comprueba la
-	/// vigencia antes de mostrarse y una sesión vencida ya no existe cuando esto se pinta
-	/// (JTT-1384). Antes se recalculaba aquí contra el reloj del dispositivo, que es
-	/// justamente la medición que el resto de la app dejó de usar por manipulable.
-	/// </remarks>
+	// Con sesión abierta ya es vigente: la pantalla comprueba la vigencia antes de mostrarse.
 	public string EstadoVigencia => _sesiones.Actual is null
 		? "SIN SESIÓN"
 		: SesionRespaldaAlgo ? "VIGENTE" : TextoPermisosVencidos;
 
 	public bool VigenciaActiva => EstadoVigencia == "VIGENTE";
 
-	/// <summary>
-	/// Si la sesión sigue en su ventana y respalda al menos una capacidad (JTT-292 CA 5).
-	/// </summary>
 	private bool SesionRespaldaAlgo =>
 		_sesiones.Actual is { } sesion
 		&& sesion.Vigencia.EstaVigenteEn(_reloj.UtcAhora)
@@ -150,12 +117,10 @@ public sealed partial class PerfilViewModel : ObservableObject
 			|| _capacidades.Puede(CapacidadOperador.Sincronizar)
 			|| _capacidades.Puede(CapacidadOperador.ConsultarCola));
 
-	/// <summary>Porcentaje de espacio libre, o un guion si el sistema no lo dio (JTT-292 CA 4).</summary>
 	public string EspacioLibre => Almacenamiento.Espacio.PorcentajeLibre is { } porcentaje
 		? $"{porcentaje} % libre"
 		: "-";
 
-	/// <summary>Cuántas evidencias esperan al CCO, y cuánto pesan (JTT-292 CA 4 y 6).</summary>
 	public string TextoEvidenciasPendientes => Almacenamiento.CuantasPendientes switch
 	{
 		0 => "Ninguna pendiente de enviar",
@@ -165,29 +130,15 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 	public bool HayEvidenciasPendientes => Almacenamiento.CuantasPendientes > 0;
 
-	/// <summary>
-	/// Hora local de expiración de la ventana offline.
-	/// </summary>
-	/// <remarks>
-	/// JTT-279 exige mostrarla en hora local aunque la comparación se haga en UTC (DA-10).
-	/// </remarks>
+	// En hora local aunque la comparación se haga en UTC.
 	public string HoraExpiracion =>
 		_sesiones.Actual?.Vigencia.OfflineUntilUtc.ToLocalTime().ToString("hh:mm tt") ?? "-";
 
-	/// <summary>Modo de operación visible en el perfil.</summary>
 	public string Modo => _conectividad.HayEnlace ? "ONLINE" : "OFFLINE";
 
-	/// <summary>
-	/// Permisos efectivos, mostrados como etiquetas.
-	/// </summary>
-	/// <remarks>
-	/// El perfil los muestra, no los administra: la lista es de solo lectura por construcción
-	/// (JTT-1379 CA 7).
-	/// </remarks>
 	public IReadOnlyCollection<string> Permisos =>
 		_sesiones.Actual?.Permisos ?? PermisosOperador.Ninguno;
 
-	/// <summary>Refresca los datos de la pantalla.</summary>
 	public async Task ActualizarAsync()
 	{
 		Cargando = true;
@@ -214,9 +165,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 			EvidenciasPendientes.Add(new EvidenciaPendienteVista(pendiente));
 		}
 
-		// Las cuatro que nombra el criterio, con el nombre que usa el operador y no el del
-		// enum. «Operación offline» no es un permiso del servidor: es que la ventana siga
-		// abierta, así que se lee de la vigencia.
+		// «Operación offline» no es un permiso del servidor: es que la ventana siga abierta.
 		Capacidades.Clear();
 		Capacidades.Add(new CapacidadVista("Captura", _capacidades.Puede(CapacidadOperador.RegistrarIncidencia)));
 		Capacidades.Add(new CapacidadVista("Evidencia", _capacidades.Puede(CapacidadOperador.AdjuntarEvidencia)));
@@ -238,13 +187,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 	}
 
-	/// <summary>
-	/// Trae la siguiente página de la bitácora y la agrega al final de la lista.
-	/// </summary>
-	/// <remarks>
-	/// Se pide una línea de más para saber si hay otra página sin una consulta aparte: si
-	/// llega, no se muestra y enciende el botón.
-	/// </remarks>
+	// Una línea de más dice si hay otra página sin una consulta aparte.
 	[RelayCommand]
 	private async Task VerMasEventosAsync()
 	{
@@ -258,14 +201,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		HayMasEventos = pagina.Count > EventosPorPagina;
 	}
 
-	/// <summary>
-	/// Termina la sesión del operador (JTT-1390).
-	/// </summary>
-	/// <remarks>
-	/// Lo pendiente de enviar no se toca: cerrar sesión no es desinstalar la app. La
-	/// navegación ocurre siempre, incluso si no se pudo avisar a Jacob, porque el cierre
-	/// local ya se aplicó y dejar al operador en el perfil daría a entender lo contrario.
-	/// </remarks>
+	// Se navega aunque no se haya avisado a Jacob: el cierre local ya se aplicó.
 	[RelayCommand]
 	private async Task CerrarSesionAsync()
 	{
@@ -273,14 +209,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		await Shell.Current.GoToAsync("//acceso");
 	}
 
-	/// <summary>
-	/// Indica si este paquete trae la exportación de diagnóstico.
-	/// </summary>
-	/// <remarks>
-	/// La propiedad existe en los dos casos porque el XAML no se preprocesa: la vista compila
-	/// sus enlaces contra este tipo y una propiedad que apareciera y desapareciera rompería la
-	/// compilación del paquete normal, que es justamente el que no debe verse afectado.
-	/// </remarks>
+	// Existe en los dos paquetes: el XAML no se preprocesa y compila sus enlaces contra este tipo.
 #if EXPORTAR_BASE_DATOS
 	public bool PuedeExportarBaseDatos => true;
 #else
@@ -288,25 +217,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 #endif
 
 #if EXPORTAR_BASE_DATOS
-	/// <summary>
-	/// Guarda una copia legible de la base local, para revisarla en el escritorio.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Se avisa antes y no después: lo que se produce es la base entera sin cifrar, con
-	/// incidencias, operador, unidad y bitácora dentro. Quien lo pide tiene que poder
-	/// arrepentirse antes de que el archivo exista.
-	/// </para>
-	/// <para>
-	/// El destino lo elige la persona en el selector de documentos del sistema. Es la vía que
-	/// no exige permisos de almacenamiento: el sistema entrega un destino concreto en vez de
-	/// abrirle a la app el almacenamiento completo del teléfono.
-	/// </para>
-	/// <para>
-	/// El <c>await using</c> es lo que borra la copia temporal, y por eso envuelve todos los
-	/// caminos de salida: se guardó, se canceló o falló a media escritura.
-	/// </para>
-	/// </remarks>
+	// Se avisa antes porque la copia sale sin cifrar; el await using borra la temporal en cualquier salida.
 	[RelayCommand]
 	private async Task ExportarBaseDatosAsync()
 	{
@@ -331,8 +242,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 			if (!guardado.IsSuccessful)
 			{
-				// Cancelar en el selector entra por aquí, y es lo más común: no es un fallo
-				// que valga la pena presentar como error.
+				// Cancelar en el selector entra aquí, y no es un error.
 				await Shell.Current.DisplayAlertAsync(
 					"Exportar base de datos",
 					"No se guardó la copia. No queda ningún archivo sin cifrar en el teléfono.",
@@ -340,8 +250,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 				return;
 			}
 
-			// La ruta elegida no se registra: la bitácora se ve en pantalla y se exporta con la
-			// propia base, así que apuntar dónde quedó la copia sin cifrar sería señalarla.
+			// La ruta no se registra: la bitácora se exporta con la base y señalaría la copia sin cifrar.
 			await _bitacora.RegistrarAsync(
 				NivelAuditoria.Advertencia,
 				$"Se exportó una copia sin cifrar de la base local (esquema {exportacion.VersionEsquema}).");
@@ -362,10 +271,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 		catch (Exception error)
 		{
-			// Se atrapa todo a propósito: esto cuelga de un botón, y lo que falle aquí —el
-			// selector del sistema, el destino elegido, el espacio en disco— no debe tumbar la
-			// app. El mensaje se muestra tal cual en vez de tragárselo, para que se pueda
-			// reportar.
+			// Cuelga de un botón: nada de aquí debe tumbar la app, y el mensaje se muestra para reportarlo.
 			await Shell.Current.DisplayAlertAsync(
 				"No se pudo exportar",
 				$"La exportación no terminó: {error.Message}",
@@ -373,22 +279,12 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 	}
 #else
-	/// <summary>
-	/// Existe para que la vista compile en los paquetes sin exportación, donde el botón que la
-	/// invoca nunca se muestra.
-	/// </summary>
+	// Para que la vista compile en los paquetes sin exportación.
 	[RelayCommand]
 	private Task ExportarBaseDatosAsync() => Task.CompletedTask;
 #endif
 
-	/// <summary>
-	/// Indica si este paquete puede copiar el token de la sesión.
-	/// </summary>
-	/// <remarks>
-	/// Vale lo mismo que en <see cref="PuedeExportarBaseDatos"/>: la propiedad existe en los
-	/// dos casos porque el XAML no se preprocesa y la vista compila sus enlaces contra este
-	/// tipo.
-	/// </remarks>
+	// Existe en los dos paquetes, por lo mismo que PuedeExportarBaseDatos.
 #if COPIAR_TOKEN
 	public bool PuedeCopiarToken => true;
 #else
@@ -396,33 +292,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 #endif
 
 #if COPIAR_TOKEN
-	/// <summary>
-	/// Deja el token de la sesión donde QA pueda recogerlo, para autorizarse en Swagger.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Por qué hace falta.</b> <c>POST /ITS/AppLogin/Preauth</c> no acepta la contraseña en
-	/// claro: la espera cifrada con RSA-OAEP-SHA256 y en Base64. Desde Swagger no hay forma de
-	/// producir eso a mano, así que sin esto los endpoints del canal móvil solo se pueden
-	/// probar desde la app. La app ya cifra y ya tiene un token de una sesión válida; lo único
-	/// que faltaba era poder sacarlo del teléfono.
-	/// </para>
-	/// <para>
-	/// <b>Se avisa antes de copiar.</b> Lo que se entrega es la credencial de la sesión: quien
-	/// la tenga puede actuar como este operador contra Jacob hasta que la sesión termine. Por
-	/// eso también queda anotado en la bitácora, con nivel de advertencia.
-	/// </para>
-	/// <para>
-	/// Después se dice qué módulos trae firmados el token. No es adorno: si falta
-	/// <c>APP_OPERADOR_CAPTURA</c>, todos los <c>POST</c> del recorrido responden
-	/// <c>appincidencias.permiso.revocado</c>, y sin este aviso eso se descubre a la mitad de
-	/// la prueba y parece un fallo del servidor.
-	/// </para>
-	/// <para>
-	/// <b>El token no se registra en ningún lado</b>, ni en la bitácora ni en un log: por eso
-	/// el mensaje habla de los módulos y no del token (JTT-1378 §7).
-	/// </para>
-	/// </remarks>
+	// Preauth exige la contraseña cifrada con RSA: desde Swagger solo se prueba con un token sacado de la app.
 	[RelayCommand]
 	private async Task CopiarTokenAsync()
 	{
@@ -430,8 +300,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 
 		if (string.IsNullOrWhiteSpace(token))
 		{
-			// Pasa con la sesión cerrada y en los paquetes simulados, que no hablan con Jacob
-			// y por lo tanto no tienen ningún token que dar.
+			// Sesión cerrada o paquete simulado: no hay token que dar.
 			await Shell.Current.DisplayAlertAsync(
 				"Sin token",
 				"Esta sesión no tiene token guardado. Ingrese contra el servidor y vuelva a intentarlo.",
@@ -469,8 +338,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 				: $"Falta {ReglaCapacidades.PermisoCapturaIncidencias}: los POST van a responder " +
 				  "appincidencias.permiso.revocado.";
 
-			// Compartir es la única salida desde un teléfono físico, donde el portapapeles no
-			// llega a la computadora en la que corre Swagger. En el emulador basta con copiar.
+			// Compartir es la única salida desde un teléfono físico; en el emulador basta con copiar.
 			var compartir = await Shell.Current.DisplayAlertAsync(
 				"Token copiado",
 				$"Módulos que firma el token: {(modulos.Count == 0 ? "ninguno" : string.Join(", ", modulos))}\n\n" +
@@ -488,9 +356,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 		catch (Exception error)
 		{
-			// Se atrapa todo por lo mismo que en la exportación: esto cuelga de un botón, y lo
-			// que falle —el portapapeles del sistema, la hoja de compartir— no debe tumbar la
-			// app. El mensaje sale tal cual para poder reportarlo; el token no aparece en él.
+			// Por lo mismo que en la exportación; el mensaje no incluye el token.
 			await Shell.Current.DisplayAlertAsync(
 				"No se pudo copiar",
 				$"El token no salió de la app: {error.Message}",
@@ -498,10 +364,7 @@ public sealed partial class PerfilViewModel : ObservableObject
 		}
 	}
 #else
-	/// <summary>
-	/// Existe para que la vista compile en los paquetes sin copia de token, donde el botón que
-	/// la invoca nunca se muestra.
-	/// </summary>
+	// Para que la vista compile en los paquetes sin copia de token.
 	[RelayCommand]
 	private Task CopiarTokenAsync() => Task.CompletedTask;
 #endif
@@ -514,15 +377,11 @@ public sealed partial class PerfilViewModel : ObservableObject
 	};
 }
 
-/// <summary>Una capacidad del operador y si la sesión la respalda (JTT-292 CA 2).</summary>
 public sealed record CapacidadVista(string Nombre, bool Permitida)
 {
 	public string Estado => Permitida ? "SÍ" : "NO";
 }
 
-/// <summary>Una evidencia pendiente, como línea del perfil (JTT-292 CA 6).</summary>
-/// <remarks>
-/// </remarks>
 public sealed class EvidenciaPendienteVista
 {
 	public EvidenciaPendienteVista(EvidenciaPendiente pendiente)

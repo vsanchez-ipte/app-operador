@@ -6,14 +6,6 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Las evidencias contra la base real (JTT-1398).
-/// </summary>
-/// <remarks>
-/// <b>La tabla <c>evidencia_local</c> existía desde el primer esquema y nadie escribía en ella.</b>
-/// Estas son las primeras filas que se le meten, así que lo que se comprueba aquí no es solo el
-/// repositorio: es que la tabla, sus índices y sus columnas sirvan para lo que se diseñaron.
-/// </remarks>
 public sealed class RepositorioEvidenciasSqliteTests
 {
 	private const string Incidencia = "11111111-1111-1111-1111-111111111111";
@@ -49,8 +41,7 @@ public sealed class RepositorioEvidenciasSqliteTests
 	[Fact]
 	public async Task ElNombreOriginal_sobreviveAlViajePorSqlite()
 	{
-		// Es la columna que se agregó para esta HU. Sin ella, la lista de adjuntos que el PO
-		// pidió —nombre, tipo y tamaño— no se puede pintar.
+		// Sin la columna del tamaño no se puede pintar la lista de adjuntos.
 		await using var contexto = new ContextoSqlite();
 		var repositorio = new RepositorioEvidenciasSqlite(contexto.BaseDatos);
 		await contexto.BaseDatos.InicializarAsync();
@@ -119,8 +110,7 @@ public sealed class RepositorioEvidenciasSqliteTests
 	[Fact]
 	public async Task LasEvidencias_sobrevivenAlCierreDeLaAplicacion()
 	{
-		// Mismo criterio que la cola en JTT-1400: lo que el operador documentó sin cobertura no
-		// se puede perder porque el sistema cierre la app.
+		// Lo documentado sin cobertura no se pierde porque el sistema cierre la app.
 		await using var contexto = new ContextoSqlite();
 		await contexto.BaseDatos.InicializarAsync();
 		await contexto.SembrarIncidenciaAsync(Incidencia);
@@ -147,7 +137,7 @@ public sealed class RepositorioEvidenciasSqliteTests
 		Assert.Null(await repositorio.ObtenerAsync("no-existe"));
 	}
 
-	// ---------- Evidencias pendientes del operador (JTT-292 CA 4 y 6) ----------
+	// ---------- Evidencias pendientes del operador ----------
 
 	[Fact]
 	public async Task PendientesDelOperador_cruzaConSuIncidenciaYExcluyeLoSincronizadoYLoAjeno()
@@ -170,8 +160,7 @@ public sealed class RepositorioEvidenciasSqliteTests
 
 		var pendientes = await repositorio.ObtenerPendientesDelOperadorAsync("admin");
 
-		// Lo fallido cuenta: mientras el CCO no confirme, solo existe aquí. Lo sincronizado no,
-		// y lo de otro operador tampoco.
+		// Lo fallido cuenta; lo sincronizado y lo de otro operador, no.
 		Assert.Equal(["ev-1", "ev-2", "ev-4"], pendientes.Select(p => p.Uuid).ToArray());
 		Assert.Equal(mia.ClaveLocal, pendientes[0].ClaveLocalIncidencia);
 		Assert.Equal(miaSegunda.ClaveLocal, pendientes[2].ClaveLocalIncidencia);

@@ -8,14 +8,6 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.UnitTests.Application;
 
-/// <summary>
-/// Orquestación del envío de incidencias (JTT-1401).
-/// </summary>
-/// <remarks>
-/// Lo que se prueba aquí son <b>las decisiones</b>: cuándo se intenta, qué se reintenta y qué se
-/// queda esperando. Que la fila quede escrita en la base se prueba contra SQLite, en
-/// <c>ColaSincronizacionSqliteTests</c>.
-/// </remarks>
 public sealed class SincronizarIncidenciasTests
 {
 	private static readonly DateTime Ahora = new(2026, 8, 21, 12, 0, 0, DateTimeKind.Utc);
@@ -47,10 +39,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task AntesDeLeerLaCola_seRecuperanLosEnviosInterrumpidos()
 	{
-		// Un registro entra en Enviando justo antes de llamar a Jacob. Si el proceso muere ahí
-		// —la app se cierra, se apaga el teléfono— nadie escribe el estado final y el registro
-		// queda fuera de todo: no lo devuelve la cola, no lo cuenta el contador y no lo
-		// reintenta nadie. Se ve como «ENVIANDO» para siempre.
+		// Si el proceso muere en Enviando, nadie escribe el estado final y el registro queda fuera de todo.
 		_cola.EnviosInterrumpidos = 2;
 
 		await Crear().EjecutarAsync();
@@ -61,8 +50,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task ElEnvioSeRecuperaAunqueNoHayaNadaQueMandar()
 	{
-		// La recuperación no puede depender de que la cola traiga algo: precisamente lo que se
-		// recupera es lo que la cola no ve.
+		// Lo que se recupera es justo lo que la cola no ve.
 		await Crear().EjecutarAsync();
 
 		Assert.Equal(1, _cola.VecesQueSeRecupero);
@@ -71,8 +59,6 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task SiElEnvioRevienta_elRegistroQuedaFallidoYNoEnviando()
 	{
-		// Sin esto, una excepción del cliente deja el registro marcado como Enviando y hay que
-		// esperar a la siguiente sincronización para rescatarlo. Se resuelve en el acto.
 		_cola.Encolar(Pendiente());
 		_jacob.LanzaExcepcion = true;
 
@@ -86,9 +72,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnEnvioQueRevienta_seClasificaComoTecnicoYNoComoFuncional()
 	{
-		// Que el cliente reviente no dice que el registro esté mal: dice que no se pudo
-		// preguntar. Como funcional dejaría de reintentarse por algo que el operador no puede
-		// corregir, y la incidencia no saldría nunca.
+		// Una excepción del cliente no dice que el registro esté mal.
 		_cola.Encolar(Pendiente());
 		_jacob.LanzaExcepcion = true;
 
@@ -98,7 +82,7 @@ public sealed class SincronizarIncidenciasTests
 		Assert.False(CodigosErrorJacob.EsFuncional(ultima.UltimoErrorCodigo));
 	}
 
-	// ── CA 7: la espera creciente ─────────────────────────────────────────────────────
+	// ── La espera creciente ───────────────────────────────────────────────────────────
 
 	[Fact]
 	public async Task UnFalloTecnicoNoSeReintentaAntesDeQueVenzaLaEspera()
@@ -143,15 +127,14 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task LaEsperaNoCreceMasAllaDelTope()
 	{
-		// Una racha larguísima no puede dejar la siguiente espera en más de treinta minutos, o
-		// al recuperar la señal lo capturado no saldría hasta la jornada siguiente.
+		// Sin tope, al recuperar la señal lo capturado no saldría hasta la jornada siguiente.
 		_cola.Encolar(Fallida(intentos: 50, ultimoIntento: Ahora, codigo: "appincidencias.error.tecnico"));
 		_reloj.UtcAhora = Ahora.Add(ReglaEsperaReintento.EsperaMaxima);
 
 		Assert.Equal(1, (await Crear().EjecutarAsync()).Intentados);
 	}
 
-	// ── CA 8: lo funcional no se reintenta ────────────────────────────────────────────
+	// ── Lo funcional no se reintenta ──────────────────────────────────────────────────
 
 	[Fact]
 	public async Task UnRechazoFuncionalNoSeReintentaPorMuchoQuePaseElTiempo()
@@ -170,7 +153,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnRechazoFuncionalConservaElRegistro()
 	{
-		// JTT-1404 CA 4: «funcional» significa que deja de reintentarse, NO que se descarte.
+		// Funcional significa que deja de reintentarse, no que se descarte.
 		_cola.Encolar(Pendiente());
 		_jacob.Responde(ResultadoEnvio.Rechazada(
 			FamiliaErrorSincronizacion.Funcional, "appincidencias.permiso.revocado", "Sin permiso."));
@@ -189,12 +172,11 @@ public sealed class SincronizarIncidenciasTests
 		_cola.Encolar(Fallida(intentos: 1, ultimoIntento: Ahora, codigo: "appincidencias.algo.nuevo"));
 		_reloj.UtcAhora = Ahora.AddMinutes(1);
 
-		// Prudente: mejor gastar un reintento acotado que dejar el registro parado para siempre
-		// esperando una corrección que nadie sabe que hace falta.
+		// Prudente: mejor un reintento acotado que un registro parado esperando una corrección.
 		Assert.Equal(1, (await Crear().EjecutarAsync()).Intentados);
 	}
 
-	// ── CA 13: una falla no arrastra a las demás ──────────────────────────────────────
+	// ── Una falla no arrastra a las demás ─────────────────────────────────────────────
 
 	[Fact]
 	public async Task UnRechazoNoDetieneAlResto()
@@ -218,7 +200,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task CadaRegistroSeResuelveIndividualmente()
 	{
-		// CA 12: cada uno pasa por Enviando y termina en su estado antes del siguiente.
+		// Cada uno pasa por Enviando y termina en su estado antes del siguiente.
 		_cola.Encolar(Pendiente("uuid-1"), Pendiente("uuid-2"));
 
 		await Crear().EjecutarAsync();
@@ -227,7 +209,7 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Equal(2, _cola.Actualizaciones.Count(a => a.Estado == EstadoSincronizacion.Sincronizado));
 	}
 
-	// ── CA 1 y 2: las compuertas ──────────────────────────────────────────────────────
+	// ── Las compuertas ────────────────────────────────────────────────────────────────
 
 	[Fact]
 	public async Task SinEnlaceConJacobNiSiquieraSeIntenta()
@@ -270,8 +252,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnReenvioQueYaExistiaCuentaComoConfirmado()
 	{
-		// yaExistia significa que la respuesta anterior se perdió en la carretera y la app hizo
-		// lo correcto al reenviar. Tratarlo como fallo dejaría reintentando algo ya registrado.
+		// yaExistia: la respuesta anterior se perdió y reenviar fue lo correcto.
 		_cola.Encolar(Pendiente());
 		_jacob.Responde(ResultadoEnvio.Aceptada(
 			new IncidenciaRegistrada("INC-APK-2026-0034", Ahora, YaExistia: true)));
@@ -286,8 +267,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task EnviarUna_soloMandaEsaYNoElRestoDeLaCola()
 	{
-		// El operador está parado en el incidente: hacerle esperar a que suban los registros
-		// viejos alarga la captura, y si uno de ellos falla el aviso sobre el suyo se enturbia.
+		// El operador está parado en el incidente: los registros viejos no deben hacerle esperar.
 		_cola.Encolar(Pendiente("uuid-viejo"), Pendiente("uuid-nuevo"));
 
 		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
@@ -304,8 +284,7 @@ public sealed class SincronizarIncidenciasTests
 
 		var resultado = await Crear().EnviarUnaAsync("LOC-000001");
 
-		// Sin enlace no se intenta, y sobre todo no se toca el registro: sigue pendiente y
-		// saldrá por el camino normal de reintentos.
+		// Sin enlace no se toca el registro: sigue pendiente.
 		Assert.Equal(MotivoNoSincroniza.SinEnlaceConJacob, resultado.MotivoBloqueo);
 		Assert.Empty(_jacob.Recibidos);
 		Assert.Empty(_cola.Actualizaciones);
@@ -327,8 +306,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task EnviarUna_deUnaClaveQueNoExisteNoRompeNada()
 	{
-		// Pudo eliminarse, ser de otro operador o haber salido ya. Nada que hacer, y no es
-		// un error: lo guardado sigue su camino.
+		// Pudo eliminarse, ser de otro operador o haber salido ya.
 		var resultado = await Crear().EnviarUnaAsync("LOC-999999");
 
 		Assert.Equal(0, resultado.Intentados);
@@ -336,14 +314,12 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Empty(_jacob.Recibidos);
 	}
 
-	// ── El motivo del rechazo llega hasta la pantalla · CA 10 ─────────────────────────
+	// ── El motivo del rechazo llega hasta la pantalla ─────────────────────────────────
 
 	[Fact]
 	public async Task UnFalloTecnicoSeDistingueDeUnRechazoDeJacob()
 	{
-		// Es el defecto que Victor encontro en el emulador el 21-ago: con el API apagado, la
-		// pantalla decia «el CCO no la acepto todavia». Jacob nunca la recibio, y ese texto
-		// manda al operador a revisar una captura que esta bien.
+		// Con el API apagado Jacob nunca la recibió: decir que el CCO no la aceptó manda a revisar una captura correcta.
 		_cola.Encolar(Pendiente());
 		_jacob.Responde(ResultadoEnvio.Rechazada(
 			FamiliaErrorSincronizacion.Tecnico,
@@ -358,8 +334,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task ElMensajeDeJacobLlegaTalCualEnUnRechazoFuncional()
 	{
-		// Jacob sabe que esta mal mejor que la pantalla: reescribirlo como «no se acepto»
-		// obliga al operador a adivinar que corregir.
+		// Jacob sabe mejor que la pantalla qué está mal.
 		_cola.Encolar(Pendiente());
 		_jacob.Responde(ResultadoEnvio.Rechazada(
 			FamiliaErrorSincronizacion.Funcional,
@@ -383,14 +358,12 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Null(resultado.MensajeUltimoError);
 	}
 
-	// ── Saltarse un registro se cuenta, y se dice por que ─────────────────────────────
+	// ── Saltarse un registro se cuenta, y se dice por qué ─────────────────────────────
 
 	[Fact]
 	public async Task LoQueEsperaSuReintentoSeCuentaAparteDeLoQueNecesitaCorreccion()
 	{
-		// Es el defecto que Victor vio el 21-ago: la cola decia "3 incidencias pendientes"
-		// arriba y "No hay incidencias pendientes de enviar" abajo. Las dos no pueden ser
-		// ciertas, y el operador se queda sin saber si el boton funciono.
+		// El encabezado y el aviso de la cola no pueden contradecirse.
 		_cola.Encolar(
 			Fallida(intentos: 1, ultimoIntento: Ahora, codigo: "appincidencias.error.tecnico") with { Uuid = "u1", ClaveLocal = "LOC-1" },
 			Fallida(intentos: 1, ultimoIntento: Ahora, codigo: "appincidencias.nota.requerida") with { Uuid = "u2", ClaveLocal = "LOC-2" });
@@ -414,14 +387,12 @@ public sealed class SincronizarIncidenciasTests
 		Assert.Equal(0, resultado.OmitidosPorCorregir);
 	}
 
-	// ── Una sola tanda a la vez (JTT-1406 CA 6) ───────────────────────────────────────
+	// ── Una sola tanda a la vez ───────────────────────────────────────────────────────
 
 	[Fact]
 	public async Task MientrasCorreUnaTanda_laSegundaNoEntra()
 	{
-		// Desde JTT-1406 hay tres disparadores que no se conocen entre sí: el botón, la
-		// revalidación de sesión y la recuperación del enlace. Recuperar la señal justo cuando
-		// el operador pulsa «Sincronizar» deja de ser raro: es lo que hace quien está esperando.
+		// Recuperar la señal justo al pulsar «Sincronizar» es lo normal para quien está esperando.
 		_cola.Encolar(Pendiente());
 		_jacob.Pausa = new TaskCompletionSource();
 
@@ -445,8 +416,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task CuandoLaTandaTermina_laSiguienteSiEntra()
 	{
-		// El cerrojo se suelta pase lo que pase. Si no, un solo envío dejaría la app sin
-		// sincronizar hasta reiniciarla, que es mucho peor que el defecto que viene a evitar.
+		// El cerrojo se suelta pase lo que pase, o la app dejaría de sincronizar hasta reiniciarla.
 		_cola.Encolar(Pendiente());
 		var sincronizador = Crear();
 
@@ -473,9 +443,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task ElEnvioInmediatoNoSeCuelaMientrasCorreLaTanda()
 	{
-		// Comparten cerrojo porque pueden tocar el mismo registro: el que el operador acaba de
-		// guardar puede ser justo uno de los que la tanda está recorriendo. No se pierde nada,
-		// sale con la tanda o en la siguiente.
+		// Comparten cerrojo: el registro recién guardado puede ser uno de los que la tanda recorre.
 		_cola.Encolar(Pendiente());
 		_jacob.Pausa = new TaskCompletionSource();
 
@@ -495,10 +463,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task LoQueLlegaAMediaTanda_saleEnLaMismaSincronizacion()
 	{
-		// Antes se le decía al operador «se enviará con la sincronización en curso» y era
-		// falso: la tanda ya había leído la cola y, con señal estable, nada volvía a disparar.
-		// Ahora la tanda, al terminar su recorrido, vuelve a leer la cola si un envío inmediato
-		// la encontró ocupada.
+		// La tanda relee la cola si un envío inmediato la encontró ocupada; con señal estable nada más lo enviaría.
 		_cola.Encolar(Pendiente("uuid-1"));
 		_jacob.Pausa = new TaskCompletionSource();
 
@@ -521,8 +486,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task LoQueLlegaMientrasOtroEnvioInmediatoTieneElCerrojo_tambienSale()
 	{
-		// Quien tenía el cerrojo no era una tanda sino otro envío inmediato: al soltarlo, corre
-		// una tanda para cumplir lo prometido a la captura que llegó mientras tanto.
+		// Si el cerrojo lo tenía otro envío inmediato, al soltarlo corre una tanda.
 		_cola.Encolar(Pendiente("uuid-1"));
 		_jacob.Pausa = new TaskCompletionSource();
 
@@ -571,12 +535,9 @@ public sealed class SincronizarIncidenciasTests
 
 		public void Encolar(params IncidenciaEnviable[] incidencias) => _enviables.AddRange(incidencias);
 
-		/// <summary>Cuántas veces la tanda leyó la cola; sirve para comprobar la segunda pasada.</summary>
 		public int LecturasDeEnviables { get; private set; }
 
-		// Copia, y sin lo que ya quedó Sincronizado: la tanda recorre la lista mientras una
-		// captura nueva puede encolar, y una segunda pasada no debe volver a mandar lo que la
-		// primera ya confirmó.
+		// Copia sin lo Sincronizado: una segunda pasada no debe reenviar lo ya confirmado.
 		public Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(CancellationToken c = default)
 		{
 			LecturasDeEnviables++;
@@ -607,7 +568,6 @@ public sealed class SincronizarIncidenciasTests
 
 		public Task<int> ContarPendientesAsync(CancellationToken c = default) => Task.FromResult(0);
 
-		/// <summary>Cuántos envíos interrumpidos dice tener. Lo fija la prueba.</summary>
 		public int EnviosInterrumpidos { get; set; }
 
 		public int VecesQueSeRecupero { get; private set; }
@@ -625,20 +585,11 @@ public sealed class SincronizarIncidenciasTests
 
 		public List<EnvioIncidencia> Recibidos { get; } = [];
 
-		/// <summary>Simula que el cliente revienta en vez de contestar.</summary>
 		public bool LanzaExcepcion { get; set; }
 
-		/// <summary>
-		/// Deja la petición colgada hasta que la prueba la suelte.
-		/// </summary>
-		/// <remarks>
-		/// Sirve para tener una tanda <b>a medio correr</b> y comprobar qué pasa si llega otra
-		/// (JTT-1406 CA 6). Sin esto no hay forma de solapar dos: los dobles contestan al
-		/// instante y la primera termina antes de que la segunda empiece.
-		/// </remarks>
+		// Deja una tanda a medio correr para poder solapar otra.
 		public TaskCompletionSource? Pausa { get; set; }
 
-		/// <summary>Se completa en cuanto Jacob recibe la primera petición.</summary>
 		public TaskCompletionSource LlegoLaPrimera { get; } = new();
 
 		public JacobFalso Responde(ResultadoEnvio resultado)
@@ -766,7 +717,7 @@ public sealed class SincronizarIncidenciasTests
 			Task.CompletedTask;
 	}
 
-	// ── La evidencia va encadenada a su incidencia (JTT-1398 CA 11) ───────────────────
+	// ── La evidencia va encadenada a su incidencia ────────────────────────────────────
 
 	private static EvidenciaAdjunta EvidenciaDe(
 		string incidenciaUuid = "uuid-1",
@@ -791,9 +742,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task SiLaIncidenciaNoConfirma_laEvidenciaNiSeIntenta()
 	{
-		// El servidor valida que el uuid exista: una evidencia que salga antes recibe
-		// appevidencias.incidencia.noexiste, que es funcional y la dejaría parada para siempre
-		// por un problema que no es suyo.
+		// Antes que su incidencia, el servidor la rechazaría como funcional y quedaría parada para siempre.
 		_cola.Encolar(Pendiente());
 		_jacob.Responde(ResultadoEnvio.Rechazada(
 			FamiliaErrorSincronizacion.Tecnico, "appincidencias.error.tecnico", "Sin red."));
@@ -807,8 +756,6 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnaEvidenciaQueFalla_noRevierteLaIncidenciaYaConfirmada()
 	{
-		// Ya está en el CCO con su folio. Marcarla fallida por una foto que no subió mandaría al
-		// operador a recapturar algo que sí llegó.
 		_cola.Encolar(Pendiente());
 		_evidencias.Pendientes.Add(EvidenciaDe());
 		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Rechazada(
@@ -824,8 +771,6 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnaEvidenciaQueFalla_noDetieneALasSiguientes()
 	{
-		// Mismo argumento que el CA 13 de JTT-1401: que la tercera foto no suba no puede impedir
-		// que suban la cuarta y la quinta.
 		_cola.Encolar(Pendiente());
 		_evidencias.Pendientes.Add(EvidenciaDe(uuid: "ev-1"));
 		_evidencias.Pendientes.Add(EvidenciaDe(uuid: "ev-2"));
@@ -841,8 +786,7 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task YaExistia_esExitoYNoSeReintenta()
 	{
-		// La subida es idempotente por contenido: el servidor ya lo tenía. Tratarlo como error
-		// dejaría la evidencia reintentándose para siempre contra un servidor que ya la tiene.
+		// La subida es idempotente: el servidor ya la tenía.
 		_cola.Encolar(Pendiente());
         _evidencias.Pendientes.Add(EvidenciaDe());
 		_jacobEvidencias.Responde(ResultadoEnvioEvidencia.Aceptada(
@@ -857,8 +801,6 @@ public sealed class SincronizarIncidenciasTests
 	[Fact]
 	public async Task UnaEvidenciaRechazadaPorFormato_noSeVuelveAIntentar()
 	{
-		// Reenviar un formato que el servidor no admite da el mismo rechazo y gasta datos del
-		// operador. Es el CA 8 de JTT-1401 aplicado a la evidencia.
 		_cola.Encolar(Pendiente());
 		_evidencias.Pendientes.Add(
 			EvidenciaDe(ultimoError: "appevidencias.formato.nopermitido"));
@@ -977,7 +919,7 @@ public sealed class SincronizarIncidenciasTests
 		Assert.DoesNotContain(_bitacora.Escrito, e => e.Mensaje.StartsWith("Evidencia ev-1.jpg"));
 	}
 
-	// ── Dobles de evidencia (JTT-1398) ────────────────────────────────────────────────
+	// ── Dobles de evidencia ───────────────────────────────────────────────────────────
 
 	private sealed class EvidenciasFalsas : IRepositorioEvidencias
 	{

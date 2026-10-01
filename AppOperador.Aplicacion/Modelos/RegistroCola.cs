@@ -3,58 +3,7 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.Modelos;
 
-/// <summary>
-/// Elemento de la cola de sincronización tal como se lista en la pantalla de Cola.
-/// </summary>
-/// <remarks>
-/// La maqueta muestra dos identificadores distintos y conviene no confundirlos:
-/// <see cref="ClaveLocal"/> (<c>LOC-######</c>) lo genera la app al guardar, existe sin
-/// conexión y nunca cambia; <see cref="FolioCentral"/> (<c>INC-APK-2026-0034</c>) lo asigna
-/// Jacob y solo aparece después de sincronizar. El folio es opcional y no bloquea (DA-15).
-///
-/// <b>Cuál de los dos manda lo decide <see cref="ReferenciaPrincipal"/></b> (JTT-1403 CA 1);
-/// el otro no desaparece nunca (CA 2).
-/// </remarks>
-/// <param name="ClaveLocal">Identificador local, presente desde la captura.</param>
-/// <param name="Clase">Qué es el registro: incidencia o evidencia.</param>
-/// <param name="Prioridad">Prioridad con la que la cola lo atiende.</param>
-/// <param name="Descripcion">Resumen legible del contenido.</param>
-/// <param name="Kilometro">Punto kilométrico asociado, en forma canónica.</param>
-/// <param name="Estado">Estado dentro de la cola.</param>
-/// <param name="FolioCentral">Folio asignado por Jacob, si ya se sincronizó.</param>
-/// <param name="Severidad">
-/// Severidad con la que se capturó, tal como la nombra el catálogo.
-/// <para>
-/// <b>No es lo mismo que <see cref="Prioridad"/>, y confundirlas fue un defecto real.</b> La
-/// pantalla mostraba la prioridad rotulada como severidad, y la prioridad solo tiene dos
-/// valores: toda severidad que no fuera crítica —Advertencia, Información, Normal— se leía
-/// «Normal». El operador que capturó una Advertencia veía otra cosa en la Cola.
-/// </para>
-/// </param>
-/// <param name="UltimoErrorCodigo">
-/// Código con el que se rechazó el último intento, o <see langword="null"/> si no ha fallado.
-/// Es lo que decide si el registro va a salir solo o necesita que alguien lo corrija.
-/// </param>
-/// <param name="Intentos">
-/// Envíos ya intentados sobre el registro. Junto con <paramref name="UltimoIntentoUtc"/> es lo que
-/// permite decir <b>cuándo</b> va a reintentarse, y no solo que se reintentará.
-/// </param>
-/// <param name="UltimoIntentoUtc">
-/// Cuándo se intentó por última vez, o <see langword="null"/> si nunca se intentó.
-/// </param>
-/// <param name="CapturadaUtc">
-/// Cuándo capturó el operador (JTT-290 CA 3, «hora»). Es la fecha de captura que viaja a Jacob
-/// y la que el CCO conserva, no la del último cambio de estado: dos incidencias capturadas con
-/// diez minutos de diferencia se distinguen por esto aunque salgan en la misma tanda.
-/// </param>
-/// <param name="UltimoErrorMensaje">
-/// Lo que dijo Jacob al rechazarlo, o el motivo del fallo local.
-/// <para>
-/// <b>Se propaga en vez de reescribirse</b>, igual que en el aviso del formulario: quien
-/// rechazó sabe por qué mejor que la pantalla. Sin él, la tarjeta solo puede decir que falló,
-/// que es exactamente lo que el operador ya ve en la insignia.
-/// </para>
-/// </param>
+// Severidad no es Prioridad: la prioridad solo distingue lo crítico, y confundirlas ya fue un defecto.
 public sealed record RegistroCola(
 	string ClaveLocal,
 	ClaseRegistro Clase,
@@ -72,141 +21,40 @@ public sealed record RegistroCola(
 	int EvidenciasSinEnviar = 0,
 	DateTime? ReintentoEvidenciaUtc = null)
 {
-	/// <summary>Severidad como se muestra, o un aviso explícito si el registro no la tiene.</summary>
-	/// <remarks>
-	/// <b>Vive aquí y no en la vista</b>, por lo mismo que <see cref="ReferenciaPrincipal"/>: qué
-	/// se le muestra al operador no es una decisión de estilo, y en la vista no llega ninguna
-	/// prueba. La Cola ya se contradijo dos veces en un día —26 de agosto— por decidir en el
-	/// ViewModel, y este defecto es de la misma familia.
-	/// <para>
-	/// Un borrador puede no tener severidad todavía. Se dice, en vez de dejar el hueco vacío o
-	/// —peor— rellenarlo con algo que parezca una severidad de verdad.
-	/// </para>
-	/// </remarks>
+	// Vive aquí y no en la vista, que no tiene pruebas. Un borrador puede no tener severidad todavía.
 	public string SeveridadLegible =>
 		string.IsNullOrWhiteSpace(Severidad) ? "Sin severidad" : Severidad!.Trim();
 
-	/// <summary>
-	/// Referencia con la que se identifica el registro: el folio si ya llegó, la clave local
-	/// mientras no (JTT-1403 CA 1).
-	/// </summary>
-	/// <remarks>
-	/// <b>No es una decisión de estilo, y por eso no vive en la vista.</b> El folio es la única
-	/// referencia que el CCO puede buscar y la que el operador dicta por radio; la clave local
-	/// no existe para nadie fuera del dispositivo que la generó. Presentar la clave como
-	/// referencia principal de un registro ya confirmado obliga al operador a leer dos líneas
-	/// para saber cuál sirve, y a acertar.
-	///
-	/// <b>La app no interpreta el folio</b>: lo recibe de Jacob y lo muestra tal cual. Su
-	/// formato lo fija el servidor —hoy <c>INC-APK-2026-0034</c>— y puede cambiar sin que la
-	/// app se entere, así que aquí no se valida ni se descompone.
-	/// </remarks>
+	// El folio es lo que el CCO puede buscar; se muestra tal cual, sin interpretar su formato.
 	public string ReferenciaPrincipal => TieneFolio ? FolioCentral! : ClaveLocal;
 
-	/// <summary>Si Jacob ya confirmó el registro y le asignó folio.</summary>
-	/// <remarks>
-	/// Se comprueba con <see cref="string.IsNullOrWhiteSpace(string?)"/> y no contra nulo: una
-	/// cadena vacía escrita por un mapeo descuidado se leería como folio y dejaría la lista con
-	/// un renglón en blanco por referencia principal.
-	/// </remarks>
+	// Contra vacío y no solo nulo: un folio vacío dejaría la referencia en blanco.
 	public bool TieneFolio => !string.IsNullOrWhiteSpace(FolioCentral);
 
-	/// <summary>Si la tarjeta debe explicar por qué este registro no ha salido.</summary>
-	/// <remarks>
-	/// Solo los fallidos. Un pendiente puede arrastrar el código de un intento anterior —al
-	/// recuperar un envío interrumpido vuelve a Pendiente sin borrarlo—, y enseñar ahí un
-	/// rechazo ya superado diría que algo va mal cuando el registro está en camino.
-	/// </remarks>
+	// Solo fallidos: un pendiente puede arrastrar el código de un intento ya superado.
 	public bool HayMotivoFallo => Estado == EstadoSincronizacion.Fallido;
 
-	/// <summary>
-	/// Por qué no salió este registro, y si va a salir solo (JTT-1401 CA 8 y 9).
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>El resumen de arriba cuenta cuántas hay de cada clase; esto dice cuál es cuál.</b> Con
-	/// varias fallidas a la vez, «el CCO las rechazó» no le dice al operador <i>qué</i> corregir
-	/// ni <i>en cuál</i>, y las que solo esperan reintento se confunden con las que no van a
-	/// salir nunca. Es el mismo defecto que ya se corrigió en el aviso del formulario, una
-	/// pantalla más adentro.
-	/// </para>
-	/// <para>
-	/// <b>Vive aquí y no en la vista</b>, como <see cref="SeveridadLegible"/> y
-	/// <see cref="ReferenciaPrincipal"/>: qué se le dice al operador no es una decisión de
-	/// estilo, y en la vista no llega ninguna prueba.
-	/// </para>
-	/// </remarks>
 	public string MotivoFallo => CodigosErrorJacob.EsFuncional(UltimoErrorCodigo)
-		// Solo aquí se añade qué hacer: es el único caso en que el operador tiene que actuar,
-		// y el único en que esperar no sirve de nada.
+		// Solo aquí se dice qué hacer: es el único caso en que esperar no sirve.
 		? $"El CCO la rechazó: {Detalle} Corríjala: no saldrá sola."
 		: $"No llegó al CCO: {Detalle}";
 
-	/// <summary>
-	/// Indica si el operador puede abrir este registro para corregirlo y reenviarlo
-	/// (JTT-291 CA 8).
-	/// </summary>
-	/// <remarks>
-	/// Solo los rechazos funcionales: son los que no saldrán solos y los que el operador puede
-	/// arreglar. Un fallo técnico se reintenta por su cuenta, y ofrecerle «Corregir» junto a
-	/// «se reintentará a las…» le diría dos cosas contrarias en la misma tarjeta.
-	/// </remarks>
+	// Solo rechazos funcionales: un fallo técnico se reintenta solo.
 	public bool SePuedeCorregir =>
 		Estado == EstadoSincronizacion.Fallido && CodigosErrorJacob.EsFuncional(UltimoErrorCodigo);
 
-	/// <summary>
-	/// Si este registro tiene un reintento programado que se va a disparar solo.
-	/// </summary>
-	/// <remarks>
-	/// <b>Solo los fallos técnicos.</b> Un rechazo funcional no se reintenta hasta que alguien
-	/// corrija el registro, así que anunciarle una hora al operador sería prometer algo que no va
-	/// a pasar. Lo que ese caso necesita ya lo dice <see cref="MotivoFallo"/>.
-	/// </remarks>
+	// Solo fallos técnicos: un rechazo funcional no sale hasta que alguien lo corrija.
 	public bool HayReintentoProgramado =>
 		Estado == EstadoSincronizacion.Fallido
 		&& !CodigosErrorJacob.EsFuncional(UltimoErrorCodigo)
 		&& UltimoIntentoUtc is not null;
 
-	/// <summary>
-	/// Cuándo toca el próximo intento, en UTC, o <see langword="null"/> si no hay ninguno.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>La espera no es fija: crece con cada fallo</b> —1, 2, 4, 8, 16 minutos, con tope de 30—.
-	/// Decir «se reintentará en un minuto» sería falso a partir del segundo fallo, y es
-	/// justamente cuando el operador se pregunta si la aplicación sigue intentando algo.
-	/// </para>
-	/// <para>
-	/// Se publica el <b>instante</b> y no un texto: cómo se presenta —hora local, formato— es de
-	/// la vista. Lo que se decide aquí es cuándo, que es donde hay pruebas.
-	/// </para>
-	/// </remarks>
+	// La espera crece con cada fallo; se publica el instante y la vista decide cómo mostrarlo.
 	public DateTime? ReintentoUtc => HayReintentoProgramado
 		? UltimoIntentoUtc!.Value + ReglaEsperaReintento.Para(Intentos)
 		: null;
 
-	/// <summary>
-	/// Indica si a este registro le toca un envío ahora.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Es la misma decisión que toma la tanda</b> —<c>SincronizarIncidencias.TocaIntentar</c>—,
-	/// vista desde la pantalla. La usa el reloj de la Cola para saber si vale la pena sondear el
-	/// enlace: si las dos no coincidieran, el reloj sondearía para nada, o se abstendría teniendo
-	/// algo que enviar.
-	/// </para>
-	/// <para>
-	/// <b>Enviando cuenta.</b> Un envío que quedó a medias no lo recoge nadie hasta que corre una
-	/// tanda, que es la que lo devuelve a Pendiente. Sin contarlo aquí, un registro atrapado ahí
-	/// no se reintenta hasta que el operador pulse el botón — es lo que se vio en el emulador el
-	/// 4-sep, con una tarjeta en ENVIANDO que no se movía sola.
-	/// </para>
-	/// <para>
-	/// <b>Un rechazo funcional no cuenta.</b> No va a salir hasta que alguien lo corrija, y
-	/// sondear por él cada medio minuto sería gastar batería para siempre. Por eso se pregunta por
-	/// <see cref="ReintentoUtc"/>, que ya excluye lo funcional, y no por el estado a secas.
-	/// </para>
-	/// </remarks>
+	// La misma decisión que la tanda. Enviando cuenta porque un envío a medias solo lo recupera una tanda.
 	public bool TocaIntentarlo(DateTime ahoraUtc) => Estado switch
 	{
 		EstadoSincronizacion.Pendiente => true,
@@ -226,15 +74,7 @@ public sealed record RegistroCola(
 			? "1 evidencia pendiente de enviar al CCO."
 			: $"{EvidenciasSinEnviar} evidencias pendientes de enviar al CCO.";
 
-	/// <summary>
-	/// Lo que se sabe del rechazo: el mensaje si lo hay, y si no, el código.
-	/// </summary>
-	/// <remarks>
-	/// <b>El código es el último recurso, pero se muestra.</b> Es feo —
-	/// <c>appincidencias.km.fueradecorredor</c> no está escrito para un operador— y aun así es
-	/// infinitamente más útil que «falló»: es lo que se dicta por radio al CCO y lo que permite
-	/// diagnosticar un dispositivo que vuelve de campo.
-	/// </remarks>
+	// El código es el último recurso, pero se muestra: es lo que se dicta por radio al CCO.
 	private string Detalle
 	{
 		get
@@ -246,21 +86,14 @@ public sealed record RegistroCola(
 			}
 
 			return string.IsNullOrWhiteSpace(UltimoErrorCodigo)
-				// Puede pasar con lo guardado antes de que se registraran los intentos. Se dice
-				// que no se sabe, en vez de callar y dejar la tarjeta igual que antes.
+				// Lo guardado antes de registrar intentos no tiene motivo: se dice en vez de callar.
 				? "no se registró el motivo."
 				: $"código {UltimoErrorCodigo!.Trim()}.";
 		}
 	}
 }
 
-/// <summary>
-/// Naturaleza de un elemento de la cola.
-/// </summary>
-/// <remarks>
-/// Incidencias y evidencias viajan por separado y se reintentan por separado: una
-/// evidencia fallida no revierte una incidencia ya confirmada.
-/// </remarks>
+// Se reintentan por separado: una evidencia fallida no revierte una incidencia confirmada.
 public enum ClaseRegistro
 {
 	Incidencia = 1,
