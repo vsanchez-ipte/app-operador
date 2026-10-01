@@ -32,7 +32,7 @@ public sealed class ClienteIncidenciasJacobTests
 	[Fact]
 	public async Task LeeElFolioAunqueLaRespuestaVengaEnvuelta()
 	{
-		// Es el cuerpo exacto que devolvió el API el 21-ago, con el Envelope de BaseController.
+		// Cuerpo real del API, con el Envelope de BaseController.
 		const string Cuerpo = """
 			{"resultado":{"folio":"INC-APK-2026-0001",
 			"fchCapturaCampo":"2026-08-21T19:19:00Z",
