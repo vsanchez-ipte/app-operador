@@ -5,14 +5,7 @@ using AppOperador.Infrastructure.Sqlite.Entidades;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Las evidencias de cada incidencia, sobre SQLite (JTT-1398).
-/// </summary>
-/// <remarks>
-/// La tabla existía desde el primer esquema y nadie escribía en ella: este es el primero que lo
-/// hace. Solo lee y escribe filas —no valida, no copia archivos y no decide nada—, igual que
-/// <see cref="ColaSincronizacionSqlite"/> quedó después del refactor de JTT-1401.
-/// </remarks>
+// Solo lee y escribe filas: no valida, no copia archivos y no decide.
 public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 {
 	private readonly BaseDatosLocal _baseDatos;
@@ -22,7 +15,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		_baseDatos = baseDatos;
 	}
 
-	/// <inheritdoc />
 	public async Task AgregarAsync(EvidenciaAdjunta evidencia, CancellationToken cancelacion = default)
 	{
 		ArgumentNullException.ThrowIfNull(evidencia);
@@ -43,7 +35,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		});
 	}
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerDeIncidenciaAsync(
 		string incidenciaUuid,
 		CancellationToken cancelacion = default)
@@ -58,7 +49,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		return [.. filas.Select(Convertir)];
 	}
 
-	/// <inheritdoc />
 	public async Task<int> ContarDeIncidenciaAsync(
 		string incidenciaUuid,
 		CancellationToken cancelacion = default)
@@ -70,7 +60,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 			.CountAsync();
 	}
 
-	/// <inheritdoc />
 	public async Task<EvidenciaAdjunta?> ObtenerAsync(
 		string uuid,
 		CancellationToken cancelacion = default)
@@ -81,14 +70,12 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		return fila is null ? null : Convertir(fila);
 	}
 
-	/// <inheritdoc />
 	public async Task EliminarAsync(string uuid, CancellationToken cancelacion = default)
 	{
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		await conexion.DeleteAsync<EvidenciaLocal>(uuid);
 	}
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<EvidenciaAdjunta>> ObtenerPendientesDeIncidenciaAsync(
 		string incidenciaUuid,
 		CancellationToken cancelacion = default)
@@ -96,9 +83,7 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 		var sincronizado = (int)EstadoSincronizacion.Sincronizado;
 
-		// Todo lo que no esté confirmado cuenta, incluido lo fallido: la subida es idempotente
-		// por contenido, así que reintentar no duplica ni gasta cupo. Antes de que el servidor
-		// lo fuera, reintentar tres veces una sola foto agotaba el tope del operador.
+		// Lo fallido también cuenta: la subida es idempotente por contenido y reintentar no gasta cupo.
 		var filas = await conexion.Table<EvidenciaLocal>()
 			.Where(e => e.IncidenciaUuid == incidenciaUuid && e.Estado != sincronizado)
 			.OrderBy(e => e.CreadoUtcTicks)
@@ -107,7 +92,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		return [.. filas.Select(Convertir)];
 	}
 
-	/// <inheritdoc />
 	public async Task ActualizarEnvioAsync(
 		string uuid,
 		EstadoSincronizacion estado,
@@ -127,8 +111,7 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		fila.Intentos++;
 		fila.UltimoErrorCodigo = codigoError;
 
-		// Cada actualización es un intento de subida: la fila cuenta cuántos van y la bitácora
-		// de intentos dice qué respondió Jacob en cada uno, igual que para las incidencias.
+		// Cada actualización es un intento: la fila cuenta cuántos van y la bitácora guarda qué respondió Jacob.
 		await conexion.RunInTransactionAsync(tx =>
 		{
 			tx.Update(fila);
@@ -143,7 +126,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		});
 	}
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<EvidenciaPendiente>> ObtenerPendientesDelOperadorAsync(
 		string operador,
 		CancellationToken cancelacion = default)
@@ -155,9 +137,7 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 
 		var conexion = await _baseDatos.ObtenerConexionListaAsync(cancelacion);
 
-		// La evidencia no lleva operador: se cruza con su incidencia, que sí. El estado que se
-		// filtra es el de la EVIDENCIA, no el de la incidencia: una incidencia ya sincronizada
-		// puede tener todavía una foto sin subir, y esa foto sigue pendiente.
+		// Se filtra por el estado de la evidencia: una incidencia sincronizada puede tener una foto sin subir.
 		var filas = await conexion.QueryAsync<FilaEvidenciaPendiente>(
 			"SELECT e.uuid AS Uuid, e.nombre_original AS NombreOriginal, e.tipo_medio AS TipoMime, " +
 			"e.bytes AS Bytes, e.estado AS Estado, i.clave_local AS ClaveLocalIncidencia, " +
@@ -189,7 +169,6 @@ public sealed class RepositorioEvidenciasSqlite : IRepositorioEvidencias
 		return await ConsultaEvidenciasRezagadas.EjecutarAsync(conexion, operador);
 	}
 
-	/// <summary>Forma de la fila del cruce evidencia–incidencia. Solo para la consulta de arriba.</summary>
 	private sealed class FilaEvidenciaPendiente
 	{
 		public string Uuid { get; set; } = string.Empty;

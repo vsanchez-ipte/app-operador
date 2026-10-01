@@ -8,31 +8,13 @@ using SQLite;
 
 namespace AppOperador.Infrastructure.Sqlite;
 
-/// <summary>
-/// Cola de sincronización respaldada en SQLite.
-/// </summary>
-/// <remarks>
-/// <b>Solo persiste.</b> Guarda la cola, los estados, el contador de intentos, el último
-/// código de error y la bitácora de cada intento. <b>No decide nada</b>: quién se envía,
-/// en qué orden se reintenta y qué se queda esperando lo resuelve
-/// <c>SincronizarIncidencias</c>, en la capa de aplicación.
-///
-/// <b>La cola es de quien tiene la sesión abierta</b> (JTT-1390 CA 7). Los registros de
-/// otros operadores siguen guardados y conservan su identidad, pero no se listan, no se
-/// cuentan y no se envían con el token de alguien más.
-/// </remarks>
+// Solo persiste: qué se envía y cuándo lo decide SincronizarIncidencias. La cola es del operador de la sesión.
 public sealed class ColaSincronizacionSqlite : ISyncQueueService
 {
 	private readonly BaseDatosLocal _baseDatos;
 	private readonly IClock _reloj;
 	private readonly ISessionStore _sesiones;
 
-	/// <remarks>
-	/// Ya no recibe <c>IConnectivityService</c> ni <c>IAuditLog</c>: la compuerta de enlace y la
-	/// bitácora del envío se movieron a <c>SincronizarIncidencias</c>, que es donde se decide.
-	/// Una cola que consulta la red para poder guardar era la señal de que aquí vivía algo que
-	/// no le tocaba.
-	/// </remarks>
 	public ColaSincronizacionSqlite(
 		BaseDatosLocal baseDatos,
 		IClock reloj,
@@ -43,16 +25,9 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		_sesiones = sesiones;
 	}
 
-	/// <summary>
-	/// Operador de la sesión abierta, o <see langword="null"/> si no hay ninguna.
-	/// </summary>
-	/// <remarks>
-	/// Sin sesión la cola se ve vacía. No es que se haya borrado: es que nadie tiene derecho
-	/// a verla todavía.
-	/// </remarks>
+	// Sin sesión la cola se ve vacía, no borrada.
 	private string? OperadorActual => _sesiones.Actual?.Operador;
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<RegistroCola>> ObtenerRegistrosAsync(CancellationToken cancelacion = default)
 	{
 		var operador = OperadorActual;
@@ -95,21 +70,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 			.ToList();
 	}
 
-	/// <summary>
-	/// Busca, para cada registro fallido, qué dijo Jacob la última vez.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>El mensaje no está en la incidencia</b>: la fila guarda el código del rechazo —que es
-	/// lo que decide el reintento— pero el texto vive en <c>intento_incidencia</c>. Sin esta
-	/// consulta la tarjeta solo puede decir «FALLIDO», que es justo lo que el operador ya ve.
-	/// </para>
-	/// <para>
-	/// <b>Una sola consulta, y solo para los fallidos.</b> Lo demás no tiene nada que explicar, y
-	/// la tabla de intentos crece con cada envío: recorrerla entera para pintar una lista sería
-	/// pagar por todo el historial en cada visita a la pantalla.
-	/// </para>
-	/// </remarks>
+	// Una sola consulta y solo para los fallidos: el texto del rechazo vive en intento_incidencia.
 	private static async Task<Dictionary<string, string?>> ObtenerMotivosDeFalloAsync(
 		SQLiteAsyncConnection conexion,
 		IReadOnlyList<IncidenciaLocal> filas)
@@ -138,15 +99,13 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var motivos = new Dictionary<string, string?>();
 		foreach (var intento in intentos)
 		{
-			// TryAdd y no indexador: solo interesa el primero que se encuentra de cada uno, que
-			// por el orden de la consulta es el último que ocurrió.
+			// TryAdd: por el orden de la consulta, el primero es el más reciente.
 			motivos.TryAdd(intento.IncidenciaUuid, intento.Mensaje);
 		}
 
 		return motivos;
 	}
 
-	/// <inheritdoc />
 	public async Task<int> ContarPendientesAsync(CancellationToken cancelacion = default)
 	{
 		var operador = OperadorActual;
@@ -160,17 +119,13 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var fallido = (int)EstadoSincronizacion.Fallido;
 		var enviando = (int)EstadoSincronizacion.Enviando;
 
-		// Los tres cuentan: los tres siguen sin llegar a Jacob. Fallido ya falló una vez, y
-		// Enviando es un envío que no terminó —se recupera a Pendiente en la siguiente
-		// sincronización—. Dejar Enviando fuera hacía que el contador dijera menos de lo que
-		// había, que es la peor dirección para equivocarse en una cola.
+		// Los tres siguen sin llegar a Jacob; dejar Enviando fuera hacía que el contador dijera de menos.
 		return await conexion.Table<IncidenciaLocal>()
 			.Where(i => (i.Estado == pendiente || i.Estado == fallido || i.Estado == enviando)
 				&& i.Operador == operador)
 			.CountAsync();
 	}
 
-	/// <inheritdoc />
 	public async Task<int> RecuperarEnviosInterrumpidosAsync(CancellationToken cancelacion = default)
 	{
 		var operador = OperadorActual;
@@ -192,9 +147,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 			return 0;
 		}
 
-		// No se toca el contador de intentos: el intento se contó al marcar Enviando. Sumarlo
-		// otra vez al recuperar alargaría la espera del reintento por un fallo que no fue de
-		// Jacob ni de la red, sino de que el proceso se murió.
+		// Sin sumar intentos: se contó al marcar Enviando, y lo que falló fue el proceso, no Jacob.
 		foreach (var fila in colgados)
 		{
 			fila.Estado = pendiente;
@@ -204,7 +157,6 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		return colgados.Count;
 	}
 
-	/// <inheritdoc />
 	public async Task<IReadOnlyList<IncidenciaEnviable>> ObtenerEnviablesAsync(
 		CancellationToken cancelacion = default)
 	{
@@ -219,12 +171,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var pendiente = (int)EstadoSincronizacion.Pendiente;
 		var fallido = (int)EstadoSincronizacion.Fallido;
 
-		// Primero la prioridad y después la antigüedad: una incidencia crítica se envía antes
-		// que una normal capturada antes que ella. Los borradores no aparecen porque su estado
-		// no es ninguno de los dos, y lo ya sincronizado tampoco.
-		//
-		// Solo lo del operador de la sesión: mandar lo de otro con este token se lo atribuiría
-		// a quien no lo capturó.
+		// Prioridad y luego antigüedad; solo del operador de la sesión, para no atribuírselo a otro.
 		var filas = await conexion.Table<IncidenciaLocal>()
 			.Where(i => (i.Estado == pendiente || i.Estado == fallido) && i.Operador == operador)
 			.OrderByDescending(i => i.Prioridad)
@@ -234,7 +181,6 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		return filas.Select(AEnviable).ToList();
 	}
 
-	/// <inheritdoc />
 	public async Task<IncidenciaEnviable?> ObtenerEnviablePorClaveAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
@@ -249,8 +195,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		var pendiente = (int)EstadoSincronizacion.Pendiente;
 		var fallido = (int)EstadoSincronizacion.Fallido;
 
-		// Mismos estados que la consulta de la cola: un borrador no se envía y lo sincronizado
-		// no se reenvía. El filtro por operador vale aquí igual que allá.
+		// Mismos estados y mismo filtro por operador que la consulta de la cola.
 		var fila = await conexion.Table<IncidenciaLocal>()
 			.Where(i => i.ClaveLocal == claveLocal
 				&& (i.Estado == pendiente || i.Estado == fallido)
@@ -260,7 +205,6 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		return fila is null ? null : AEnviable(fila);
 	}
 
-	/// <inheritdoc />
 	public async Task ActualizarEnvioAsync(
 		ActualizacionEnvio actualizacion,
 		CancellationToken cancelacion = default)
@@ -279,8 +223,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		fila.UltimoErrorCodigo = actualizacion.UltimoErrorCodigo;
 		fila.ActualizadoUtcTicks = _reloj.UtcAhora.Ticks;
 
-		// El folio solo se escribe cuando llega: un reintento fallido no puede borrar el que
-		// ya se había confirmado.
+		// Solo cuando llega: un reintento fallido no puede borrar un folio ya confirmado.
 		if (actualizacion.FolioCentral is not null)
 		{
 			fila.FolioCentral = actualizacion.FolioCentral;
@@ -289,7 +232,6 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		await conexion.UpdateAsync(fila);
 	}
 
-	/// <inheritdoc />
 	public async Task RegistrarIntentoAsync(
 		string uuid,
 		bool exito,
@@ -309,14 +251,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		});
 	}
 
-	/// <summary>
-	/// Traduce una fila al modelo con el que trabaja la orquestación.
-	/// </summary>
-	/// <remarks>
-	/// El tipo se guardó como texto invariante; las filas anteriores a JTT-1394 traen claves de
-	/// la maqueta que no son enteros y salen sin tipo. <b>No son enviables</b>: apuntan a tipos
-	/// que no existen en ningún servidor.
-	/// </remarks>
+	// Las filas con claves de tipo de la maqueta salen sin tipo y no son enviables.
 	private static IncidenciaEnviable AEnviable(IncidenciaLocal fila) => new(
 		fila.Uuid,
 		fila.ClaveLocal,
@@ -328,8 +263,7 @@ public sealed class ColaSincronizacionSqlite : ISyncQueueService
 		(KilometerSource)fila.FuenteKilometro,
 		fila.Nota,
 		new DateTime(fila.CreadoUtcTicks, DateTimeKind.Utc),
-		// Hacia la orquestación sigue viajando como cadena: nulo en la base significa «sin sesión»
-		// y así lo entendía ya todo lo que está arriba.
+		// Nulo en la base es «sin sesión», y hacia arriba viaja como cadena vacía.
 		fila.SesionOrigen ?? string.Empty,
 		(EstadoSincronizacion)fila.Estado,
 		fila.Intentos,

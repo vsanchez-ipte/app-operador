@@ -1,7 +1,4 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<!--
-    Cola local de registros pendientes (JTT-290) y su sincronización (JTT-291).
--->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:AppOperador.Mobile.ViewModels"
@@ -14,11 +11,7 @@
     <ScrollView>
         <VerticalStackLayout Padding="14" Spacing="12">
 
-            <!--
-                Aviso permanente de modo offline (JTT-1383 CA 7 y 8). El literal es el que
-                fija JTT-279 y no se reformula. El boton fuerza la revalidacion sin esperar
-                a que el sistema note el cambio de enlace.
-            -->
+            <!-- Literal fijado por Producto; el botón fuerza la revalidación -->
             <Border IsVisible="{Binding Enlace.EnModoOffline}" Style="{StaticResource Tarjeta}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
@@ -50,10 +43,7 @@
                             Command="{Binding SincronizarCommand}"
                             IsEnabled="{Binding Ocupado, Converter={StaticResource InvertirBooleano}}" />
 
-                    <!-- Qué pasó en la última sincronización (JTT-1401 CA 10). Va JUNTO al
-                         botón: sin esto, pulsar sin enlace no produce ningún cambio visible y
-                         el operador no distingue un botón que no respondió de una cola que no
-                         tenía nada que enviar, así que acaba pulsando en bucle. -->
+                    <!-- Junto al botón: sin esto, pulsar sin enlace no cambia nada visible -->
                     <Label Text="{Binding MensajeSincronizacion}"
                            Style="{StaticResource TextoSecundario}"
                            IsVisible="{Binding HayMensajeSincronizacion}" />
@@ -77,10 +67,7 @@
                                     <VerticalStackLayout Spacing="4">
 
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <!-- Referencia principal (JTT-1403 CA 1): el folio en
-                                                 cuanto Jacob confirma, y la clave local mientras
-                                                 no. Cual de los dos es lo decide RegistroCola, no
-                                                 esta vista. -->
+                                            <!-- Folio o clave local: lo decide RegistroCola -->
                                             <Label Grid.Column="0" Text="{Binding ReferenciaPrincipal}"
                                                    FontAttributes="Bold" FontSize="14"
                                                    TextColor="{StaticResource TextoTitulo}" />
@@ -97,16 +84,12 @@
 
                                         <Label Text="{Binding TextoDatos}" Style="{StaticResource TextoDato}" />
 
-                                        <!-- Cuando se capturo (JTT-290 CA 3). Es la hora de
-                                             captura, la misma que viaja al CCO, y no la del
-                                             ultimo cambio de estado. -->
+                                        <!-- La hora de captura, la que viaja al CCO, no la del último cambio de estado -->
                                         <Label Text="{Binding TextoHora}"
                                                Style="{StaticResource TextoSecundario}"
                                                IsVisible="{Binding MuestraHora}" />
 
-                                        <!-- Trazabilidad (JTT-1403 CA 2): con el folio arriba, la
-                                             clave local baja aqui en vez de desaparecer. Es la
-                                             unica referencia comun con la base del dispositivo. -->
+                                        <!-- Con el folio arriba, la clave local baja aquí en vez de desaparecer -->
                                         <Label Text="{Binding TextoTrazabilidad}"
                                                Style="{StaticResource TextoDato}"
                                                IsVisible="{Binding MuestraTrazabilidad}" />
@@ -116,29 +99,19 @@
                                                TextColor="{StaticResource AmbarTexto}"
                                                IsVisible="{Binding MuestraEvidenciaSinEnviar}" />
 
-                                        <!-- Por que no salio ESTE registro. El resumen de arriba
-                                             cuenta cuantas hay de cada clase; con varias fallidas
-                                             a la vez no dice cual es cual ni que corregir. El
-                                             texto lo compone RegistroCola, no esta vista. -->
+                                        <!-- Por qué no salió este registro; el texto lo compone RegistroCola -->
                                         <Label Text="{Binding TextoMotivoFallo}"
                                                Style="{StaticResource TextoSecundario}"
                                                TextColor="{StaticResource RojoTexto}"
                                                IsVisible="{Binding MuestraMotivoFallo}" />
 
-                                        <!-- Cuando toca el proximo intento. Solo en los fallos
-                                             tecnicos: un rechazo funcional no se reintenta solo,
-                                             y anunciarle una hora seria prometer algo que no va
-                                             a pasar. La espera crece con cada fallo, asi que no
-                                             se puede dar por sabida. -->
+                                        <!-- Solo en fallos técnicos: un rechazo funcional no se reintenta solo -->
                                         <Label Text="{Binding TextoReintento}"
                                                Style="{StaticResource TextoSecundario}"
                                                TextColor="{StaticResource AmbarTexto}"
                                                IsVisible="{Binding MuestraReintento}" />
 
-                                        <!-- Corregir un rechazo (JTT-291 CA 8). Solo en los
-                                             rechazos funcionales: son los que no saldran solos
-                                             y los que el operador puede arreglar. Lleva al
-                                             formulario con el registro cargado. -->
+                                        <!-- Solo en rechazos funcionales: los que no saldrán solos -->
                                         <Button Text="Corregir y reenviar"
                                                 Style="{StaticResource BotonSecundario}"
                                                 HorizontalOptions="End"
@@ -158,9 +131,7 @@
         </VerticalStackLayout>
     </ScrollView>
 
-        <!-- Capa de carga, centrada y encima de todo. Al entrar a la pestana la pantalla
-             tarda unos segundos en estar lista y sin esto parece que no responde. Va como
-             capa y no dentro del scroll: arriba del todo quedaba escondida. -->
+        <!-- Capa encima de todo: dentro del scroll quedaba escondida -->
         <Grid IsVisible="{Binding Cargando}"
               BackgroundColor="#B3E8DED0"
               InputTransparent="False">

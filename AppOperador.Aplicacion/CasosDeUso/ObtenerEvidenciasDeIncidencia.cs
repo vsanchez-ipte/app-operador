@@ -6,121 +6,45 @@ using AppOperador.Domain.ValueObjects;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
-/// <summary>
-/// Lo que la pantalla necesita saber de las evidencias de una incidencia (JTT-1398 CA 1).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Las decisiones se resuelven aquí y no en la vista</b>, y esto no es preferencia de estilo:
-/// la pantalla de la Cola se contradijo dos veces en un mismo día —26 de agosto— por tener la
-/// suya en el ViewModel, donde el proyecto de pruebas no llega y ninguna prueba podía atraparlo.
-/// Lo que se puede probar se prueba.
-/// </para>
-/// <para>
-/// Por eso el resumen trae <see cref="PuedeAdjuntar"/> y <see cref="Faltantes"/> ya calculados:
-/// la vista enlaza, no decide.
-/// </para>
-/// </remarks>
-/// <param name="Adjuntas">Las evidencias registradas, en orden de captura.</param>
-/// <param name="Limites">Lo que el servidor admite. Ver <see cref="LimitesEvidencia"/>.</param>
+// Las decisiones se resuelven aquí y no en la vista, a la que no llegan las pruebas.
 public sealed record ResumenEvidencias(
 	IReadOnlyList<EvidenciaAdjunta> Adjuntas,
 	LimitesEvidencia Limites,
 	long? BytesLibres = null)
 {
-	/// <summary>Resumen de una incidencia que todavía no existe o no tiene evidencias.</summary>
 	public static readonly ResumenEvidencias Vacio = new([], LimitesEvidencia.Desconocidos);
 
-	/// <summary>Cuántas evidencias tiene ya.</summary>
 	public int Cuantas => Adjuntas.Count;
 
-	/// <summary>
-	/// Cuántas más admite. Cero cuando no se sabe con qué validar.
-	/// </summary>
-	/// <remarks>
-	/// Sin límites descargados responde cero y no «las que quieras»: no saber el tope no es
-	/// tener tope infinito.
-	/// </remarks>
+	// Sin límites descargados es cero: no saber el tope no es tener tope infinito.
 	public int Faltantes => Limites.EstanDefinidos
 		? Math.Max(0, Limites.MaximoArchivosPorIncidencia - Cuantas)
 		: 0;
 
-	/// <summary>
-	/// Indica si se puede adjuntar una más.
-	/// </summary>
-	/// <remarks>
-	/// <b>Es lo que apaga el botón antes de que el operador elija el archivo.</b> Dejarlo
-	/// encendido lo mandaría a la galería, a esperar la copia y a leer un rechazo que se sabía
-	/// desde antes de abrirla.
-	/// </remarks>
+	// Apaga el botón antes de mandar al operador a la galería por un rechazo ya sabido.
 	public bool PuedeAdjuntar => Faltantes > 0;
 
-	/// <summary>
-	/// Por qué no se puede adjuntar, cuando no se puede.
-	/// </summary>
-	/// <remarks>
-	/// Distingue las dos causas —el cupo lleno y el catálogo sin descargar— porque una es del
-	/// operador y la otra no. Decirle «ya no caben más» a quien nunca ha conectado la app lo
-	/// manda a borrar archivos que no existen.
-	/// </remarks>
+	// Distingue cupo lleno de catálogo sin descargar: solo lo primero es del operador.
 	public MotivoEvidenciaRechazada MotivoParaNoAdjuntar => !Limites.EstanDefinidos
 		? MotivoEvidenciaRechazada.LimitesDesconocidos
 		: Faltantes > 0
 			? MotivoEvidenciaRechazada.Ninguno
 			: MotivoEvidenciaRechazada.CupoLleno;
 
-	/// <summary>Suma de lo que ocupan, para que la vista pueda advertir de una cola pesada.</summary>
 	public long BytesTotales => Adjuntas.Sum(e => e.Bytes);
 
-	/// <summary>
-	/// Indica si se puede grabar y adjuntar un video.
-	/// </summary>
-	/// <remarks>
-	/// Son <b>tres condiciones</b>, y por eso no basta con <see cref="PuedeAdjuntar"/>: que quepa
-	/// otro archivo, que el servidor admita algún <c>video/*</c> y que haya espacio para uno del
-	/// tamaño máximo (JTT-289 CA 8). Grabar un video de quince megabytes para que lo rechace el
-	/// formato, o para que no quepa, es lo que esto evita.
-	/// </remarks>
+	// Tres condiciones: que quepa otro archivo, que el servidor admita video y que haya espacio.
 	public bool PuedeAdjuntarVideo => PuedeAdjuntar && Limites.AdmiteVideo && HayEspacioParaVideo;
 
-	/// <summary>
-	/// Si cabe un video del tamaño máximo que admite el servidor (JTT-289 CA 8).
-	/// </summary>
-	/// <remarks>
-	/// Se decide <b>antes de grabar</b>, con el máximo y no con el tamaño real, porque el tamaño
-	/// real no existe hasta que termina la grabación y para entonces el operador ya grabó para
-	/// nada. Una fotografía no pasa por aquí: se comprueba con su tamaño real al adjuntarla.
-	/// </remarks>
+	// Antes de grabar y con el máximo: el tamaño real no existe hasta que termina la grabación.
 	public bool HayEspacioParaVideo =>
 		ReglaEspacioParaEvidencia.Cabe(BytesLibres, Limites.TamanoMaximoBytes);
 
-	/// <summary>
-	/// Tamaño máximo que se le pide a la cámara al grabar, o <c>0</c> para no pedir ninguno.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Es el mismo razonamiento de <see cref="HayEspacioParaVideo"/>, aplicado al tamaño.</b>
-	/// Grabar es lo único que crea el archivo mientras el operador mira: cuando la grabación
-	/// termina, pasarse del tope ya no tiene arreglo y lo grabado se pierde entero. QA lo levantó
-	/// como defecto —«sigue grabando normal y el usuario no se entera hasta que termina»— y tiene
-	/// razón por el criterio que esta misma clase ya fijó: lo del video se decide antes.
-	/// </para>
-	/// <para>
-	/// Responde <c>0</c> cuando no se puede grabar, incluido el caso de no tener límites
-	/// descargados: pedirle a la cámara que corte en cero la dejaría sin grabar nada.
-	/// </para>
-	/// </remarks>
+	// Cero cuando no se puede grabar: pedirle a la cámara que corte en cero la dejaría sin grabar.
 	public long TopeParaGrabarVideo =>
 		PuedeAdjuntarVideo ? Limites.TamanoMaximoBytes : 0;
 
-	/// <summary>
-	/// Por qué no se puede grabar video, cuando no se puede.
-	/// </summary>
-	/// <remarks>
-	/// Se separa de <see cref="MotivoParaNoAdjuntar"/> porque tiene una causa más, y es la que
-	/// hoy aplica: el servidor no admite el formato. Decir «ya no caben más» cuando lo que pasa
-	/// es que el video todavía no está habilitado mandaría a quitar archivos sin necesidad.
-	/// </remarks>
+	// Aparte: tiene una causa más, que el servidor no admita el formato.
 	public MotivoEvidenciaRechazada MotivoParaNoAdjuntarVideo =>
 		MotivoParaNoAdjuntar is not MotivoEvidenciaRechazada.Ninguno
 			? MotivoParaNoAdjuntar
@@ -131,7 +55,6 @@ public sealed record ResumenEvidencias(
 					: MotivoEvidenciaRechazada.Ninguno;
 }
 
-/// <summary>Arma el resumen de evidencias de una incidencia.</summary>
 public sealed class ObtenerEvidenciasDeIncidencia
 {
 	private readonly IRepositorioEvidencias _evidencias;
@@ -148,14 +71,7 @@ public sealed class ObtenerEvidenciasDeIncidencia
 		_catalogo = catalogo;
 	}
 
-	/// <summary>
-	/// Devuelve las evidencias de la incidencia y lo que se puede hacer con ellas.
-	/// </summary>
-	/// <param name="incidenciaUuid">
-	/// La incidencia. Vacío o nulo cuando la captura todavía no se ha guardado: entonces no hay
-	/// evidencias, pero <b>sí hay límites</b>, y la pantalla los necesita para saber si el botón
-	/// va encendido antes de que exista nada.
-	/// </param>
+	// Sin incidencia guardada no hay evidencias, pero sí límites para encender el botón.
 	public async Task<ResumenEvidencias> EjecutarAsync(
 		string? incidenciaUuid,
 		CancellationToken cancelacion = default)
@@ -169,8 +85,7 @@ public sealed class ObtenerEvidenciasDeIncidencia
 
 		var adjuntas = await _evidencias.ObtenerDeIncidenciaAsync(incidenciaUuid, cancelacion);
 
-		// El espacio se mide aquí y viaja en el resumen, que es donde se decide si cabe un
-		// video: la pantalla no mide nada por su cuenta.
+		// El espacio viaja en el resumen: la pantalla no mide nada por su cuenta.
 		return new ResumenEvidencias(adjuntas, limites, _espacio.Medir().BytesLibres);
 	}
 }

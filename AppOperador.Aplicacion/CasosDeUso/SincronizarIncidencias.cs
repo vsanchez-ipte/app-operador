@@ -6,21 +6,7 @@ using AppOperador.Domain.Reglas;
 
 namespace AppOperador.Aplicacion.CasosDeUso;
 
-/// <summary>
-/// Envía a Jacob las incidencias pendientes de la cola local (JTT-1401).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Vive aquí y no en la cola de SQLite a propósito.</b> Decidir si toca sincronizar, en qué
-/// orden, qué se reintenta y qué se queda esperando es orquestación de aplicación. Estuvo dentro
-/// del repositorio hasta JTT-1401, cuando las reglas del reintento y de las familias de error
-/// habrían quedado sepultadas en la capa de persistencia, donde nadie las busca.
-/// </para>
-/// <para>
-/// <b>Las tres condiciones del CA 1 se exigen juntas</b> —enlace con Jacob, sesión válida y
-/// permiso—, y ninguna se da por supuesta a partir de otra.
-/// </para>
-/// </remarks>
+// Orquestación de aplicación: las reglas de reintento no se entierran en la persistencia.
 public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 {
 	private readonly ISyncQueueService _cola;
@@ -35,31 +21,10 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 	private readonly IEvidenciasJacobClient _clienteEvidencias;
 	private readonly ISessionStore _sesiones;
 
-	/// <summary>
-	/// Deja pasar una sola sincronización a la vez (JTT-1406 CA 6).
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Hay tres disparadores y ninguno sabe de los otros:</b> el botón de la pantalla de Cola,
-	/// la revalidación de sesión y —desde esta historia— la recuperación del enlace. Solapar dos
-	/// tandas no duplicaría incidencias, porque el alta es idempotente por <c>uuid</c>, pero sí
-	/// haría que las dos leyeran la misma cola y se pisaran las transiciones de estado: la
-	/// segunda podría devolver a <c>Pendiente</c> un registro que la primera acaba de poner en
-	/// <c>Enviando</c>, y contarlo dos veces en el aviso.
-	/// </para>
-	/// <para>
-	/// <b>Se toma sin esperar y se rechaza el intento tardío, en vez de encolarlo.</b> Encolarlo
-	/// dejaría al operador mirando un botón ocupado para que después corriera una tanda sobre una
-	/// cola que la primera ya vació. Nada se pierde: lo pendiente lo está atendiendo la tanda que
-	/// ya corre, y lo que llegue después sale en la siguiente.
-	/// </para>
-	/// </remarks>
+	// Tres disparadores que no saben uno del otro; el intento tardío se rechaza en vez de encolarse.
 	private readonly SemaphoreSlim _unaTandaALaVez = new(1, 1);
 
-	// Se enciende cuando un envío inmediato encontró la tanda ocupada. La tanda lo mira al
-	// terminar su recorrido y, si está encendido, vuelve a leer la cola: el registro que llegó
-	// a media tanda sale en esta misma sincronización y no en «la siguiente», que con señal
-	// estable podía no ocurrir hasta que alguien tocara el botón.
+	// Lo enciende un envío inmediato que encontró la tanda ocupada; la tanda relee la cola al terminar.
 	private int _llegoAlgoDuranteLaTanda;
 
 	public SincronizarIncidencias(
@@ -88,10 +53,6 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		_sesiones = sesiones;
 	}
 
-	/// <summary>
-	/// Intenta enviar lo pendiente y devuelve cuántos confirmó Jacob.
-	/// </summary>
-	/// <inheritdoc />
 	public async Task<ResultadoSincronizacion> EjecutarAsync(CancellationToken cancelacion = default)
 	{
 		if (!await _unaTandaALaVez.WaitAsync(0, cancelacion))
@@ -109,11 +70,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			_unaTandaALaVez.Release();
 		}
 
-		// La señal de «llegó algo» pudo encenderse después de la última lectura de la tanda y
-		// antes de soltar el cerrojo, o mientras el cerrojo lo tenía un envío inmediato. Se
-		// mira una vez más ya sin el cerrojo: si está encendida, corre otra tanda entera —que
-		// vuelve a tomarlo— y lo que salga se suma. Es una sola vez: lo que llegue durante esa
-		// tanda tiene su propia segunda pasada, y lo que llegue después ya es otro disparo.
+		// La señal pudo encenderse antes de soltar el cerrojo: se mira una vez más y corre una sola tanda extra.
 		if (Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0) == 1
 			&& await _unaTandaALaVez.WaitAsync(0, cancelacion))
 		{
@@ -135,7 +92,6 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return resultado;
 	}
 
-	/// <summary>Recorre la cola. Ya con la exclusión tomada.</summary>
 	private async Task<ResultadoSincronizacion> EjecutarTandaAsync(CancellationToken cancelacion)
 	{
 		var bloqueo = await ComprobarCondicionesAsync(cancelacion);
@@ -150,9 +106,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.SinSesion);
 		}
 
-		// Antes de leer la cola: lo que quedó a medio enviar vuelve a Pendiente. Si no, un
-		// registro atrapado en Enviando no lo toma nadie —ni esta consulta ni el contador— y no
-		// llega nunca a Jacob, sin que el operador tenga forma de saberlo.
+		// Antes de leer la cola: un registro atrapado en Enviando no lo tomaría nadie.
 		var recuperados = await _cola.RecuperarEnviosInterrumpidosAsync(cancelacion);
 		if (recuperados > 0)
 		{
@@ -162,17 +116,13 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 				cancelacion: cancelacion);
 		}
 
-		// El catálogo se lee una vez por sincronización, no por registro: una consulta por
-		// incidencia sobre una cola larga es gasto puro, y a media tanda no va a cambiar.
+		// Una vez por tanda: a media tanda no cambia.
 		var catalogos = await _catalogo.ObtenerAsync(cancelacion);
 
 		Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0);
 		var cuenta = new CuentaDeTanda();
 
-		// Dos pasadas como mucho: la segunda solo si un envío inmediato encontró la tanda
-		// ocupada. Lo que llegue durante la segunda espera a la siguiente sincronización, que
-		// es el mismo trato de siempre; el tope es lo que impide que una captura tras otra
-		// mantenga la tanda corriendo sin fin.
+		// Dos pasadas como mucho, para que una captura tras otra no mantenga la tanda corriendo sin fin.
 		for (var pasada = 0; pasada < 2; pasada++)
 		{
 			var enviables = await _cola.ObtenerEnviablesAsync(cancelacion);
@@ -197,7 +147,6 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			cuenta.EnEspera, cuenta.PorCorregir);
 	}
 
-	/// <summary>Recorre una lista de enviables acumulando lo que pasó con cada uno.</summary>
 	private async Task RecorrerAsync(
 		IReadOnlyList<IncidenciaEnviable> enviables,
 		CatalogosOperacion catalogos,
@@ -211,8 +160,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			if (!TocaIntentar(incidencia))
 			{
-				// Se cuenta por qué se salta, no solo que se saltó: «espera sola» y «necesita
-				// corrección» son cosas distintas para quien está mirando la cola.
+				// Espera sola y necesita corrección son cosas distintas para quien mira la cola.
 				if (CodigosErrorJacob.EsFuncional(incidencia.UltimoErrorCodigo))
 				{
 					cuenta.PorCorregir++;
@@ -227,8 +175,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 
 			cuenta.Intentados++;
 
-			// Cada registro es su propia unidad: se marca, se envía y se resuelve antes de
-			// pasar al siguiente (CA 12). Así una falla no arrastra a las demás (CA 13).
+			// Cada registro se resuelve antes del siguiente, para que una falla no arrastre a las demás.
 			var envio = await IntentarUnaAsync(incidencia, catalogos, token, cancelacion);
 
 			if (envio is { Exito: true })
@@ -242,7 +189,6 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		}
 	}
 
-	/// <summary>Lo que va contando una tanda mientras recorre la cola.</summary>
 	private sealed class CuentaDeTanda
 	{
 		public int Confirmados;
@@ -252,19 +198,14 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		public ResultadoEnvio? UltimoRechazo;
 	}
 
-	/// <inheritdoc />
 	public async Task<ResultadoSincronizacion> EnviarUnaAsync(
 		string claveLocal,
 		CancellationToken cancelacion = default)
 	{
-		// Comparte la exclusión con la tanda completa, y no una propia: el registro que el
-		// operador acaba de guardar puede ser justo uno de los que la tanda está recorriendo.
-		// Con dos cerrojos distintos, los dos caminos escribirían su estado a la vez.
+		// El mismo cerrojo que la tanda: el registro recién guardado puede ser uno de los que ella recorre.
 		if (!await _unaTandaALaVez.WaitAsync(0, cancelacion))
 		{
-			// Se queda como Pendiente y se le avisa a la tanda que corre, que al terminar su
-			// recorrido vuelve a leer la cola y lo saca en esta misma sincronización. Para el
-			// operador es lo mismo que no haber tenido enlace: guardada y en camino.
+			// Queda Pendiente y la tanda en curso lo saca al releer la cola.
 			Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 1);
 			return new ResultadoSincronizacion(0, 0, MotivoNoSincroniza.YaEnCurso);
 		}
@@ -279,9 +220,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			_unaTandaALaVez.Release();
 		}
 
-		// Si otra captura llegó mientras este envío tenía el cerrojo, se le prometió que saldría
-		// con «la sincronización en curso»: se corre una tanda para cumplirlo. Su resultado no
-		// es el de este envío —se asienta en la bitácora y en los estados de la cola—.
+		// A otra captura se le prometió salir en la sincronización en curso: se cumple aquí.
 		if (Interlocked.Exchange(ref _llegoAlgoDuranteLaTanda, 0) == 1)
 		{
 			await EjecutarAsync(cancelacion);
@@ -290,13 +229,11 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return resultado;
 	}
 
-	/// <summary>Envía un registro concreto. Ya con la exclusión tomada.</summary>
 	private async Task<ResultadoSincronizacion> EnviarSoloEsaAsync(
 		string claveLocal,
 		CancellationToken cancelacion)
 	{
-		// Las mismas compuertas que el envío de la cola: capturar no autoriza más que
-		// sincronizar, y sin enlace tampoco hay a dónde mandar.
+		// Las mismas compuertas que la cola: capturar no autoriza más que sincronizar.
 		var bloqueo = await ComprobarCondicionesAsync(cancelacion);
 		if (bloqueo is not null)
 		{
@@ -312,8 +249,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		var incidencia = await _cola.ObtenerEnviablePorClaveAsync(claveLocal, cancelacion);
 		if (incidencia is null)
 		{
-			// No existe, es de otro operador o ya salió. Nada que hacer, y no es un error:
-			// lo guardado sigue en la cola y se atenderá por el camino normal.
+			// No existe, es de otro operador o ya salió; no es un error.
 			return new ResultadoSincronizacion(0, 0, null);
 		}
 
@@ -328,21 +264,12 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 			envio?.Exito == false ? envio.Mensaje : null);
 	}
 
-	/// <summary>
-	/// Comprueba las tres condiciones del CA 1, o devuelve cuál falta.
-	/// </summary>
-	/// <remarks>
-	/// <b>El CA 2 está aquí, en el orden de las preguntas.</b> No basta con que exista WiFi o red
-	/// móvil: se pregunta por el enlace <b>con Jacob</b>, que es una sonda autenticada y no el
-	/// estado de la radio. Un punto de acceso de carretera sin salida a internet contesta que sí
-	/// hay red, y sincronizar contra él solo quema intentos.
-	/// </remarks>
+	// Enlace con Jacob y no solo red: un punto de acceso sin salida a internet dice que hay red.
 	private async Task<MotivoNoSincroniza?> ComprobarCondicionesAsync(CancellationToken cancelacion)
 	{
 		if (!_capacidades.Puede(CapacidadOperador.Sincronizar))
 		{
-			// No se registra en bitácora: sin permiso esto se repite en cada intento y llenaría
-			// la traza de ruido idéntico.
+			// Sin bitácora: sin permiso se repetiría en cada intento.
 			return MotivoNoSincroniza.SinPermiso;
 		}
 
@@ -358,21 +285,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return null;
 	}
 
-	/// <summary>
-	/// Decide si un registro toca ahora, sin llegar a tocar la red.
-	/// </summary>
-	/// <remarks>
-	/// Dos motivos para saltárselo, y son distintos:
-	/// <list type="bullet">
-	/// <item>
-	/// <b>Falló por algo funcional</b> (CA 8): reenviarlo igual daría el mismo rechazo. Espera a
-	/// que alguien lo corrija. <b>No se descarta</b> —JTT-1404 CA 4—, solo deja de reintentarse.
-	/// </item>
-	/// <item>
-	/// <b>Falló por algo técnico y su espera no ha vencido</b> (CA 7).
-	/// </item>
-	/// </list>
-	/// </remarks>
+	// Un rechazo funcional espera corrección y no se descarta; uno técnico espera a que venza su plazo.
 	private bool TocaIntentar(IncidenciaEnviable incidencia)
 	{
 		if (CodigosErrorJacob.EsFuncional(incidencia.UltimoErrorCodigo))
@@ -389,15 +302,13 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return ReglaEsperaReintento.YaPuedeReintentarse(incidencia.Intentos, transcurrido);
 	}
 
-	/// <summary>Marca, envía y resuelve un registro. Devuelve lo que contestó Jacob.</summary>
 	private async Task<ResultadoEnvio?> IntentarUnaAsync(
 		IncidenciaEnviable incidencia,
 		CatalogosOperacion catalogos,
 		string token,
 		CancellationToken cancelacion)
 	{
-		// Fallido vuelve a Pendiente antes de poder pasar a Enviando: es el grafo de la regla
-		// de dominio, no un paso de más.
+		// Fallido pasa por Pendiente antes de Enviando, según el grafo de la regla de dominio.
 		var estadoPrevio = incidencia.Estado == EstadoSincronizacion.Fallido
 			? EstadoSincronizacion.Pendiente
 			: incidencia.Estado;
@@ -423,13 +334,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		}
 		catch (Exception excepcion) when (excepcion is not OperationCanceledException)
 		{
-			// El registro ya está marcado como Enviando. Si la excepción se propagara desde
-			// aquí, se quedaría ahí colgado hasta la siguiente recuperación; resolverlo en el
-			// acto lo devuelve al camino normal de reintentos.
-			//
-			// Técnico y no funcional: una excepción del cliente no dice que el registro esté
-			// mal, dice que no se pudo preguntar. Como funcional, dejaría de reintentarse por
-			// un fallo que el operador no puede corregir.
+			// Se resuelve aquí para no dejarlo en Enviando, y como técnico: no se pudo preguntar, el registro no está mal.
 			resultado = ResultadoEnvio.Rechazada(
 				FamiliaErrorSincronizacion.Tecnico,
 				CodigosErrorJacob.ErrorTecnico,
@@ -455,8 +360,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		await _cola.RegistrarIntentoAsync(
 			incidencia.Uuid, resultado.Exito, resultado.Codigo, resultado.Mensaje, cancelacion);
 
-		// Las evidencias van DESPUÉS y solo si la incidencia confirmó: el servidor valida que el
-		// uuid exista, y una evidencia que salga antes recibe appevidencias.incidencia.noexiste.
+		// Después y solo si confirmó: el servidor rechaza la evidencia de una incidencia que no existe.
 		if (resultado.Exito)
 		{
 			await EnviarEvidenciasDeAsync(incidencia.Uuid, token, cancelacion);
@@ -465,21 +369,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		return resultado;
 	}
 
-	/// <summary>
-	/// Sube las evidencias pendientes de una incidencia ya confirmada (JTT-1398 CA 11).
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// <b>Una evidencia que falle no revierte la incidencia.</b> Ya está en el CCO con su folio,
-	/// y marcarla como fallida por una foto que no subió mandaría al operador a recapturar algo
-	/// que sí llegó. Cada evidencia lleva su propio estado y su propio reintento, que es para lo
-	/// que <c>evidencia_local</c> se diseñó así desde el primer esquema.
-	/// </para>
-	/// <para>
-	/// <b>Y una que falle no detiene a las siguientes</b>, por el mismo argumento del CA 13 de
-	/// JTT-1401: que la tercera foto no suba no puede impedir que suban la cuarta y la quinta.
-	/// </para>
-	/// </remarks>
+	// Una evidencia que falle no revierte la incidencia ni detiene a las siguientes.
 	private async Task EnviarEvidenciasDeAsync(
 		string incidenciaUuid,
 		string token,
@@ -492,8 +382,7 @@ public sealed class SincronizarIncidencias : ISincronizadorIncidencias
 		{
 			cancelacion.ThrowIfCancellationRequested();
 
-			// Lo funcional no se reintenta, igual que en las incidencias: reenviar un formato
-			// que el servidor no admite da el mismo rechazo y gasta datos del operador.
+			// Lo funcional no se reintenta: daría el mismo rechazo y gastaría datos.
 			if (CodigosErrorJacob.EsFuncional(evidencia.UltimoErrorCodigo))
 			{
 				continue;

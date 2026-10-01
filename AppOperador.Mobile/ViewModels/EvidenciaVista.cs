@@ -3,20 +3,7 @@ using AppOperador.Domain.Enums;
 
 namespace AppOperador.Mobile.ViewModels;
 
-/// <summary>
-/// Un archivo adjunto tal como se lee en la lista, antes de guardar (JTT-1398 CA 1).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Nombre, tipo y tamaño.</b> Los tres los pidió el PO explícitamente en JTT-289: son los
-/// datos que se muestran en la lista de archivos adjuntos visible antes de enviar.
-/// </para>
-/// <para>
-/// Aquí solo hay <b>presentación</b>: formatear bytes y acortar un tipo MIME no es una decisión
-/// de negocio. Lo que sí lo es —si se puede adjuntar otro, cuántos faltan, por qué no— vive en
-/// <c>ResumenEvidencias</c>, en Aplicación, donde se puede probar.
-/// </para>
-/// </remarks>
+// Solo presentación: lo que decide si se puede adjuntar vive en ResumenEvidencias.
 public sealed record EvidenciaVista(
 	string Uuid,
 	string Nombre,
@@ -35,28 +22,12 @@ public sealed record EvidenciaVista(
 		adjunta.Estado == EstadoSincronizacion.Sincronizado,
 		adjunta.RutaArchivo,
 		EsImagen: adjunta.TipoMime.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
-		// El tipo crudo viaja además del legible: «JPEG» es para que lo lea el operador, pero
-		// para elegir con qué aplicación se abre hace falta el que entienden las máquinas.
+		// El tipo crudo decide con qué aplicación se abre; el legible es para el operador.
 		TipoMime: adjunta.TipoMime);
 
-	/// <summary>
-	/// Qué se pinta cuando el archivo no es una imagen.
-	/// </summary>
-	/// <remarks>
-	/// Un PDF o un video no tienen miniatura que mostrar sin decodificarlos, y decodificar un
-	/// video de quince megabytes en un teléfono de campo para pintar un cuadro de 72 píxeles es
-	/// gasto que no compra nada. Se muestra el tipo, que es lo que el operador necesita
-	/// distinguir de un vistazo.
-	/// </remarks>
+	// Sin miniatura para lo que no es imagen: decodificar un video para 72 píxeles no compra nada.
 	public string Etiqueta => EsImagen ? string.Empty : Tipo;
 
-	/// <summary>
-	/// «image/jpeg» se lee «JPEG».
-	/// </summary>
-	/// <remarks>
-	/// El tipo MIME es contrato entre máquinas. Al operador, parado en carretera, le sirve saber
-	/// si es una foto o un documento, no la cadena que viaja por el cable.
-	/// </remarks>
 	private static string TipoLegible(string tipoMime)
 	{
 		if (string.IsNullOrWhiteSpace(tipoMime))
@@ -71,13 +42,7 @@ public sealed record EvidenciaVista(
 			: tipoMime.ToUpperInvariant();
 	}
 
-	/// <summary>
-	/// Bytes en la unidad que se entiende de un vistazo.
-	/// </summary>
-	/// <remarks>
-	/// Se usan múltiplos de 1024, los mismos con los que se compara contra el tope: mostrar
-	/// «5.2 MB» junto a un límite de 5 MB que sí lo admite sería contradecirse en pantalla.
-	/// </remarks>
+	// Múltiplos de 1024, los mismos del tope, para no contradecirse en pantalla.
 	private static string TamanoLegible(long bytes)
 	{
 		const long Kilo = 1024;

@@ -3,23 +3,7 @@ using AppOperador.Infrastructure.Dispositivo;
 
 namespace AppOperador.IntegrationTests.Dispositivo;
 
-/// <summary>
-/// La copia que se le entrega al visor del sistema, contra el disco real.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Qué se prueba aquí y qué no.</b> Lanzar el visor es del dispositivo y en pruebas no existe:
-/// esa parte responde <see cref="ResultadoApertura.NoSePudo"/> y se recorre a mano. Lo que sí se
-/// puede fijar —y es donde estaban los dos riesgos reales— es <b>la copia</b>: que se haga en la
-/// caché, que lleve el nombre que el operador reconoce en vez del UUID del disco, y que no se
-/// intente nada cuando el archivo ya no está.
-/// </para>
-/// <para>
-/// <b>Por qué importa el nombre.</b> En el espacio privado la evidencia se llama por su UUID,
-/// porque dos <c>IMG_0001.jpg</c> son lo normal en un teléfono y una pisaría a la otra. Sin esta
-/// copia, el operador abriría su foto y leería como título una cadena sin sentido.
-/// </para>
-/// </remarks>
+// Lanzar el visor no existe en pruebas; lo que se fija es la copia: caché, nombre y archivo ausente.
 public sealed class VisorEvidenciaDispositivoTests : IDisposable
 {
 	private readonly string _raiz =
@@ -27,13 +11,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 
 	private string Cache => Path.Combine(_raiz, "cache");
 
-	/// <summary>
-	/// La subcarpeta que el visor crea dentro de la caché.
-	/// </summary>
-	/// <remarks>
-	/// Se busca en vez de nombrarla: su nombre es un detalle interno del visor, y fijarlo aquí
-	/// ataría la prueba a algo que puede cambiar sin que nada se rompa de verdad.
-	/// </remarks>
+	// Se busca en vez de nombrarla: su nombre es un detalle interno del visor.
 	private string CarpetaDeCopias =>
 		Directory.Exists(Cache)
 			? Directory.GetDirectories(Cache).SingleOrDefault() ?? Path.Combine(Cache, "sin-crear")
@@ -54,7 +32,6 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 		}
 	}
 
-	/// <summary>Deja una evidencia como la guarda la app: nombrada por su UUID.</summary>
 	private string GuardarComoEnElDispositivo(string extension = ".jpg")
 	{
 		var privado = Path.Combine(_raiz, "datos", "evidencias");
@@ -69,8 +46,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 	[Fact]
 	public async Task SiElArchivoYaNoEsta_seDiceEsoYNoSeCopiaNada()
 	{
-		// Pasa de verdad: alguien limpia el almacenamiento de la app desde la configuración del
-		// sistema y las filas siguen apuntando a archivos que ya no existen.
+		// Pasa cuando alguien limpia el almacenamiento de la app desde la configuración.
 		var visor = new VisorEvidenciaDispositivo(Cache);
 
 		var resultado = await visor.AbrirAsync(
@@ -105,8 +81,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 	[Fact]
 	public async Task ElOriginalNoSeMueve()
 	{
-		// El CA 9 de JTT-1398 ya decía que el archivo del operador no se toca. Ver una evidencia
-		// tampoco puede sacarla de su sitio: si se moviera, la cola perdería lo que iba a subir.
+		// Si se moviera, la cola perdería lo que iba a subir.
 		var enElDispositivo = GuardarComoEnElDispositivo();
 		var visor = new VisorEvidenciaDispositivo(Cache);
 
@@ -118,8 +93,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 	[Fact]
 	public async Task UnNombreConCaracteresProhibidos_seLimpiaEnVezDeFallar()
 	{
-		// El nombre viene de otra galería o de otro dispositivo: puede traer cualquier cosa, y
-		// reventar al copiar dejaría al operador sin ver una evidencia que sí está.
+		// El nombre puede traer cualquier cosa, y fallar al copiar dejaría sin ver una evidencia que sí está.
 		var enElDispositivo = GuardarComoEnElDispositivo();
 		var visor = new VisorEvidenciaDispositivo(Cache);
 
@@ -132,8 +106,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 	[Fact]
 	public async Task SinExtensionEnElNombre_seTomaLaDelArchivoReal()
 	{
-		// Es la que hace que el visor sepa con qué abrirlo. El nombre declarado no es de fiar;
-		// el archivo guardado sí, porque la extensión se la puso la app al copiarlo.
+		// El nombre declarado no es de fiar; la extensión del archivo guardado la puso la app.
 		var enElDispositivo = GuardarComoEnElDispositivo(".mp4");
 		var visor = new VisorEvidenciaDispositivo(Cache);
 
@@ -158,8 +131,7 @@ public sealed class VisorEvidenciaDispositivoTests : IDisposable
 	[Fact]
 	public async Task CadaAperturaLimpiaLaAnterior()
 	{
-		// La caché no se deja crecer con copias de quince megabytes: la de la vez pasada ya no
-		// hace falta, y el original sigue donde estaba.
+		// La caché no crece con copias: la de la vez pasada ya no hace falta.
 		var primera = GuardarComoEnElDispositivo();
 		var segunda = GuardarComoEnElDispositivo();
 		var visor = new VisorEvidenciaDispositivo(Cache);

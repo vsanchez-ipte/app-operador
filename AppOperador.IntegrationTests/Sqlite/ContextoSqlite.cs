@@ -9,17 +9,7 @@ using AppOperador.Infrastructure.Sqlite;
 
 namespace AppOperador.IntegrationTests.Sqlite;
 
-/// <summary>
-/// Base de datos SQLite real sobre un archivo temporal, con dobles para el resto.
-/// </summary>
-/// <remarks>
-/// Cada prueba trabaja contra su propio archivo, así que pueden correr en paralelo sin
-/// pisarse. El archivo se borra al terminar.
-///
-/// La ruta se pasa explícitamente al constructor de <see cref="BaseDatosLocal"/>: en el
-/// destino <c>net10.0</c> no hay dispositivo y <c>FileSystem.AppDataDirectory</c>
-/// lanzaría. Ese parámetro existe justamente para poder probar esto fuera del emulador.
-/// </remarks>
+// Un archivo por prueba, para correr en paralelo; la ruta explícita evita FileSystem, que en net10.0 lanza.
 public sealed class ContextoSqlite : IAsyncDisposable
 {
 	private readonly string _ruta;
@@ -36,11 +26,9 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		Bitacora = CrearBitacora(BaseDatos);
 	}
 
-	/// <summary>Bitácora sobre una base dada, con los mismos dobles de reloj, sesión y enlace.</summary>
 	public BitacoraAuditoriaSqlite CrearBitacora(BaseDatosLocal baseDatos) =>
 		new(baseDatos, Reloj, Monotonico, Sesion, Conectividad);
 
-	/// <summary>La misma base, vista desde otra sesión (o desde ninguna).</summary>
 	public BitacoraAuditoriaSqlite CrearBitacoraDe(ISessionStore sesion) =>
 		new(BaseDatos, Reloj, Monotonico, sesion, Conectividad);
 
@@ -62,19 +50,11 @@ public sealed class ContextoSqlite : IAsyncDisposable
 
 	public ColaSincronizacionSqlite CrearCola() => new(BaseDatos, Reloj, Sesion);
 
-	/// <summary>Copia local del catálogo, de donde salen los campos que se rellenan al enviar.</summary>
 	public RepositorioCatalogoSqlite CrearCatalogo() => new(BaseDatos);
 
 	public RepositorioEvidenciasSqlite CrearRepositorioEvidencias() => new(BaseDatos);
 
-	/// <summary>
-	/// El caso de uso del envío, armado sobre la base real y un Jacob controlable.
-	/// </summary>
-	/// <remarks>
-	/// Desde JTT-1401 la orquestación no vive en la cola, así que las pruebas de comportamiento
-	/// del envío entran por aquí. Siguen tocando SQLite de verdad: lo que se comprueba es que
-	/// los estados y el folio queden <b>escritos</b>, no solo decididos.
-	/// </remarks>
+	// Por el caso de uso, para comprobar que estados y folio quedan escritos y no solo decididos.
 	public SincronizarIncidencias CrearSincronizador(
 		JacobControlado? jacob = null,
 		ISessionStore? sesion = null,
@@ -97,37 +77,22 @@ public sealed class ContextoSqlite : IAsyncDisposable
 			deQuien);
 	}
 
-	/// <summary>
-	/// Cola vista por otra sesión, para comprobar que no se ve la cola ajena (JTT-1390 CA 7).
-	/// </summary>
 	public ColaSincronizacionSqlite CrearColaDe(ISessionStore sesion) =>
 		new(BaseDatos, Reloj, sesion);
 
-	/// <summary>
-	/// Repositorio visto por otra sesión, para los borradores ajenos (JTT-1388 CA 9).
-	/// </summary>
 	public RepositorioIncidenciasSqlite CrearRepositorioDe(ISessionStore sesion) =>
 		new(BaseDatos, Reloj, sesion);
 
-	/// <summary>
-	/// Abre una instancia nueva sobre el mismo archivo, como si la app se hubiera reiniciado.
-	/// </summary>
 	public BaseDatosLocal ReabrirBaseDatos() => new(_ruta);
 
-	/// <summary>
-	/// Una incidencia mínima con el UUID dado, para colgarle evidencias: desde el esquema 11
-	/// no puede haber una evidencia sin su incidencia.
-	/// </summary>
+	// Desde el esquema 11 no puede haber evidencia sin su incidencia.
 	public Task SembrarIncidenciaAsync(string uuid) =>
 		EjecutarSqlAsync(
 			"INSERT INTO incidencia_local (uuid, clave_local, estado, creado_utc_ticks, actualizado_utc_ticks) " +
 			"VALUES (?, ?, ?, ?, ?)",
 			uuid, "LOC-" + uuid[..6], (int)EstadoSincronizacion.Pendiente, Reloj.UtcAhora.Ticks, Reloj.UtcAhora.Ticks);
 
-	/// <summary>
-	/// Ejecuta SQL directo sobre el archivo, para preparar filas que la app ya no escribe
-	/// —por ejemplo, las de un esquema anterior—.
-	/// </summary>
+	// Para preparar filas que la app ya no escribe, como las de un esquema anterior.
 	public async Task EjecutarSqlAsync(string sql, params object[] args)
 	{
 		var conexion = new SQLite.SQLiteAsyncConnection(
@@ -142,7 +107,6 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		}
 	}
 
-	/// <summary>Un valor leído directo del archivo, para afirmar sobre lo que quedó escrito.</summary>
 	public async Task<T> EscalarAsync<T>(string sql, params object[] args)
 	{
 		var conexion = new SQLite.SQLiteAsyncConnection(
@@ -157,7 +121,6 @@ public sealed class ContextoSqlite : IAsyncDisposable
 		}
 	}
 
-	/// <summary>Filas leídas directo del archivo, mapeadas por nombre de columna.</summary>
 	public async Task<List<T>> ConsultarAsync<T>(string sql, params object[] args) where T : new()
 	{
 		var conexion = new SQLite.SQLiteAsyncConnection(
@@ -176,8 +139,7 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	{
 		await BaseDatos.DisposeAsync();
 
-		// SQLite puede tardar en soltar el archivo; si no se puede borrar no vale la pena
-		// tumbar la prueba por un temporal huérfano.
+		// SQLite puede tardar en soltar el archivo; un temporal huérfano no tumba la prueba.
 		try
 		{
 			if (File.Exists(_ruta))
@@ -191,7 +153,6 @@ public sealed class ContextoSqlite : IAsyncDisposable
 	}
 }
 
-/// <summary>Reloj controlable: las pruebas deciden qué hora es.</summary>
 public sealed class RelojFijo : IClock
 {
 	public DateTime UtcAhora { get; set; } = new(2026, 8, 4, 12, 0, 0, DateTimeKind.Utc);
@@ -199,7 +160,6 @@ public sealed class RelojFijo : IClock
 	public void Avanzar(TimeSpan cuanto) => UtcAhora = UtcAhora.Add(cuanto);
 }
 
-/// <summary>Conectividad que la prueba enciende y apaga a voluntad.</summary>
 public sealed class ConectividadControlada : IConnectivityService
 {
 	private bool _hayEnlace = true;
@@ -216,7 +176,6 @@ public sealed class ConectividadControlada : IConnectivityService
 
 	public event EventHandler<bool>? EnlaceCambio;
 
-	/// <summary>La prueba fija el estado a mano: comprobar solo devuelve lo que hay.</summary>
 	public Task<ResultadoSondeo> ComprobarAsync(CancellationToken cancelacion = default) =>
 		Task.FromResult(HayEnlace
 			? ResultadoSondeo.Alcanzado()
@@ -227,7 +186,6 @@ public sealed class ConectividadControlada : IConnectivityService
 	}
 }
 
-/// <summary>Sesión abierta fija, para que las incidencias tengan operador y unidad.</summary>
 public sealed class SesionFija : ISessionStore
 {
 	public SesionFija(string operador = "admin", string sessionId = "")
@@ -246,9 +204,7 @@ public sealed class SesionFija : ISessionStore
 		"Operador",
 		"VEH-01",
 		VigenciaOffline.Validada(new DateTime(2026, 8, 4, 12, 0, 0, DateTimeKind.Utc)),
-		// Los códigos reales que emite Jacob, no los del simulador retirado en JTT-1385:
-		// "CAPTURA" y "SYNC" no existen en el servidor, y desde que el envío consulta
-		// capacidades una sesión con esos códigos no autorizaría nada.
+		// Los códigos reales de Jacob: con otros, la sesión no autorizaría nada.
 		PermisosOperador.DelServidor([
 			ReglaCapacidades.PermisoAppOperadorMovil,
 			ReglaCapacidades.PermisoCapturaIncidencias,
@@ -258,36 +214,24 @@ public sealed class SesionFija : ISessionStore
 		sessionId);
 }
 
-/// <summary>
-/// Jacob controlable: la prueba decide si acepta, y con qué error rechaza.
-/// </summary>
-/// <remarks>
-/// Sustituye al simulador que vivía dentro de la cola y devolvía siempre un folio inventado.
-/// Aquél no permitía probar ningún rechazo, que es la mitad de JTT-1401.
-/// </remarks>
 public sealed class JacobControlado : IIncidenciasJacobClient
 {
 	private readonly Queue<ResultadoEnvio> _programados = new();
 
-	/// <summary>Respuesta por omisión cuando no queda ninguna programada.</summary>
 	public ResultadoEnvio PorOmision { get; set; } =
 		ResultadoEnvio.Aceptada(new IncidenciaRegistrada("INC-APK-2026-0001", new DateTime(2026, 8, 4, 12, 0, 0, DateTimeKind.Utc), false));
 
-	/// <summary>Envíos recibidos, en orden, para poder afirmar qué se mandó.</summary>
 	public List<EnvioIncidencia> Recibidos { get; } = [];
 
-	/// <summary>Programa la siguiente respuesta. Se consumen en orden.</summary>
 	public JacobControlado Responde(ResultadoEnvio resultado)
 	{
 		_programados.Enqueue(resultado);
 		return this;
 	}
 
-	/// <summary>Programa un rechazo funcional con el código indicado.</summary>
 	public JacobControlado RechazaFuncional(string codigo = "appincidencias.nota.requerida") =>
 		Responde(ResultadoEnvio.Rechazada(FamiliaErrorSincronizacion.Funcional, codigo, "Rechazo de prueba."));
 
-	/// <summary>Programa un rechazo técnico.</summary>
 	public JacobControlado RechazaTecnico(string codigo = "appincidencias.error.tecnico") =>
 		Responde(ResultadoEnvio.Rechazada(FamiliaErrorSincronizacion.Tecnico, codigo, "Fallo de prueba."));
 
@@ -303,7 +247,7 @@ public sealed class JacobControlado : IIncidenciasJacobClient
 	}
 }
 
-/// <summary>Token siempre presente: la ausencia de token se prueba aparte.</summary>
+// La ausencia de token se prueba aparte.
 public sealed class TokenFijo : ITokenProvider
 {
 	public Task<string?> ObtenerAsync(CancellationToken cancelacion = default) =>
@@ -315,18 +259,11 @@ public sealed class TokenFijo : ITokenProvider
 	public Task LimpiarAsync(CancellationToken cancelacion = default) => Task.CompletedTask;
 }
 
-/// <summary>
-/// Jacob para las evidencias, programable por la prueba.
-/// </summary>
-/// <remarks>
-/// Por omisión acepta todo: la mayoría de las pruebas del envío de incidencias no hablan de
-/// evidencias y no deben fallar por ellas.
-/// </remarks>
+// Acepta todo por omisión: las pruebas de incidencias no deben fallar por las evidencias.
 public sealed class EvidenciasControladas : IEvidenciasJacobClient
 {
 	private readonly Queue<ResultadoEnvioEvidencia> _programados = new();
 
-	/// <summary>Lo que se le pidió subir, en orden.</summary>
 	public List<(string Incidencia, string Ruta)> Recibidas { get; } = [];
 
 	public EvidenciasControladas Responde(ResultadoEnvioEvidencia resultado)
