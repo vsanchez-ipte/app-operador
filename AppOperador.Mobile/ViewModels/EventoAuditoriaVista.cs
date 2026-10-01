@@ -1,3 +1,4 @@
+using System.Globalization;
 using AppOperador.Aplicacion.Modelos;
 
 namespace AppOperador.Mobile.ViewModels;
@@ -9,7 +10,8 @@ public sealed class EventoAuditoriaVista
 
 	public EventoAuditoriaVista(EventoAuditoria evento)
 	{
-		HoraLocal = evento.InstanteUtc.ToLocalTime().ToString("HH:mm:ss");
+		FechaHoraLocal = evento.InstanteUtc.ToLocalTime()
+			.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
 		Mensaje = evento.Mensaje;
 
 		TextoOrigen = evento.Origen switch
@@ -36,7 +38,7 @@ public sealed class EventoAuditoriaVista
 		};
 	}
 
-	public string HoraLocal { get; }
+	public string FechaHoraLocal { get; }
 
 	public string TextoOrigen { get; }
 
