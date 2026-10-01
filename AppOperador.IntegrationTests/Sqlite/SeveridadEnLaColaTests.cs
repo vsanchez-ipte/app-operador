@@ -44,7 +44,6 @@ public sealed class SeveridadEnLaColaTests
 	[Fact]
 	public async Task DosSeveridadesDistintasNoSeVenIgual()
 	{
-		// La comprobación que resume el defecto: antes las dos decían "Normal".
 		await using var contexto = new ContextoSqlite();
 		var advertencia = await GuardarAsync(contexto, Severidad("Advertencia", 2));
 		var informacion = await GuardarAsync(contexto, Severidad("Información", 3));
