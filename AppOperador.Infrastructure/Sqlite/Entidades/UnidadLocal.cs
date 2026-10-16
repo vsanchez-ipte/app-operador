@@ -16,4 +16,19 @@ internal sealed class UnidadLocal
 
 	[Column("descripcion")]
 	public string Descripcion { get; set; } = string.Empty;
+
+	[Column("estado_clave")]
+	public string? EstadoClave { get; set; }
+
+	[Column("estado_nombre")]
+	public string? EstadoNombre { get; set; }
+
+	[Column("estado_color")]
+	public string? EstadoColor { get; set; }
+
+	[Column("disponible")]
+	public bool Disponible { get; set; } = true;
+
+	[Column("sincronizado_utc_ticks")]
+	public long SincronizadoUtcTicks { get; set; }
 }

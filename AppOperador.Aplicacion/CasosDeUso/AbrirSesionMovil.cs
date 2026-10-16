@@ -11,6 +11,8 @@ public sealed class AbrirSesionMovil
 	private readonly CustodiaSesionLocal _custodia;
 	private readonly ActualizarCatalogoLocal? _catalogos;
 	private readonly IConnectivityService? _conectividad;
+	private readonly ICatalogoUnidadesRepository? _catalogoUnidades;
+	private readonly IClock? _reloj;
 	private readonly DatosDeInstalacion _instalacion;
 	private readonly IMonotonicClock _monotonico;
 
@@ -23,7 +25,9 @@ public sealed class AbrirSesionMovil
 		IMonotonicClock monotonico,
 		IAuditLog bitacora,
 		ActualizarCatalogoLocal? catalogos = null,
-		IConnectivityService? conectividad = null)
+		IConnectivityService? conectividad = null,
+		ICatalogoUnidadesRepository? catalogoUnidades = null,
+		IClock? reloj = null)
 	{
 		_jacob = jacob;
 		_custodia = custodia;
@@ -32,12 +36,17 @@ public sealed class AbrirSesionMovil
 		_bitacora = bitacora;
 		_catalogos = catalogos;
 		_conectividad = conectividad;
+		_catalogoUnidades = catalogoUnidades;
+		_reloj = reloj;
 	}
 
 	private readonly IAuditLog _bitacora;
 
 	// Aún no hay sesión: la bitácora atribuye el intento al correo tecleado.
 	private string? _emailEnCurso;
+
+	// Nulo si no se pudo guardar: la pantalla no promete una fecha que no quedó.
+	public DateTime? CatalogoSincronizadoUtc { get; private set; }
 
 	public async Task<ResultadoPreauth> IdentificarAsync(
 		string email,
@@ -54,6 +63,7 @@ public sealed class AbrirSesionMovil
 
 		if (resultado.Exitoso)
 		{
+			await GuardarCatalogoUnidadesAsync(resultado.Unidades, cancelacion);
 			await _bitacora.RegistrarAsync(
 				OperacionAuditada.Autenticacion, ResultadoAuditoria.Exito,
 				$"Credenciales validadas por Jacob CCO para {email}.",
@@ -115,6 +125,34 @@ public sealed class AbrirSesionMovil
 	}
 
 	public void Descartar() => _desafio = null;
+
+	// Un fallo al guardar no impide entrar: la lista ya llegó y se puede elegir de ella.
+	private async Task GuardarCatalogoUnidadesAsync(
+		IReadOnlyList<UnidadVehicular> unidades,
+		CancellationToken cancelacion)
+	{
+		CatalogoSincronizadoUtc = null;
+
+		if (_catalogoUnidades is null || _reloj is null || unidades.Count == 0)
+		{
+			return;
+		}
+
+		var ahoraUtc = _reloj.UtcAhora;
+
+		try
+		{
+			await _catalogoUnidades.GuardarAsync(unidades, ahoraUtc, cancelacion);
+			CatalogoSincronizadoUtc = ahoraUtc;
+		}
+		catch (Exception error) when (error is not OperationCanceledException)
+		{
+			await _bitacora.RegistrarAsync(
+				NivelAuditoria.Advertencia,
+				$"No se pudo guardar el catálogo local de unidades: {error.Message}",
+				cancelacion);
+		}
+	}
 
 	// Solo la falta de comunicación niega el enlace: un rechazo también es respuesta de Jacob.
 	private void AnotarEnlace(MotivoRechazoAcceso? motivo) =>

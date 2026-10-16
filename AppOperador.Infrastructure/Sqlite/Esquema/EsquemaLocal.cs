@@ -4,7 +4,7 @@ namespace AppOperador.Infrastructure.Sqlite.Esquema;
 internal static class EsquemaLocal
 {
 	// Un cambio futuro sube este número y agrega su paso en MigradorEsquema.
-	public const int Version = 11;
+	public const int Version = 12;
 
 	public static readonly DefinicionTabla OperadorLocal = new(
 		"operador_local",
@@ -24,6 +24,13 @@ internal static class EsquemaLocal
 			Columna.Texto("clave", nulable: false),
 			Columna.Texto("id", nulable: false),
 			Columna.Texto("descripcion", nulable: false),
+			Columna.Texto("estado_clave"),
+			Columna.Texto("estado_nombre"),
+			Columna.Texto("estado_color"),
+			// Las unidades de antes del catálogo se usaron en una sesión: se podían elegir.
+			new Columna("disponible", "INTEGER", Nulable: false, PorOmision: "1"),
+			// 0: nunca llegó en una sincronización; solo se vio en una sesión o una incidencia.
+			Columna.Entero("sincronizado_utc_ticks"),
 		],
 		Indices: []);
 

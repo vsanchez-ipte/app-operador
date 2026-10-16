@@ -27,6 +27,13 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 	private const string MensajeElijaUnidad = "Elija la unidad con la que va a operar";
 
+	private const string FormatoCatalogoSincronizado = "Estado al {0}";
+
+	private const string FormatoCantidadUnidades = "Deslice para ver las {0} unidades";
+
+	// Las que caben en el recuadro sin desplazarse.
+	private const int UnidadesVisibles = 3;
+
 	private const string MensajeDesafioNoValido = "La sesión de acceso venció. Vuelva a iniciar sesión";
 	private const string MensajeUnidadNoAutorizada = "La unidad ya no está disponible. Elija otra";
 
@@ -83,6 +90,9 @@ public sealed partial class AccesoViewModel : ObservableObject
 	public partial UnidadVehicular? UnidadSeleccionada { get; set; }
 
 	[ObservableProperty]
+	public partial string? TextoSincronizacion { get; set; }
+
+	[ObservableProperty]
 	public partial string? MensajeError { get; set; }
 
 	[ObservableProperty]
@@ -125,13 +135,24 @@ public sealed partial class AccesoViewModel : ObservableObject
 		_accesoJacob = accesoJacob;
 		_reanudarOffline = reanudarOffline;
 		_conectividad.EnlaceCambio += (_, _) => OnPropertyChanged(nameof(TextoEstadoEnlace));
+		Unidades.CollectionChanged += (_, _) =>
+		{
+			OnPropertyChanged(nameof(HayMasUnidadesQueLasVisibles));
+			OnPropertyChanged(nameof(TextoCantidadUnidades));
+		};
 
 		Usuario = string.Empty;
 		Contrasena = string.Empty;
 	}
 
 	// Observable: el catálogo llega después de enlazar la vista.
-	public ObservableCollection<UnidadVehicular> Unidades { get; } = [];
+	public ObservableCollection<OpcionUnidadVista> Unidades { get; } = [];
+
+	public bool HayTextoSincronizacion => !string.IsNullOrEmpty(TextoSincronizacion);
+
+	public bool HayMasUnidadesQueLasVisibles => Unidades.Count > UnidadesVisibles;
+
+	public string TextoCantidadUnidades => string.Format(FormatoCantidadUnidades, Unidades.Count);
 
 	public bool HayError => !string.IsNullOrEmpty(MensajeError);
 
@@ -157,6 +178,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		EnSeleccionDeUnidad = false;
 		UnidadSeleccionada = null;
 		Unidades.Clear();
+		TextoSincronizacion = null;
 		MensajeError = null;
 		MensajeAviso = null;
 
@@ -196,12 +218,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
-		foreach (var unidad in await _autenticacion.ObtenerUnidadesAsync())
-		{
-			Unidades.Add(unidad);
-		}
-
-		UnidadSeleccionada = Unidades.FirstOrDefault();
+		LlenarUnidades(await _autenticacion.ObtenerUnidadesAsync());
 	}
 
 	public bool UsaApiReal => _accesoJacob is not null;
@@ -278,8 +295,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 			return;
 		}
 
-		// El API debió responder sin.vehiculos; si no, el operador quedaría ante un desplegable vacío.
-		if (resultado.Unidades.Count == 0)
+		// El API debió responder sin.vehiculos; si no, el operador quedaría ante una lista sin nada que elegir.
+		if (!resultado.Unidades.Any(unidad => unidad.Disponible))
 		{
 			_accesoJacob.Descartar();
 			MensajeError = MensajeSinUnidades;
@@ -295,15 +312,41 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 	private void MostrarUnidades(IReadOnlyList<UnidadVehicular> unidades)
 	{
+		LlenarUnidades(unidades);
+
+		TextoSincronizacion = _accesoJacob?.CatalogoSincronizadoUtc is { } sincronizado
+			? string.Format(FormatoCatalogoSincronizado, sincronizado.ToLocalTime().ToString("dd/MM/yyyy, hh:mm tt"))
+			: null;
+		EnSeleccionDeUnidad = true;
+	}
+
+	// Preseleccionar evita que «Ingresar» no haga nada; sigue siendo del catálogo.
+	private void LlenarUnidades(IReadOnlyList<UnidadVehicular> unidades)
+	{
 		Unidades.Clear();
 		foreach (var unidad in unidades)
 		{
-			Unidades.Add(unidad);
+			Unidades.Add(new OpcionUnidadVista(unidad));
 		}
 
-		// Preseleccionar evita que «Ingresar» no haga nada; sigue siendo del catálogo.
-		UnidadSeleccionada = Unidades.FirstOrDefault();
-		EnSeleccionDeUnidad = true;
+		SeleccionarUnidad(Unidades.FirstOrDefault(opcion => opcion.Disponible));
+	}
+
+	// Una unidad no disponible se ve, pero no se puede tomar.
+	[RelayCommand]
+	private void SeleccionarUnidad(OpcionUnidadVista? opcion)
+	{
+		if (opcion is not null && !opcion.Disponible)
+		{
+			return;
+		}
+
+		foreach (var otra in Unidades)
+		{
+			otra.Seleccionada = ReferenceEquals(otra, opcion);
+		}
+
+		UnidadSeleccionada = opcion?.Unidad;
 	}
 
 	// Desafío vencido vuelve a credenciales; unidad no autorizada solo pide elegir otra.
@@ -345,6 +388,7 @@ public sealed partial class AccesoViewModel : ObservableObject
 		EnSeleccionDeUnidad = false;
 		UnidadSeleccionada = null;
 		Unidades.Clear();
+		TextoSincronizacion = null;
 		Contrasena = string.Empty;
 		MensajeError = null;
 		MensajeAviso = null;
@@ -571,6 +615,8 @@ public sealed partial class AccesoViewModel : ObservableObject
 	partial void OnAvisoSesionGuardadaChanged(string? value) => OnPropertyChanged(nameof(HaySesionGuardada));
 
 	partial void OnPasoEnCursoChanged(string? value) => OnPropertyChanged(nameof(HayPasoEnCurso));
+
+	partial void OnTextoSincronizacionChanged(string? value) => OnPropertyChanged(nameof(HayTextoSincronizacion));
 
 	partial void OnDetalleUbicacionChanged(string? value) => OnPropertyChanged(nameof(HayDetalleUbicacion));
 

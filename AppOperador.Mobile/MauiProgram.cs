@@ -86,6 +86,7 @@ public static class MauiProgram
 
 		// Aparte de las incidencias: es caché reemplazable del servidor, no datos que solo existen aquí.
 		servicios.AddSingleton<ICatalogoRepository, RepositorioCatalogoSqlite>();
+		servicios.AddSingleton<ICatalogoUnidadesRepository, RepositorioUnidadesSqlite>();
 		servicios.AddSingleton<ISyncQueueService, ColaSincronizacionSqlite>();
 
 		// Aparte: la evidencia se reintenta por su cuenta y no revierte su incidencia.

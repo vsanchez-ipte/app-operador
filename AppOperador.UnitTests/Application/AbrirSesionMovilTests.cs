@@ -20,6 +20,8 @@ public class AbrirSesionMovilTests
 	private readonly IMonotonicClock _monotonico = Substitute.For<IMonotonicClock>();
 	private readonly IAuditLog _bitacora = Substitute.For<IAuditLog>();
 	private readonly IConnectivityService _conectividad = Substitute.For<IConnectivityService>();
+	private readonly ICatalogoUnidadesRepository _catalogoUnidades = Substitute.For<ICatalogoUnidadesRepository>();
+	private readonly IClock _reloj = Substitute.For<IClock>();
 
 	private AbrirSesionMovil CrearCasoDeUso() =>
 		new(_jacob,
@@ -27,7 +29,9 @@ public class AbrirSesionMovilTests
 			new DatosDeInstalacion("1.2.0", new DateOnly(2026, 7, 23)),
 			_monotonico,
 			_bitacora,
-			conectividad: _conectividad);
+			conectividad: _conectividad,
+			catalogoUnidades: _catalogoUnidades,
+			reloj: _reloj);
 
 	private static SesionValidada SesionDePrueba(string token = "jwt-de-prueba") =>
 		new(
@@ -86,6 +90,51 @@ public class AbrirSesionMovilTests
 		Assert.Equal(MotivoRechazoAcceso.DesafioNoValido, resultado.Motivo);
 		await _jacob.DidNotReceive().CompletarAccesoAsync(
 			Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Identificar_ConExito_GuardaElCatalogoDeUnidadesConLaHoraDeSincronizacion()
+	{
+		var sincronizacion = Validacion.AddMinutes(1);
+		_reloj.UtcAhora.Returns(sincronizacion);
+		ConDesafioEmitido();
+		var casoDeUso = CrearCasoDeUso();
+
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		await _catalogoUnidades.Received(1).GuardarAsync(
+			Arg.Is<IReadOnlyList<UnidadVehicular>>(u => u.Single() == Unidad), sincronizacion, Arg.Any<CancellationToken>());
+		Assert.Equal(sincronizacion, casoDeUso.CatalogoSincronizadoUtc);
+	}
+
+	[Fact]
+	public async Task Identificar_SiElCatalogoNoSeGuarda_SigueSinPrometerUnaFecha()
+	{
+		_reloj.UtcAhora.Returns(Validacion);
+		_catalogoUnidades.GuardarAsync(
+				Arg.Any<IReadOnlyList<UnidadVehicular>>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+			.Returns(Task.FromException(new IOException("disco lleno")));
+		ConDesafioEmitido();
+		var casoDeUso = CrearCasoDeUso();
+
+		var resultado = await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+
+		Assert.True(resultado.Exitoso);
+		Assert.Null(casoDeUso.CatalogoSincronizadoUtc);
+		await _bitacora.Received(1).RegistrarAsync(
+			NivelAuditoria.Advertencia, Arg.Is<string>(m => m.Contains("catálogo local de unidades")), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Identificar_ConRechazo_NoTocaElCatalogoDeUnidades()
+	{
+		_jacob.PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+			.Returns(ResultadoPreauth.Rechazado(MotivoRechazoAcceso.CredencialInvalida));
+
+		await CrearCasoDeUso().IdentificarAsync("op@ipte.com.mx", "mala");
+
+		await _catalogoUnidades.DidNotReceive().GuardarAsync(
+			Arg.Any<IReadOnlyList<UnidadVehicular>>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
 	}
 
 	// ---------- Paso 2 ----------

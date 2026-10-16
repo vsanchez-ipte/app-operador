@@ -8,6 +8,8 @@ namespace AppOperador.IntegrationTests.Sqlite;
 
 public sealed class MigracionEsquema11Tests : IAsyncDisposable
 {
+	private const int VersionVigente = 12;
+
 	private readonly string _ruta = Path.Combine(Path.GetTempPath(), $"appoperador-migracion-{Guid.NewGuid():N}.db3");
 	private readonly List<BaseDatosLocal> _abiertas = [];
 
@@ -22,11 +24,11 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 	}
 
 	[Fact]
-	public async Task Migra_a_la_version_11_con_llaves_activas_y_sin_violaciones()
+	public async Task Migra_a_la_version_vigente_con_llaves_activas_y_sin_violaciones()
 	{
 		var baseDatos = await MigrarDesdeVersion10Async();
 
-		Assert.Equal(11, await baseDatos.ObtenerVersionEsquemaAsync());
+		Assert.Equal(VersionVigente, await baseDatos.ObtenerVersionEsquemaAsync());
 		Assert.Empty(BaseDeVersionAnterior.Consultar<Violacion>(_ruta, "PRAGMA foreign_key_check;"));
 
 		// Las tablas viejas ya no están y las trece nuevas sí.
@@ -132,7 +134,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		Assert.Null(constancia["operador"]);
 		Assert.Null(constancia["origen"]);
 		var mensaje = (string)constancia["mensaje"]!;
-		Assert.Contains("migrada del esquema 10 al 11", mensaje);
+		Assert.Contains($"migrada del esquema 10 al {VersionVigente}", mensaje);
 		Assert.Contains("1 evidencias sin incidencia", mensaje);
 		Assert.Contains("1 intentos de envío sin registro", mensaje);
 		Assert.Contains("1 filas apuntaban a sesiones sin datos", mensaje);
@@ -222,7 +224,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		_abiertas.Add(otraVez);
 		await otraVez.InicializarAsync();
 
-		Assert.Equal(11, await otraVez.ObtenerVersionEsquemaAsync());
+		Assert.Equal(VersionVigente, await otraVez.ObtenerVersionEsquemaAsync());
 		Assert.Equal(constancias, BaseDeVersionAnterior.Escalar<int>(_ruta,
 			"SELECT COUNT(*) FROM evento_auditoria WHERE mensaje LIKE 'Base local migrada%'"));
 	}
@@ -233,7 +235,7 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 		var claves = new ClaveFija();
 		var baseDatos = await MigrarDesdeVersion10Async(claves);
 
-		Assert.Equal(11, await baseDatos.ObtenerVersionEsquemaAsync());
+		Assert.Equal(VersionVigente, await baseDatos.ObtenerVersionEsquemaAsync());
 		Assert.Equal(6, BaseDeVersionAnterior.Escalar<int>(_ruta, "SELECT COUNT(*) FROM incidencia_local", ClaveFija.Clave));
 
 		// Sigue cifrada: en claro no se deja leer.
@@ -264,13 +266,13 @@ public sealed class MigracionEsquema11Tests : IAsyncDisposable
 	}
 
 	[Fact]
-	public async Task Una_base_nueva_nace_en_la_version_11()
+	public async Task Una_base_nueva_nace_en_la_version_vigente()
 	{
 		var baseDatos = new BaseDatosLocal(_ruta);
 		_abiertas.Add(baseDatos);
 		await baseDatos.InicializarAsync();
 
-		Assert.Equal(11, await baseDatos.ObtenerVersionEsquemaAsync());
+		Assert.Equal(VersionVigente, await baseDatos.ObtenerVersionEsquemaAsync());
 		Assert.Equal(13, BaseDeVersionAnterior.Escalar<int>(_ruta,
 			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"));
 

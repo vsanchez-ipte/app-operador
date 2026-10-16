@@ -73,6 +73,38 @@ public sealed class ClienteAccesoJacobTests
 		Assert.Equal("VEH-01", resultado.Unidades[0].Clave);
 	}
 
+	[Fact]
+	public async Task Lee_la_disponibilidad_y_el_estado_de_cada_unidad()
+	{
+		const string ConEstados = """
+			{
+			  "resultado": {
+			    "challengeId": "3f2a0c1e-9d44-4f6b-8f21-6c0d8b7a1e55",
+			    "expiresAtUtc": "2026-08-05T19:05:00Z",
+			    "unidades": [
+			      { "id": "a1", "clave": "VEH-001", "descripcion": "Pickup 1", "disponible": true,
+			        "estado": { "clave": "operativo", "nombre": "Operativo", "color": "#25B324" } },
+			      { "id": "a2", "clave": "VEH-002", "descripcion": "Pickup 2", "disponible": false,
+			        "estado": { "clave": "mantenimiento", "nombre": "Mantenimiento", "color": "#120AF2" } },
+			      { "id": "a3", "clave": "VEH-003", "descripcion": "De un API anterior" }
+			    ]
+			  },
+			  "codigoError": null,
+			  "mensajeError": null
+			}
+			""";
+		var (cliente, _) = Construir(ManejadorHttpFalso.Json(HttpStatusCode.OK, ConEstados));
+
+		var resultado = await PreautenticarAsync(cliente);
+
+		Assert.Equal(
+		[
+			new UnidadVehicular("a1", "VEH-001", "Pickup 1", true, new EstadoUnidad("operativo", "Operativo", "#25B324")),
+			new UnidadVehicular("a2", "VEH-002", "Pickup 2", false, new EstadoUnidad("mantenimiento", "Mantenimiento", "#120AF2")),
+			new UnidadVehicular("a3", "VEH-003", "De un API anterior", true, null),
+		], resultado.Unidades);
+	}
+
 	// ---------- Identificador de la unidad ----------
 
 	[Fact]

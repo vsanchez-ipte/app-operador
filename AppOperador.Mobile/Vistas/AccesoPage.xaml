@@ -50,14 +50,58 @@
                                 </Border>
                             </VerticalStackLayout>
 
-                            <!-- Solo del catálogo, nunca texto libre -->
-                            <VerticalStackLayout IsVisible="{Binding MostrarSelectorUnidad}">
+                            <!-- Solo del catálogo, nunca texto libre. Tarjetas y no Picker: el Picker no muestra el estado ni deshabilita opciones -->
+                            <VerticalStackLayout IsVisible="{Binding MostrarSelectorUnidad}" Spacing="8">
                                 <Label Text="UNIDAD VEHICULAR" Style="{StaticResource EtiquetaCampo}" />
-                                <Border Style="{StaticResource MarcoCampo}">
-                                    <Picker Style="{StaticResource CampoLista}"
-                                            ItemsSource="{Binding Unidades}"
-                                            SelectedItem="{Binding UnidadSeleccionada}" />
+                                <!-- Altura fija para tres tarjetas y media: la que asoma avisa que hay más, y la pantalla no crece con el catálogo -->
+                                <Border Style="{StaticResource MarcoCampo}" Padding="6">
+                                    <ScrollView MaximumHeightRequest="330" VerticalScrollBarVisibility="Always">
+                                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Unidades}" Spacing="8">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:OpcionUnidadVista">
+                                                    <Border Style="{StaticResource TarjetaInterna}"
+                                                            Stroke="{Binding PincelBorde}"
+                                                            Background="{Binding PincelFondo}"
+                                                            StrokeThickness="{Binding GrosorBorde}"
+                                                            Opacity="{Binding Opacidad}">
+                                                        <Border.GestureRecognizers>
+                                                            <TapGestureRecognizer
+                                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AccesoViewModel}}, Path=SeleccionarUnidadCommand}"
+                                                                CommandParameter="{Binding .}" />
+                                                        </Border.GestureRecognizers>
+                                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                            <Ellipse Grid.Column="0"
+                                                                     Fill="{Binding PincelEstado}"
+                                                                     WidthRequest="12"
+                                                                     HeightRequest="12"
+                                                                     VerticalOptions="Center" />
+                                                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                                                <Label Text="{Binding Clave}" FontAttributes="Bold" FontSize="14"
+                                                                       TextColor="{StaticResource TextoTitulo}" />
+                                                                <Label Text="{Binding Descripcion}" Style="{StaticResource TextoDato}"
+                                                                       IsVisible="{Binding HayDescripcion}" />
+                                                                <Label Text="{Binding TextoEstado}" Style="{StaticResource TextoSecundario}" />
+                                                            </VerticalStackLayout>
+                                                            <Label Grid.Column="2"
+                                                                   Text="✓ Elegida"
+                                                                   FontAttributes="Bold"
+                                                                   FontSize="12"
+                                                                   TextColor="{StaticResource Vino}"
+                                                                   VerticalOptions="Center"
+                                                                   IsVisible="{Binding Seleccionada}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
+                                    </ScrollView>
                                 </Border>
+                                <Label Text="{Binding TextoCantidadUnidades}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       IsVisible="{Binding HayMasUnidadesQueLasVisibles}" />
+                                <Label Text="{Binding TextoSincronizacion}"
+                                       Style="{StaticResource TextoSecundario}"
+                                       IsVisible="{Binding HayTextoSincronizacion}" />
                             </VerticalStackLayout>
 
                             <Label Text="{Binding MensajeError}"

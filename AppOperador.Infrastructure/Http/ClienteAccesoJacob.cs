@@ -445,7 +445,18 @@ public sealed class ClienteAccesoJacob : IAccesoJacobClient
 	private static IReadOnlyList<UnidadVehicular> ConvertirUnidades(IReadOnlyList<UnidadPreauth> unidades) =>
 		[.. unidades
 			.Where(unidad => !string.IsNullOrWhiteSpace(unidad.Id) && !string.IsNullOrWhiteSpace(unidad.Clave))
-			.Select(unidad => new UnidadVehicular(unidad.Id!, unidad.Clave!, unidad.Descripcion ?? string.Empty))];
+			.Select(unidad => new UnidadVehicular(
+				unidad.Id!,
+				unidad.Clave!,
+				unidad.Descripcion ?? string.Empty,
+				unidad.Disponible,
+				ConvertirEstado(unidad.Estado)))];
+
+	// Sin clave o sin nombre, el estado no se puede mostrar: se omite.
+	private static EstadoUnidad? ConvertirEstado(EstadoUnidadPreauth? estado) =>
+		string.IsNullOrWhiteSpace(estado?.Clave) || string.IsNullOrWhiteSpace(estado.Nombre)
+			? null
+			: new EstadoUnidad(estado.Clave, estado.Nombre, estado.Color ?? string.Empty);
 
 	private string Url(string ruta) => $"{_configuracion.UrlBase.TrimEnd('/')}{ruta}";
 }
