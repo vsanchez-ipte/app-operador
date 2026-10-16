@@ -332,6 +332,19 @@ public sealed partial class AccesoViewModel : ObservableObject
 		SeleccionarUnidad(Unidades.FirstOrDefault(opcion => opcion.Disponible));
 	}
 
+	// Jacob la rechazó después de listarla: se queda a la vista, ya sin poder elegirse.
+	private void DescartarUnidadRechazada(UnidadVehicular? rechazada)
+	{
+		var indice = Unidades.ToList().FindIndex(opcion => opcion.Unidad == rechazada);
+		if (rechazada is null || indice < 0)
+		{
+			return;
+		}
+
+		Unidades[indice] = OpcionUnidadVista.YaNoDisponible(rechazada);
+		SeleccionarUnidad(Unidades.FirstOrDefault(opcion => opcion.Disponible));
+	}
+
 	// Una unidad no disponible se ve, pero no se puede tomar.
 	[RelayCommand]
 	private void SeleccionarUnidad(OpcionUnidadVista? opcion)
@@ -362,6 +375,11 @@ public sealed partial class AccesoViewModel : ObservableObject
 
 		if (!resultado.Exitoso)
 		{
+			if (resultado.Motivo == MotivoRechazoAcceso.UnidadNoAutorizada)
+			{
+				DescartarUnidadRechazada(UnidadSeleccionada);
+			}
+
 			MensajeError = TextoDe(resultado.Motivo);
 
 			if (resultado.Motivo == MotivoRechazoAcceso.DesafioNoValido)

@@ -240,10 +240,9 @@ public class AbrirSesionMovilTests
 	[Fact]
 	public async Task Abrir_ElDesafioEsDeUnSoloUso_AunqueElIntentoFalle()
 	{
-		// El servidor ya lo consumio: reintentar con el mismo solo daria desafio.consumido.
 		ConDesafioEmitido("d-7");
 		_jacob.CompletarAccesoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-			.Returns(ResultadoLogin.Rechazado(MotivoRechazoAcceso.UnidadNoAutorizada));
+			.Returns(ResultadoLogin.Rechazado(MotivoRechazoAcceso.CuentaInactiva));
 		var casoDeUso = CrearCasoDeUso();
 		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
 		await casoDeUso.AbrirAsync(Unidad);
@@ -253,6 +252,25 @@ public class AbrirSesionMovilTests
 		Assert.Equal(MotivoRechazoAcceso.DesafioNoValido, segundo.Motivo);
 		await _jacob.Received(1).CompletarAccesoAsync(
 			Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task Abrir_ConLaUnidadRechazada_PermiteReintentarConOtraSinVolverAAutenticarse()
+	{
+		var otra = new UnidadVehicular("u-2", "VEH-02", "Camioneta 02");
+		ConDesafioEmitido("d-8");
+		_jacob.CompletarAccesoAsync("d-8", "u-1", Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Rechazado(MotivoRechazoAcceso.UnidadNoAutorizada, "appoperador.vehiculo.noautorizado"));
+		_jacob.CompletarAccesoAsync("d-8", "u-2", Arg.Any<CancellationToken>())
+			.Returns(ResultadoLogin.Creada(SesionDePrueba()));
+		var casoDeUso = CrearCasoDeUso();
+		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
+		await casoDeUso.AbrirAsync(Unidad);
+
+		var segundo = await casoDeUso.AbrirAsync(otra);
+
+		Assert.True(segundo.Exitoso);
+		await _jacob.Received(1).PreautenticarAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 	}
 
 	// ---------- El acceso real deja rastro en la bitácora ----------

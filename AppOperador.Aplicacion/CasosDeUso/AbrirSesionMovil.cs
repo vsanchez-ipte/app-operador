@@ -90,13 +90,19 @@ public sealed class AbrirSesionMovil
 		}
 
 		var desafio = _desafio;
-		// Un solo uso: se descarta pase lo que pase.
+		// Un solo uso: se descarta antes de enviarlo, y solo vuelve si Jacob rechazó la unidad.
 		_desafio = null;
 
 		var resultado = await _jacob.CompletarAccesoAsync(desafio, unidad.Id, cancelacion);
 		AnotarEnlace(resultado.Motivo);
 		if (!resultado.Exitoso)
 		{
+			// Jacob revisa la unidad antes de consumir el desafío: se puede reintentar con otra sin volver a autenticarse.
+			if (resultado.Motivo == MotivoRechazoAcceso.UnidadNoAutorizada)
+			{
+				_desafio = desafio;
+			}
+
 			// El permiso puede retirarse entre un paso y el otro.
 			await AplicarRevocacionAsync(resultado.Motivo, cancelacion);
 			await _bitacora.RegistrarAsync(
