@@ -103,7 +103,7 @@ public class AbrirSesionMovilTests
 		await casoDeUso.IdentificarAsync("op@ipte.com.mx", "secreta");
 
 		await _catalogoUnidades.Received(1).GuardarAsync(
-			Arg.Is<IReadOnlyList<UnidadVehicular>>(u => u.Single() == Unidad), sincronizacion, Arg.Any<CancellationToken>());
+			Arg.Is<IReadOnlyList<UnidadVehicular>>(u => u != null && u.SequenceEqual(new[] { Unidad })), sincronizacion, Arg.Any<CancellationToken>());
 		Assert.Equal(sincronizacion, casoDeUso.CatalogoSincronizadoUtc);
 	}
 
@@ -122,7 +122,7 @@ public class AbrirSesionMovilTests
 		Assert.True(resultado.Exitoso);
 		Assert.Null(casoDeUso.CatalogoSincronizadoUtc);
 		await _bitacora.Received(1).RegistrarAsync(
-			NivelAuditoria.Advertencia, Arg.Is<string>(m => m.Contains("catálogo local de unidades")), Arg.Any<CancellationToken>());
+			NivelAuditoria.Advertencia, Arg.Is<string>(m => m != null && m.Contains("catálogo local de unidades")), Arg.Any<CancellationToken>());
 	}
 
 	[Fact]
